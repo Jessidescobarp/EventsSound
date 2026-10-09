@@ -28,3 +28,7 @@ coverage/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local tooling
+.neon
+.env.local
