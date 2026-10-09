@@ -46,3 +46,23 @@ def test_defaults_and_production_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("APP_ENV", "production")
     assert Settings(_env_file=None).is_production is True
+
+
+def test_wildcard_cors_origin_is_rejected_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", DB_URL)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.example,*")
+
+    with pytest.raises(ValidationError, match="CORS_ALLOWED_ORIGINS"):
+        Settings(_env_file=None)
+
+
+def test_wildcard_cors_origin_is_allowed_outside_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", DB_URL)
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "*")
+
+    assert Settings(_env_file=None).cors_allowed_origins == ["*"]

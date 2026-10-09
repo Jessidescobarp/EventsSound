@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -22,6 +22,12 @@ class Settings(BaseSettings):
             parts = (part.strip().rstrip("/") for part in value.split(","))
             return [part for part in parts if part]
         return value
+
+    @model_validator(mode="after")
+    def _reject_wildcard_origin_in_production(self) -> "Settings":
+        if self.is_production and "*" in self.cors_allowed_origins:
+            raise ValueError("CORS_ALLOWED_ORIGINS must not contain '*' in production")
+        return self
 
     @property
     def is_production(self) -> bool:
