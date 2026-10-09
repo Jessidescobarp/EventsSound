@@ -25,7 +25,7 @@ Original PR 1 fallback (superseded by the PR 1a/1b split): move `backend/Dockerf
 | PR | Branch | Base branch | Est. lines | Depends on | Merge order |
 | -- | ------ | ----------- | ---------- | ---------- | ----------- |
 | 1a Backend core | `feat/backend-core` | `main` | ~449 (measured after review hardening, excl. `uv.lock` and openspec) | none | 1 |
-| 1b Backend DB + Docker | `feat/backend-db-docker` | `feat/backend-core` (stacked; retarget to `main` once PR 1a merges) | ~410 (measured, incl. tests) | PR 1a | 2 |
+| 1b Backend DB + Docker | `feat/backend-db-docker` | `feat/backend-core` (stacked; retarget to `main` once PR 1a merges) | ~497 (measured after review hardening, excl. `uv.lock` and openspec; over budget, see risk note) | PR 1a | 2 |
 | 2 Frontend skeleton | `feat/frontend-skeleton` | `main` (independent of PR 1a/1b) | 180-250 | none | 3 |
 | 3 CI + Compose | `feat/ci-compose` | `main` after PR 1a, PR 1b and PR 2 are merged (rebase if branched earlier) | 180-220 | PR 1b, PR 2 | 4 |
 | 4 Deploy config + TDD flip | `feat/deploy-config` | `main` after PR 3 is merged | 90-130 | PR 3 | 5 |
@@ -74,7 +74,7 @@ Conventional commits only. NO `Co-Authored-By`, NO AI attribution. Tests and doc
 
 ---
 
-## PR 1a: Backend core (`feat/backend-core`, base `main`, ~449 lines) and PR 1b: Backend DB + Docker (`feat/backend-db-docker`, base `feat/backend-core`, ~410 lines)
+## PR 1a: Backend core (`feat/backend-core`, base `main`, ~449 lines) and PR 1b: Backend DB + Docker (`feat/backend-db-docker`, base `feat/backend-core`, ~497 lines)
 
 Split decided by the user. PR 1a = T1.1-T1.5 + T1.8. PR 1b = T1.6, T1.7, T1.9. Merge order: 1a, then 1b (retarget 1b to `main` after 1a merges). The original local branch `feat/backend-skeleton` is kept as a backup only and is not pushed.
 
@@ -90,7 +90,7 @@ Split decided by the user. PR 1a = T1.1-T1.5 + T1.8. PR 1b = T1.6, T1.7, T1.9. M
 - [x] **T1.8 [A]** Architecture test. TDD: write `tests/unit/test_architecture.py` first with `ast` import scanning: `domain` imports no project layer and no fastapi/sqlalchemy/pydantic_settings/alembic; `application` does not import `adapters` or `entrypoints`; `adapters` does not import `entrypoints`. Include a self-test proving a violation is detected (scan a synthetic module string/tmp file with `import sqlalchemy` and assert the failure names module and import). Fix any real violation in T1.5/T1.6 code. Satisfies: hexagonal-layout / Dependency rule, Composition root ("No adapter construction outside the root").
 - [x] **T1.9 [A]** `backend/Dockerfile` (multi-stage, `python:3.12-slim`, `uv sync --frozen --no-dev`, non-root user, copies `src/`, `migrations/`, `alembic.ini`, `start.sh`), `backend/start.sh` (`alembic upgrade head && exec uvicorn eventssound.entrypoints.api.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}`; LF enforced), `backend/.dockerignore`. Test-first note: none unit-level; verify by `docker build backend` and, if a DB is reachable, `docker run` hitting `/health`. If Docker Desktop is unavailable, mark verification as deferred to CI (PR 3 builds the image). Satisfies: deployment / Migrations on release (mechanism), design section 8.
 - [x] **T1.10a [A]** PR 1a verification: from `backend/` run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest` on the `feat/backend-core` tip (no DB code present); open PR 1a (description per chained-pr template). Result: ruff clean, 25 passed. Review hardening added after the first pass: production rejects `*` in `CORS_ALLOWED_ORIGINS`; the architecture scanner resolves relative imports and `from pkg import module`; `.gitignore` covers `.neon` and `.env.local`.
-- [x] **T1.10b [A]** PR 1b verification: same commands plus DB-dependent tests with `DATABASE_URL_TEST` (pgvector/pgvector:pg16 container) and `docker build backend` on the `feat/backend-db-docker` tip; open PR 1b stacked on PR 1a.
+- [x] **T1.10b [A]** PR 1b verification: same commands plus DB-dependent tests with `DATABASE_URL_TEST` (pgvector/pgvector:pg16 container) and `docker build backend` on the `feat/backend-db-docker` tip; open PR 1b stacked on PR 1a. Result: ruff clean, 41 passed with DB (36 passed + 5 skipped without `DATABASE_URL_TEST`, 100% coverage), `docker build backend` OK. Review hardening: bounded migration retry in `start.sh`, `connect_timeout` in `migrations/env.py`, DB fixture fails (no skip) when `DATABASE_URL_TEST` is set but unreachable, DB-free head test, `postgres://` and `postgresql://` mapped to psycopg 3, `database_url` as `SecretStr`, uv image pinned to 0.11.6. Size risk: if PR 1b must shrink, move `Dockerfile`, `start.sh`, `.dockerignore` (48 lines) to PR 3.
 
 ### PR 1a / PR 1b verification checklist (items for 1b only apply once PR 1b is verified)
 - [ ] First commit contains only `.gitattributes`, `.gitignore`, `.editorconfig`
