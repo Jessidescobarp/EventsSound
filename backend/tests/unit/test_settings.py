@@ -66,3 +66,33 @@ def test_wildcard_cors_origin_is_allowed_outside_production(
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "*")
 
     assert Settings(_env_file=None).cors_allowed_origins == ["*"]
+
+
+@pytest.mark.parametrize("scheme", ["postgres", "postgresql", "postgresql+psycopg"])
+def test_database_url_scheme_is_mapped_to_psycopg(
+    monkeypatch: pytest.MonkeyPatch, scheme: str
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", f"{scheme}://user:pass@host:5432/db")
+
+    url = Settings(_env_file=None).database_url.get_secret_value()
+
+    assert url == "postgresql+psycopg://user:pass@host:5432/db"
+
+
+def test_database_url_keeps_query_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgres://u:p@h/db?sslmode=require&channel_binding=require"
+    )
+
+    url = Settings(_env_file=None).database_url.get_secret_value()
+
+    assert url == "postgresql+psycopg://u:p@h/db?sslmode=require&channel_binding=require"
+
+
+def test_database_url_is_hidden_from_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:s3cret@host/db")
+
+    settings = Settings(_env_file=None)
+
+    assert "s3cret" not in repr(settings)
+    assert "s3cret" not in str(settings)
