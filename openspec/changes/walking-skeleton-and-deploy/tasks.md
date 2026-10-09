@@ -15,26 +15,27 @@ Legend:
 | ------ | ----- |
 | Estimated changed lines (excl. lockfiles) | ~770-980 total across 4 PRs |
 | Chained PRs recommended | Yes (resolved: stacked PRs) |
-| 400-line budget risk | Medium for PR 1 (300-380, close to limit); Low for PR 2-4 |
+| 400-line budget risk | PR 1 split by the user into PR 1a + PR 1b (each under ~400 lines excl. `uv.lock`); Low for PR 2-4 |
 | Decision needed before apply | No. Delivery strategy already resolved (chained/stacked). Only pending item: confirm git repo and GitHub remote exist (T0.1) |
 
-PR 1 fallback if the diff exceeds 400 lines: move `backend/Dockerfile`, `backend/start.sh`, `backend/.dockerignore` (~48 lines) to PR 3, and keep the Docker build step in CI there.
+Original PR 1 fallback (superseded by the PR 1a/1b split): move `backend/Dockerfile`, `backend/start.sh`, `backend/.dockerignore` (~48 lines) to PR 3, and keep the Docker build step in CI there.
 
 ### PR chain
 
 | PR | Branch | Base branch | Est. lines | Depends on | Merge order |
 | -- | ------ | ----------- | ---------- | ---------- | ----------- |
-| 1 Backend skeleton | `feat/backend-skeleton` | `main` | 300-380 | none | 1 |
-| 2 Frontend skeleton | `feat/frontend-skeleton` | `main` (independent of PR 1) | 180-250 | none | 2 |
-| 3 CI + Compose | `feat/ci-compose` | `main` after PR 1 and PR 2 are merged (rebase if branched earlier) | 180-220 | PR 1, PR 2 | 3 |
-| 4 Deploy config + TDD flip | `feat/deploy-config` | `main` after PR 3 is merged | 90-130 | PR 3 | 4 |
+| 1a Backend core | `feat/backend-core` | `main` | ~362 (measured) | none | 1 |
+| 1b Backend DB + Docker | `feat/backend-db-docker` | `feat/backend-core` (stacked; retarget to `main` once PR 1a merges) | ~410 (measured, incl. tests) | PR 1a | 2 |
+| 2 Frontend skeleton | `feat/frontend-skeleton` | `main` (independent of PR 1a/1b) | 180-250 | none | 3 |
+| 3 CI + Compose | `feat/ci-compose` | `main` after PR 1a, PR 1b and PR 2 are merged (rebase if branched earlier) | 180-220 | PR 1b, PR 2 | 4 |
+| 4 Deploy config + TDD flip | `feat/deploy-config` | `main` after PR 3 is merged | 90-130 | PR 3 | 5 |
 
 All branch names match `^(feat|fix|chore|...)/[a-z0-9._-]+$`. Stacked-to-main strategy; do not mix with a feature-branch chain. If PR 2 is opened before PR 1 merges, it still targets `main` (no shared files), so no polluted diff. PR 3 and PR 4 must NOT be opened until their dependencies are merged, otherwise the diff is polluted: retarget/rebase instead.
 
 Each PR description must state: start, end, prior dependencies, follow-up, out-of-scope, and a dependency diagram marking the current PR:
 
 ```
-PR1 backend ──┐
+PR1a core ─> PR1b db+docker ──┐
               ├──> PR3 ci+compose ──> PR4 deploy+flip
 PR2 frontend ─┘
 ```
@@ -45,13 +46,14 @@ Conventional commits only. NO `Co-Authored-By`, NO AI attribution. Tests and doc
 
 | PR | Commit (in order) | Tasks |
 | -- | ----------------- | ----- |
-| 1 | `chore: add gitattributes, gitignore and editorconfig` | T1.1 |
-| 1 | `build(backend): add python project with pytest and ruff` | T1.2, T1.3 |
-| 1 | `feat(backend): add app factory, settings and health endpoint` | T1.4, T1.5 |
-| 1 | `feat(backend): add sqlalchemy session and database readiness check` | T1.6 |
-| 1 | `feat(backend): add alembic baseline migration` | T1.7 |
-| 1 | `test(backend): enforce hexagonal dependency rule` | T1.8 |
-| 1 | `build(backend): add dockerfile and start script` | T1.9 |
+| 1a | `chore: add gitattributes, gitignore and editorconfig` | T1.1 |
+| 1a | `build(backend): add python project with pytest and ruff` | T1.2, T1.3 |
+| 1a | `feat(backend): add app factory, settings and health endpoint` | T1.4, T1.5 |
+| 1b | `feat(backend): add sqlalchemy session and database readiness check` | T1.6 |
+| 1b | `feat(backend): add alembic baseline migration` | T1.7 |
+| 1a | `test(backend): enforce hexagonal dependency rule` | T1.8 (moved to PR 1a to balance size; it passes on the core code) |
+| 1b | `build(backend): add dockerfile and start script` | T1.9 |
+| 1a/1b | `docs(sdd): ...` tasks.md progress updates | n/a |
 | 2 | `feat(frontend): scaffold vite react typescript shell with vitest` | T2.1, T2.2 |
 | 2 | `feat(frontend): show backend health status` | T2.3, T2.4 |
 | 3 | `build: add docker compose with postgres and env example` | T3.1 |
@@ -66,28 +68,31 @@ Conventional commits only. NO `Co-Authored-By`, NO AI attribution. Tests and doc
 
 ## Phase 0: Preconditions (before PR 1)
 
-- [ ] **T0.1 [M/A]** Confirm `C:\Repos\EventsSound` is a git repo with a GitHub remote and `main` pushed. If not: developer runs `git init`/creates the GitHub repo (manual); agent never pushes. Satisfies: prerequisite for ci-pipeline / Triggers.
-- [ ] **T0.2 [A]** Check tool availability and record results in apply-progress: `uv`, Python 3.12, Node 22, `docker` / Docker Desktop (`docker info`). If Docker Desktop is missing, note fallback (Neon dev branch as local DB, same `DATABASE_URL`). Do not install anything without asking. Satisfies: de-risks database-migrations / Local Postgres service.
-- [ ] **T0.3 [A]** Create branch `feat/backend-skeleton` from `main`.
+- [x] **T0.1 [M/A]** Confirm `C:\Repos\EventsSound` is a git repo with a GitHub remote and `main` pushed. If not: developer runs `git init`/creates the GitHub repo (manual); agent never pushes. Satisfies: prerequisite for ci-pipeline / Triggers.
+- [x] **T0.2 [A]** Check tool availability and record results in apply-progress: `uv`, Python 3.12, Node 22, `docker` / Docker Desktop (`docker info`). If Docker Desktop is missing, note fallback (Neon dev branch as local DB, same `DATABASE_URL`). Do not install anything without asking. Satisfies: de-risks database-migrations / Local Postgres service.
+- [x] **T0.3 [A]** Create branch `feat/backend-skeleton` from `main`.
 
 ---
 
-## PR 1: Backend skeleton (`feat/backend-skeleton`, base `main`, ~300-380 lines)
+## PR 1a: Backend core (`feat/backend-core`, base `main`, ~362 lines) and PR 1b: Backend DB + Docker (`feat/backend-db-docker`, base `feat/backend-core`, ~410 lines)
 
-- [ ] **T1.1 [A]** Repo hygiene FIRST commit: `.gitattributes` (`* text=auto eol=lf`, `*.sh text eol=lf`, binary overrides), `.gitignore` (`.env`, `.env.*` except `.env.example`, `*.pem`, `.venv`, `__pycache__`, `node_modules`, `dist`, coverage, caches), `.editorconfig` (`end_of_line = lf`). Satisfies: hexagonal-layout / Monorepo structure (`.env` ignored, LF). Test-first: none (config). Verify with `git check-ignore .env`.
-- [ ] **T1.2 [A]** `backend/pyproject.toml` (Python 3.12; deps fastapi, uvicorn, pydantic-settings, sqlalchemy>=2, alembic, `psycopg[binary]`; dev: pytest, pytest-cov, httpx, ruff; ruff rules `E,F,I,UP,B,SIM`; pytest config with `src` layout), `backend/uv.lock` via `uv lock` (lockfile excluded from line count). Create empty packages with `__init__.py`: `domain`, `application`, `adapters`, `entrypoints` under `backend/src/eventssound/`, plus `tests/unit`, `tests/integration`. Satisfies: hexagonal-layout / Backend layer packages.
-- [ ] **T1.3 [A]** Test runner smoke: `backend/tests/conftest.py` and a trivial import test for the four packages (`tests/unit/test_layout.py::test_packages_importable`). TDD: write test, run `uv run pytest` and confirm it fails before the `__init__.py` files/packaging are in place if sequencing allows; otherwise confirm red via a missing package name. Confirm `uv run pytest` and `uv run ruff check .` run on Windows. Satisfies: hexagonal-layout / Backend layer packages; enables later strict TDD.
-- [ ] **T1.4 [A]** Settings. TDD: write `tests/unit/test_settings.py` first (missing `DATABASE_URL` raises validation error naming `DATABASE_URL`; CORS list parsing splits on comma and strips trailing `/`; `APP_ENV=production` flag; `.env.example` completeness test that compares Settings fields to root `.env.example` keys, marked skip until T3.1 lands, or implemented against a checked-in file path and unskipped in PR 3). Then `backend/src/eventssound/config.py` (`APP_ENV`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `LOG_LEVEL`). Satisfies: backend-health-api / Environment-driven settings.
+Split decided by the user. PR 1a = T1.1-T1.5 + T1.8. PR 1b = T1.6, T1.7, T1.9. Merge order: 1a, then 1b (retarget 1b to `main` after 1a merges). The original local branch `feat/backend-skeleton` is kept as a backup only and is not pushed.
+
+- [x] **T1.1 [A]** Repo hygiene FIRST commit: `.gitattributes` (`* text=auto eol=lf`, `*.sh text eol=lf`, binary overrides), `.gitignore` (`.env`, `.env.*` except `.env.example`, `*.pem`, `.venv`, `__pycache__`, `node_modules`, `dist`, coverage, caches), `.editorconfig` (`end_of_line = lf`). Satisfies: hexagonal-layout / Monorepo structure (`.env` ignored, LF). Test-first: none (config). Verify with `git check-ignore .env`.
+- [x] **T1.2 [A]** `backend/pyproject.toml` (Python 3.12; deps fastapi, uvicorn, pydantic-settings, sqlalchemy>=2, alembic, `psycopg[binary]`; dev: pytest, pytest-cov, httpx, ruff; ruff rules `E,F,I,UP,B,SIM`; pytest config with `src` layout), `backend/uv.lock` via `uv lock` (lockfile excluded from line count). Create empty packages with `__init__.py`: `domain`, `application`, `adapters`, `entrypoints` under `backend/src/eventssound/`, plus `tests/unit`, `tests/integration`. Satisfies: hexagonal-layout / Backend layer packages.
+- [x] **T1.3 [A]** Test runner smoke: `backend/tests/conftest.py` and a trivial import test for the four packages (`tests/unit/test_layout.py::test_packages_importable`). TDD: write test, run `uv run pytest` and confirm it fails before the `__init__.py` files/packaging are in place if sequencing allows; otherwise confirm red via a missing package name. Confirm `uv run pytest` and `uv run ruff check .` run on Windows. Satisfies: hexagonal-layout / Backend layer packages; enables later strict TDD.
+- [x] **T1.4 [A]** Settings. TDD: write `tests/unit/test_settings.py` first (missing `DATABASE_URL` raises validation error naming `DATABASE_URL`; CORS list parsing splits on comma and strips trailing `/`; `APP_ENV=production` flag; `.env.example` completeness test that compares Settings fields to root `.env.example` keys, marked skip until T3.1 lands, or implemented against a checked-in file path and unskipped in PR 3). Then `backend/src/eventssound/config.py` (`APP_ENV`, `DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `LOG_LEVEL`). Satisfies: backend-health-api / Environment-driven settings.
   - Note: the `.env.example` completeness scenario cannot pass until PR 3 creates the file. Decision for apply: add the test in PR 3 (T3.1), not PR 1.
-- [ ] **T1.5 [A]** App factory + `/health` + CORS. TDD: write `tests/integration/test_health.py` first: factory builds independent apps with distinct settings; `GET /health` returns 200 `{"status": "ok"}` exactly; `/health` still 200 with an unreachable DB URL; allowed origin gets `Access-Control-Allow-Origin`; disallowed origin gets none; `production` gives `app.debug is False`. Then `entrypoints/api/app.py` (`create_app(settings=None, ...)` with overridable settings and session provider, `CORSMiddleware` exact origins, no credentials), `entrypoints/api/routes/health.py`, `entrypoints/api/container.py` (composition root, documented DI extension point for the future `LlmProvider`, no LLM code). Satisfies: backend-health-api / Application factory, Health endpoint, CORS restriction; hexagonal-layout / Composition root.
+- [x] **T1.5 [A]** App factory + `/health` + CORS. TDD: write `tests/integration/test_health.py` first: factory builds independent apps with distinct settings; `GET /health` returns 200 `{"status": "ok"}` exactly; `/health` still 200 with an unreachable DB URL; allowed origin gets `Access-Control-Allow-Origin`; disallowed origin gets none; `production` gives `app.debug is False`. Then `entrypoints/api/app.py` (`create_app(settings=None, ...)` with overridable settings and session provider, `CORSMiddleware` exact origins, no credentials), `entrypoints/api/routes/health.py`, `entrypoints/api/container.py` (composition root, documented DI extension point for the future `LlmProvider`, no LLM code). Satisfies: backend-health-api / Application factory, Health endpoint, CORS restriction; hexagonal-layout / Composition root.
   - Spec/design conflict: design `/health` body adds `service` and `version`; spec requires exactly `{"status": "ok"}`. Follow the spec (exact body). Flag for the developer if they want the extra fields (would require a spec update).
 - [ ] **T1.6 [A]** Database layer + readiness. TDD: write `tests/unit/test_health_usecase.py` (`check_database()` with a fake `DatabaseHealthPort`), integration tests for `GET /health/db` (200 with real Postgres, 503 with a failing fake injected through the factory, no detail leaked) and session-provider test (session yielded bound to the test URL, closed after use). Then `application/ports.py` (`DatabaseHealthPort` Protocol), `application/health.py`, `adapters/db/session.py` (SQLAlchemy 2.0 engine, `sessionmaker`, `Base` with naming convention, `pool_pre_ping=True`, `pool_recycle=300`, `pool_size=3`, `max_overflow=2`), `adapters/db/health.py` (`SELECT 1`), `/health/db` route wired in `container.py`. Needs a reachable Postgres: run `docker compose up db` is not available until PR 3, so use a locally started container or Neon dev branch for the local run; CI provides it in PR 3. Integration tests needing a real DB must skip cleanly (`pytest.mark` + env check) when no DB is reachable. Satisfies: database-migrations / SQLAlchemy 2.0 setup, Local Postgres service (scenario "Backend connects locally"); design section 5 (`/health/db`, not in spec).
 - [ ] **T1.7 [A]** Alembic baseline. TDD: write a migration test first (against real DB, skippable): `upgrade head` exits 0 and `alembic_version` holds the baseline id; second `upgrade head` is a no-op; `downgrade base` exits 0 with no application tables; `alembic heads` reports exactly one head. Then `backend/alembic.ini` (no credentials), `backend/migrations/env.py` (reads `DATABASE_URL` from `Settings`, targets `Base.metadata`), `script.py.mako`, `versions/0001_baseline.py` (empty up/down). Satisfies: database-migrations / Alembic baseline (all four scenarios).
-- [ ] **T1.8 [A]** Architecture test. TDD: write `tests/unit/test_architecture.py` first with `ast` import scanning: `domain` imports no project layer and no fastapi/sqlalchemy/pydantic_settings/alembic; `application` does not import `adapters` or `entrypoints`; `adapters` does not import `entrypoints`. Include a self-test proving a violation is detected (scan a synthetic module string/tmp file with `import sqlalchemy` and assert the failure names module and import). Fix any real violation in T1.5/T1.6 code. Satisfies: hexagonal-layout / Dependency rule, Composition root ("No adapter construction outside the root").
+- [x] **T1.8 [A]** Architecture test. TDD: write `tests/unit/test_architecture.py` first with `ast` import scanning: `domain` imports no project layer and no fastapi/sqlalchemy/pydantic_settings/alembic; `application` does not import `adapters` or `entrypoints`; `adapters` does not import `entrypoints`. Include a self-test proving a violation is detected (scan a synthetic module string/tmp file with `import sqlalchemy` and assert the failure names module and import). Fix any real violation in T1.5/T1.6 code. Satisfies: hexagonal-layout / Dependency rule, Composition root ("No adapter construction outside the root").
 - [ ] **T1.9 [A]** `backend/Dockerfile` (multi-stage, `python:3.12-slim`, `uv sync --frozen --no-dev`, non-root user, copies `src/`, `migrations/`, `alembic.ini`, `start.sh`), `backend/start.sh` (`alembic upgrade head && exec uvicorn eventssound.entrypoints.api.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}`; LF enforced), `backend/.dockerignore`. Test-first note: none unit-level; verify by `docker build backend` and, if a DB is reachable, `docker run` hitting `/health`. If Docker Desktop is unavailable, mark verification as deferred to CI (PR 3 builds the image). Satisfies: deployment / Migrations on release (mechanism), design section 8.
-- [ ] **T1.10 [A]** Run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest --cov=eventssound` from `backend/`; open PR 1 (description per chained-pr template).
+- [x] **T1.10a [A]** PR 1a verification: from `backend/` run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest` on the `feat/backend-core` tip (no DB code present); open PR 1a (description per chained-pr template). Result: ruff clean, 18 passed.
+- [ ] **T1.10b [A]** PR 1b verification: same commands plus DB-dependent tests with `DATABASE_URL_TEST` (pgvector/pgvector:pg16 container) and `docker build backend` on the `feat/backend-db-docker` tip; open PR 1b stacked on PR 1a.
 
-### PR 1 verification checklist
+### PR 1a / PR 1b verification checklist (items for 1b only apply once PR 1b is verified)
 - [ ] First commit contains only `.gitattributes`, `.gitignore`, `.editorconfig`
 - [ ] `git ls-files --eol` shows no CRLF in tracked files; `start.sh` is `eol=lf`
 - [ ] `uv run pytest` green (DB-dependent tests skip cleanly or pass with a DB)
