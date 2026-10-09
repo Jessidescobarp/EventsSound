@@ -29,7 +29,7 @@ Dependency rule: domain <- application <- adapters <- entrypoints. It is enforce
 Run from `backend/`:
 
 - `uv sync`: install dependencies.
-- `uv run pytest`: tests (DB tests skip without `DATABASE_URL_TEST`).
+- `uv run pytest`: tests (DB tests skip when `DATABASE_URL_TEST` is unset and fail when it is set but the database is unreachable).
 - `uv run ruff check .` and `uv run ruff format --check .`: lint and format.
 - `docker build backend`: build the production image.
 
@@ -52,7 +52,7 @@ Frontend commands (`npm ci`, `npm run lint`, `npm run test -- --run`, `npm run b
 
 - Never read, print or commit `.env.local`, `.neon`, `.env*` or any secret or connection string.
 - The Neon production branch is not for development or tests. Use a throwaway local Postgres.
-- Tests must skip cleanly when `DATABASE_URL_TEST` is not set.
+- DB tests must skip cleanly when `DATABASE_URL_TEST` is unset, and must fail (never skip) when it is set but the database is unreachable.
 - Do not put real hosts, project IDs or credentials in docs or code.
 
 ## Roadmap

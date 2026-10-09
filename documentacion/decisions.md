@@ -3,7 +3,7 @@
 ADR-style log. Each entry: decision, reason. Full reasoning lives in the linked OpenSpec artifacts.
 
 1. **Render for backend (Docker web service) and frontend (static site).** One provider, free tier, simple Blueprint. Fallback: a VM with Docker Compose. See [design.md](../openspec/changes/walking-skeleton-and-deploy/design.md).
-2. **Neon Postgres, not Render Postgres.** Free Render Postgres expires after 30 days; Neon free tier supports pgvector.
+2. **Neon Postgres, not Render Postgres.** As of 2026-10-09 (unverified; verify at deploy time): free Render Postgres expires after 30 days, while the Neon free tier supports pgvector and does not expire.
 3. **Spanish UI, English code and docs.** Target users are Spanish speakers; the codebase stays in English.
 4. **Vertical-slice phasing.** Ship a thin end-to-end agent early and deploy the skeleton in P0, instead of building layer by layer. See [exploration](../openspec/changes/tfm-phased-mvp/exploration.md).
 5. **Chained PRs under 400 lines.** Keeps reviews small. PR 1 was split into 1a and 1b. See [tasks.md](../openspec/changes/walking-skeleton-and-deploy/tasks.md).
