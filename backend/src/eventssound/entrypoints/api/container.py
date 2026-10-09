@@ -17,7 +17,7 @@ SessionProvider = Callable[[], Iterator[Session]]
 
 
 def build_session_factory_from(settings: Settings) -> sessionmaker[Session]:
-    return build_session_factory(build_engine(settings.database_url))
+    return build_session_factory(build_engine(settings.database_url.get_secret_value()))
 
 
 def make_session_provider(factory: sessionmaker[Session]) -> SessionProvider:
