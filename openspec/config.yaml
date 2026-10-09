@@ -1,0 +1,56 @@
+schema: spec-driven
+
+context: |
+  Product: EventsSound, a web for a sound/lights/DJ events company (about us, event portfolio, service catalog, bookings, client/admin users). Master's thesis (TFM, Master en Desarrollo con IA). Data is SYNTHETIC, no real client data.
+  Core: AI quote agent (LangGraph) with tools buscar_equipamiento, consultar_disponibilidad, calcular_precio (deterministic price function = eval oracle), RAG over catalog, generated proposal, public chat for non-logged users.
+  Security/LLMOps: OWASP GenAI (prompt injection, rate limit, cost cap); LangSmith evals; provider-agnostic LlmProvider (Ollama/OpenRouter/APIs) with replay mode for tests.
+  Planned stack: FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2, Pytest, Postgres, JWT+RBAC; Vite+React+TS+shadcn/ui; Docker Compose; GitHub Actions + Sentry.
+  Architecture: hexagonal/clean, DI, SOLID. Greenfield: only README.md exists (state at init: 2026-10-09).
+  Conventions: conventional commits, no AI attribution in commits; artifacts/code/docs in English, user-facing UI copy in Spanish. TFM deliverables: README, public repo, live URL, slides, video.
+
+strict_tdd: false # no test runner yet; re-evaluate once pytest is configured (user's global config prefers Strict TDD)
+
+testing:
+  strict_tdd: false
+  strict_tdd_note: >
+    No test runner detected at init (greenfield). Per sdd-init decision table, strict_tdd=false.
+    User global config prefers Strict TDD: flip to true once pytest (backend) and vitest (frontend) are set up.
+  detected: "2026-10-09"
+  runner:
+    command: null # planned: pytest
+    framework: null # planned: Pytest (backend), Vitest (frontend)
+  layers:
+    unit: { available: false, tool: null } # planned: pytest
+    integration: { available: false, tool: null } # planned: pytest + httpx/TestClient, Postgres via Docker Compose
+    e2e: { available: false, tool: null } # planned: Playwright (TBD)
+  coverage: { available: false, command: null } # planned: pytest-cov
+  quality:
+    linter: { available: false, command: null } # planned: ruff / eslint
+    type_checker: { available: false, command: null } # planned: mypy or pyright / tsc
+    formatter: { available: false, command: null } # planned: ruff format / prettier
+  llm_testing: "LlmProvider replay mode for deterministic tests; calcular_precio is the eval oracle; LangSmith evals for agent quality."
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - State impact on the AI agent (tools, prompts, evals) and on security (OWASP GenAI) when relevant
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Respect hexagonal boundaries (domain / application / adapters); inject ports via DI
+    - Document architecture decisions with rationale; include sequence diagrams for agent flows
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Follow existing code patterns
+    - Use synthetic data only; never commit secrets (.env, API keys)
+    tdd: false # set to true once pytest is configured
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
