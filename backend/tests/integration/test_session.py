@@ -22,7 +22,7 @@ def test_session_is_bound_to_the_configured_url_and_closed_after_use(database_ur
 
 
 def test_session_provider_can_be_overridden() -> None:
-    def fake_provider():  # noqa: ANN202
+    def fake_provider():
         yield "fake-session"
 
     settings = Settings(_env_file=None, DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:1/x")  # type: ignore[arg-type]
