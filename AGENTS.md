@@ -31,7 +31,7 @@ Run from `backend/`:
 - `uv sync`: install dependencies.
 - `uv run pytest`: tests (DB tests skip when `DATABASE_URL_TEST` is unset and fail when it is set but the database is unreachable).
 - `uv run ruff check .` and `uv run ruff format --check .`: lint and format.
-- `docker build backend`: build the production image.
+- `docker build backend`: build the production image (the Dockerfile arrives in PR 3).
 
 Frontend commands (`npm ci`, `npm run lint`, `npm run test -- --run`, `npm run build`): added in PR 2.
 
