@@ -41,8 +41,12 @@ def application_tables(database_url: str) -> set[str]:
         engine.dispose()
 
 
-def test_there_is_exactly_one_head(alembic_config: Config) -> None:
-    assert len(ScriptDirectory.from_config(alembic_config).get_heads()) == 1
+def test_there_is_exactly_one_head() -> None:
+    # Reads the migration scripts only; needs no database.
+    config = Config()
+    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+
+    assert len(ScriptDirectory.from_config(config).get_heads()) == 1
 
 
 def test_upgrade_to_head_records_baseline(alembic_config: Config, database_url: str) -> None:
