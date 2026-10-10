@@ -32,3 +32,4 @@ Thumbs.db
 # Local tooling
 .neon
 .env.local
+.dev/
