@@ -31,9 +31,17 @@ Run from `backend/`:
 - `uv sync`: install dependencies.
 - `uv run pytest`: tests (DB tests skip when `DATABASE_URL_TEST` is unset and fail when it is set but the database is unreachable).
 - `uv run ruff check .` and `uv run ruff format --check .`: lint and format.
-- `docker build backend`: build the production image (the Dockerfile arrives in PR 3).
+- `uv run alembic upgrade head`: apply migrations (needs `DATABASE_URL`).
 
-Frontend commands (`npm ci`, `npm run lint`, `npm run test -- --run`, `npm run build`): added in PR 2.
+Run from the repo root:
+
+- `docker compose up -d --wait db`: local Postgres (pgvector). Set `POSTGRES_PORT` if 5432 is taken. `docker compose down -v` wipes it.
+- `docker compose --profile app up --build`: also run the backend container.
+- `docker build backend`: build the production image.
+
+Run from `frontend/`: `npm ci`, `npm run lint`, `npm run test -- --run`, `npm run build`.
+
+CI (`.github/workflows/ci.yml`) runs all of the above on every PR and push to `main`.
 
 ## Conventions
 
@@ -41,6 +49,7 @@ Frontend commands (`npm ci`, `npm run lint`, `npm run test -- --run`, `npm run b
 - Code, identifiers, comments and docs in English. User-facing UI copy in Spanish.
 - Use forward slashes in paths when running bash commands (Git Bash on Windows).
 - Tests live in the same commit as the behavior they verify.
+- Stacked PRs: retarget the dependent PR's base to `main` BEFORE merging the previous one; merging a stacked PR into its parent branch does not reach `main` (happened with #2 -> `feat/backend-core`, fixed by #6).
 
 ## SDD workflow
 
@@ -63,4 +72,5 @@ Phases P0-P5 with MVP target 2026-10-25: `documentacion/roadmap.md`.
 
 - Corporate TLS interception breaks Node/npm: use `NODE_OPTIONS=--use-system-ca`. Never disable certificate verification.
 - Local Python may be 3.14 while CI and Docker use 3.12. Do not rely on 3.13+ features.
+- On Windows use `127.0.0.1`, not `localhost`, in DB URLs: Docker publishes IPv4 only and `localhost` may resolve to `::1` and hang.
 - Line endings are LF (`.gitattributes`); keep `core.autocrlf false`.
