@@ -38,7 +38,21 @@ scripts/dev.ps1 -Down     # stop backend, frontend and the db container (keeps d
 scripts/dev.ps1 -Reset    # stop and delete the db volume
 ```
 
-Backend: http://127.0.0.1:8000, frontend: http://127.0.0.1:5173. Logs and PIDs are in `.dev/` (gitignored). From Git Bash run `powershell -NoProfile -File scripts/dev.ps1`. Production-like check with everything in containers: `docker compose --profile app up --build`.
+Backend: http://127.0.0.1:8000, frontend: http://localhost:5173 (the origin allowed by `.env.example`; Vite binds `::1` on Windows, which `localhost` resolves to). Logs and PIDs are in `.dev/` (gitignored). The script refuses to run migrations against a `DATABASE_URL` whose host is not `127.0.0.1`/`localhost` unless you pass `-AllowRemoteDb`. The compose project is pinned to `eventssound-dev`, so the volume is `eventssound-dev_pgdata` (data from an older `eventssound_pgdata` volume is not migrated).
+
+From Git Bash (Windows blocks unsigned scripts by default, hence the bypass):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
+```
+
+Smoke against a deployed stack (free-tier hosts can need 60-90 s to wake up):
+
+```powershell
+scripts/smoke.ps1 -BackendUrl https://<api> -FrontendUrl https://<app> -Origin https://<app> -TimeoutSec 30 -Retries 12 -RetryDelaySec 10
+```
+
+Verified on Windows PowerShell 5.1; PowerShell 7 and Vite HMR in a browser are unverified. Production-like check with everything in containers: `docker compose --profile app up --build`.
 
 ## Tests
 
