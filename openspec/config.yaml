@@ -8,26 +8,25 @@ context: |
   Architecture: hexagonal/clean, DI, SOLID. Greenfield: only README.md exists (state at init: 2026-10-09).
   Conventions: conventional commits, no AI attribution in commits; artifacts/code/docs in English, user-facing UI copy in Spanish. TFM deliverables: README, public repo, live URL, slides, video.
 
-strict_tdd: false # no test runner yet; re-evaluate once pytest is configured (user's global config prefers Strict TDD)
+strict_tdd: true # flipped in PR 4 (feat/deploy-config) after pytest and vitest ran green in CI on main
 
 testing:
-  strict_tdd: false
+  strict_tdd: true
   strict_tdd_note: >
-    No test runner detected at init (greenfield). Per sdd-init decision table, strict_tdd=false.
-    User global config prefers Strict TDD: flip to true once pytest (backend) and vitest (frontend) are set up.
-  detected: "2026-10-09"
+    Enabled in PR 4: pytest (backend) and vitest (frontend) run in CI. Runner commands work from the repo root.
+  detected: "2026-10-10"
   runner:
-    command: null # planned: pytest
-    framework: null # planned: Pytest (backend), Vitest (frontend)
+    command: "uv run --project backend pytest backend/tests" # DB tests skip unless DATABASE_URL_TEST is set
+    framework: "Pytest (backend), Vitest (frontend: cd frontend && npm run test -- --run)"
   layers:
-    unit: { available: false, tool: null } # planned: pytest
-    integration: { available: false, tool: null } # planned: pytest + httpx/TestClient, Postgres via Docker Compose
+    unit: { available: true, tool: "pytest, vitest" }
+    integration: { available: true, tool: "pytest + TestClient, Postgres via Docker Compose (needs DATABASE_URL_TEST)" }
     e2e: { available: false, tool: null } # planned: Playwright (TBD)
-  coverage: { available: false, command: null } # planned: pytest-cov
+  coverage: { available: true, command: "uv run --project backend pytest backend/tests --cov=eventssound" }
   quality:
-    linter: { available: false, command: null } # planned: ruff / eslint
-    type_checker: { available: false, command: null } # planned: mypy or pyright / tsc
-    formatter: { available: false, command: null } # planned: ruff format / prettier
+    linter: { available: true, command: "uv run --project backend ruff check backend; cd frontend && npm run lint" } # ruff (backend), eslint (frontend)
+    type_checker: { available: true, command: "cd frontend && npx tsc --noEmit" } # tsc (frontend); backend type checker not configured
+    formatter: { available: true, command: "uv run --project backend ruff format --check backend" } # ruff format
   llm_testing: "LlmProvider replay mode for deterministic tests; calcular_precio is the eval oracle; LangSmith evals for agent quality."
 
 rules:
@@ -44,13 +43,14 @@ rules:
     - Group by phase, use hierarchical numbering
     - Keep tasks completable in one session
   apply:
-    - Follow existing code patterns
-    - Use synthetic data only; never commit secrets (.env, API keys)
-    tdd: false # set to true once pytest is configured
-    test_command: ""
+    rules:
+      - Follow existing code patterns
+      - Use synthetic data only; never commit secrets (.env, API keys)
+    tdd: true
+    test_command: "uv run --project backend pytest backend/tests"
   verify:
-    test_command: ""
-    build_command: ""
+    test_command: "uv run --project backend pytest backend/tests"
+    build_command: "cd frontend && npm run build"
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas
