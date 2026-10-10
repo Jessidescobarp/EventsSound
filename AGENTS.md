@@ -42,6 +42,8 @@ Run from the repo root:
 
 Run from `frontend/`: `npm ci`, `npm run lint`, `npm run test -- --run`, `npm run build`.
 
+Deploy: `render.yaml` Blueprint (Render + Neon), guide in `documentacion/deploy.md`. Never deploy, create services or touch Render/Neon from an agent without the developer asking.
+
 CI (`.github/workflows/ci.yml`) runs all of the above on every PR and push to `main`.
 
 ## Conventions
@@ -56,7 +58,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above on every PR and push to `m
 
 - Specs-driven development with the `openspec/` store. Current change: `openspec/changes/walking-skeleton-and-deploy/` (`proposal.md`, `specs/`, `design.md`, `tasks.md`).
 - Delivery uses chained PRs, each under 400 changed lines (lockfiles excluded). Chain and merge order are in `tasks.md`.
-- Strict TDD is enabled in PR 4 (`openspec/config.yaml`). Until then, write the test first where a runner exists.
+- Strict TDD is enabled (`openspec/config.yaml`). Test command from the repo root: `uv run --project backend pytest backend/tests`. Write the failing test first.
 
 ## Security rules
 
@@ -75,4 +77,5 @@ Phases P0-P5 with MVP target 2026-10-25: `documentacion/roadmap.md`.
 - Image tags (`pgvector/pgvector:pg16`, `python:3.12-slim`) are floating by design for the MVP; pin digests if reproducibility starts to matter.
 - Local Python may be 3.14 while CI and Docker use 3.12. Do not rely on 3.13+ features.
 - On Windows use `127.0.0.1`, not `localhost`, in DB URLs: Docker publishes IPv4 only and `localhost` may resolve to `::1` and hang.
+- Render free instances have no `preDeployCommand`; migrations run in `backend/start.sh`. Use the Neon DIRECT (non-pooled) string for `DATABASE_URL`.
 - Line endings are LF (`.gitattributes`); keep `core.autocrlf false`.

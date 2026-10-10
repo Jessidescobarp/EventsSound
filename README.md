@@ -74,6 +74,10 @@ PowerShell: set the variable first with `$env:DATABASE_URL_TEST = "..."`.
 - Port 5432 taken by a local Postgres? Set `POSTGRES_PORT` (for example `5433`) in `.env` and update the port in `DATABASE_URL` and `DATABASE_URL_TEST`.
 - Behind corporate TLS interception, run npm with `NODE_OPTIONS=--use-system-ca`.
 
+## Deploy
+
+Backend (Docker) and frontend (static site) on Render via `render.yaml`; Postgres on Neon. Live URLs (placeholders until verified): frontend `https://eventssound-web.onrender.com`, backend `https://eventssound-api.onrender.com`. Required variable: `DATABASE_URL` (set in the Render dashboard only). Free instances sleep after 15 minutes idle and need about a minute to wake up. Deploy order, rollback and the manual setup steps are in [documentacion/deploy.md](documentacion/deploy.md).
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) runs a `backend` job (ruff, migrations, pytest with coverage, Docker build) and a `frontend` job (lint, tests, build). Protect `main` by requiring both checks and pull requests.

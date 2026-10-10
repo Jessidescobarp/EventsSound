@@ -4,6 +4,7 @@ Project documentation for EventsSound, the TFM of the Master in AI-assisted Deve
 
 - [requirements.md](requirements.md): TFM deliverables, functional and non-functional requirements.
 - [architecture.md](architecture.md): hexagonal layers, deployment topology, planned stack.
+- [deploy.md](deploy.md): Render + Neon deploy guide, variables, cold start, rollback, manual steps.
 - [decisions.md](decisions.md): ADR-style decision log.
 - [roadmap.md](roadmap.md): phases P0-P5 and the MVP target.
 
