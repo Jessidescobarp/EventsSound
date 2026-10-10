@@ -1,0 +1,50 @@
+# Render Blueprint. Field names verified against https://render.com/docs/blueprint-spec
+# and https://render.com/schema/render.yaml.json (see openspec/changes/walking-skeleton-and-deploy/apply-progress-pr4.md).
+# No databases block: Postgres is Neon (external). No secret values here; sync: false vars are set in the dashboard.
+#
+# If Render appends a suffix because a name is taken, the two *.onrender.com URLs below must be updated
+# to the real URLs (CORS_ALLOWED_ORIGINS and VITE_API_BASE_URL), then redeploy.
+services:
+  - type: web
+    name: eventssound-api
+    runtime: docker
+    plan: free
+    # region defaults to oregon and cannot change after creation: pick the Neon region to match, or set region here before the first deploy.
+    # dockerfilePath and dockerContext are relative to the repo root (no rootDir).
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    # Deploy only after the GitHub CI checks pass (no deploy if no check runs).
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://eventssound-web.onrender.com
+      - key: DATABASE_URL
+        sync: false # Neon DIRECT string, scheme postgresql+psycopg://; set in the dashboard
+
+  - type: web
+    name: eventssound-web
+    runtime: static
+    # staticPublishPath is relative to the repo root (docs), so no rootDir: it is ambiguous for static sites.
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - frontend/**
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_BASE_URL
+        value: https://eventssound-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
