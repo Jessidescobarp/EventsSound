@@ -111,12 +111,12 @@ Conventional commits only. NO `Co-Authored-By`, NO AI attribution. Tests and doc
 - [x] **T2.4 [A]** Run `npm ci`, `npm run lint`, `npm run test -- --run`, `npm run build`; open PR 2.
 
 ### PR 2 verification checklist
-- [ ] `npm ci && npm run lint && npm run test -- --run && npm run build` all exit 0
-- [ ] Tests cover pending, ok, 503, network-error, URL, `lang="es"`
-- [ ] No hardcoded backend host (`rg "onrender|localhost:8000" frontend/src` returns nothing outside tests/docs)
-- [ ] No Tailwind/shadcn/router/auth dependencies in `package.json`
-- [ ] Lockfile committed; diff under 400 lines excluding `package-lock.json`
-- [ ] Spanish UI copy only in user-facing strings; code and identifiers in English
+- [x] `npm ci && npm run lint && npm run test -- --run && npm run build` all exit 0
+- [x] Tests cover pending, ok, 503, network-error, URL, `lang="es"`
+- [x] No hardcoded backend host (`rg "onrender|localhost:8000" frontend/src` returns nothing outside tests/docs)
+- [x] No Tailwind/shadcn/router/auth dependencies in `package.json`
+- [x] Lockfile committed; diff under 400 lines excluding `package-lock.json`
+- [x] Spanish UI copy only in user-facing strings; code and identifiers in English
 
 ---
 
