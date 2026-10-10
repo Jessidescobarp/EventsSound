@@ -1,6 +1,8 @@
 # Tasks: walking-skeleton-and-deploy (P0)
 
 Inputs: `proposal.md`, `design.md`, `specs/*/spec.md` (same folder), `openspec/config.yaml`.
+Rename note (change `rename-eventsounddr`): the deployed Render services are now `eventsounddr-api` and `eventsounddr-web` (URLs `https://eventsounddr-api.onrender.com` and `https://eventsounddr-web.onrender.com`). The `eventssound-*` names below are the historical record; the current transition steps are in `documentacion/deploy.md`.
+
 Delivery strategy: chained/stacked PRs (resolved by the user), no `size:exception`, each PR targets 400 changed lines (lockfiles excluded). Decision (ask-on-risk resolved by the user): PR 1a and PR 1b are accepted at ~449 changed lines each, without `size:exception`, and all Docker files move to PR 3.
 
 Legend:

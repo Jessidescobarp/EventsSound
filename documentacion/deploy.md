@@ -6,8 +6,10 @@ Topology: backend (Docker web service) and frontend (static site) on Render, def
 
 | Component | URL |
 | --------- | --- |
-| Frontend | `https://eventssound-web.onrender.com` (placeholder until verified) |
-| Backend | `https://eventssound-api.onrender.com` (placeholder until verified) |
+| Frontend | `https://eventsounddr-web.onrender.com` (placeholder until verified) |
+| Backend | `https://eventsounddr-api.onrender.com` (placeholder until verified) |
+
+Naming: the product and the Render services are `EventSoundDR` / `eventsounddr-*`. The GitHub repository and the internal Python package keep the name `eventssound` (as do the compose project and DB names); only user-visible and deployed names changed.
 
 If Render appends a suffix because a name is taken, update `CORS_ALLOWED_ORIGINS` and `VITE_API_BASE_URL` (in `render.yaml` and the dashboard) to the real URLs and redeploy both services.
 
@@ -37,7 +39,7 @@ The production branch is for the deployed app only. Never run tests, experiments
 Free web services spin down after 15 minutes without traffic and take about a minute to wake up; Neon also suspends after 5 minutes idle. The first request after idle can be slow. Warm the backend before a demo:
 
 ```powershell
-scripts/smoke.ps1 -BackendUrl https://eventssound-api.onrender.com -FrontendUrl https://eventssound-web.onrender.com -Origin https://eventssound-web.onrender.com -TimeoutSec 30 -Retries 12 -RetryDelaySec 10
+scripts/smoke.ps1 -BackendUrl https://eventsounddr-api.onrender.com -FrontendUrl https://eventsounddr-web.onrender.com -Origin https://eventsounddr-web.onrender.com -TimeoutSec 30 -Retries 12 -RetryDelaySec 10
 ```
 
 `-Origin` must be the exact web URL (the CORS checks compare against it). Exit code 0 means all checks passed. From Git Bash prefix with `powershell -NoProfile -ExecutionPolicy Bypass -File`.
@@ -45,6 +47,23 @@ scripts/smoke.ps1 -BackendUrl https://eventssound-api.onrender.com -FrontendUrl 
 ## Rollback
 
 Render dashboard, service, Deploys, "Rollback" on a previous successful deploy. This turns auto-deploy off for that service: re-enable it in Settings after fixing `main`. Alternatively `git revert` the bad commit and let CI and auto-deploy ship it. Database migrations are not rolled back automatically.
+
+## Renaming the Render services (transition)
+
+Render matches Blueprint services by `name`. Inferred, not confirmed by the Render docs: a new name creates NEW services instead of renaming the existing ones, so the old `eventssound-api` and `eventssound-web` keep running until deleted. Recommended sequence:
+
+1. Merge the rename PR and wait for green CI on `main`.
+2. In the Render dashboard (workspace `EventsSoundDr`), accept the Blueprint sync. It creates `eventsounddr-api` and `eventsounddr-web`.
+3. Paste `DATABASE_URL` (Neon DIRECT string) when prompted. Dashboard only.
+4. Wait for both new services to be live, then run the smoke check against the new URLs:
+
+```powershell
+scripts/smoke.ps1 -BackendUrl https://eventsounddr-api.onrender.com -FrontendUrl https://eventsounddr-web.onrender.com -Origin https://eventsounddr-web.onrender.com -TimeoutSec 30 -Retries 12 -RetryDelaySec 10
+```
+
+5. ONLY after the smoke check passes, delete the old `eventssound-api` and `eventssound-web` services.
+
+If the new `.onrender.com` names get a suffix, update the two URL values in `render.yaml` (`CORS_ALLOWED_ORIGINS` and `VITE_API_BASE_URL`) and redeploy.
 
 ## Manual steps for the developer (T4.6-T4.9)
 
