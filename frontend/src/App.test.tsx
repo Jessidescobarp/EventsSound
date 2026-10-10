@@ -34,7 +34,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(hungFetch));
     render(<App />);
     expect(
-      screen.getByRole("heading", { name: "EventsSound" }),
+      screen.getByRole("heading", { name: "EventSoundDR" }),
     ).toBeInTheDocument();
     // jsdom does not load index.html, so assert the served document directly.
     const html = new DOMParser().parseFromString(
@@ -42,6 +42,7 @@ describe("App", () => {
       "text/html",
     );
     expect(html.documentElement.lang).toBe("es");
+    expect(html.title).toBe("EventSoundDR");
   });
 
   it("shows the loading message while the request is pending", () => {

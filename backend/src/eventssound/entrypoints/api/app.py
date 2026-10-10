@@ -17,7 +17,7 @@ def create_app(
     production = settings.is_production
 
     app = FastAPI(
-        title="EventsSound API",
+        title="EventSoundDR API",
         debug=not production and settings.app_env == "local",
         docs_url=None if production else "/docs",
         redoc_url=None,

@@ -66,7 +66,7 @@ export default function App() {
   return (
     <>
       <header>
-        <h1>EventsSound</h1>
+        <h1>EventSoundDR</h1>
       </header>
       <main>
         <p role="status" className={`status status-${status}`}>
