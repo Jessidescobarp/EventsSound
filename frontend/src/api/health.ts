@@ -1,8 +1,8 @@
 import { getApiBaseUrl } from "../env";
 
 /** Resolves when GET /health answers 200 {"status":"ok"}; rejects otherwise. */
-export async function checkHealth(): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/health`);
+export async function checkHealth(signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/health`, { signal });
   if (!response.ok) {
     throw new Error(`Health check failed with status ${response.status}`);
   }

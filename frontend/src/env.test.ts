@@ -11,4 +11,9 @@ describe("getApiBaseUrl", () => {
     vi.stubEnv("VITE_API_BASE_URL", "");
     expect(() => getApiBaseUrl()).toThrow(/VITE_API_BASE_URL/);
   });
+
+  it("fails clearly when the scheme is missing", () => {
+    vi.stubEnv("VITE_API_BASE_URL", "api.example");
+    expect(() => getApiBaseUrl()).toThrow(/http/);
+  });
 });
