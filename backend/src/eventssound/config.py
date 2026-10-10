@@ -1,13 +1,28 @@
 """Application settings loaded from environment variables."""
 
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
+def root_env_file(module: Path | None = None) -> Path | None:
+    """Path of the repo-root `.env`, independent of the current working directory.
+
+    Only resolves for the source checkout layout `<root>/backend/src/eventssound/config.py`.
+    Any other layout (container image, site-packages) returns None: there, configuration
+    comes from real environment variables. A missing file is harmless to pydantic-settings.
+    """
+    parents = (module or Path(__file__)).resolve().parents
+    if len(parents) > 3 and parents[2].name == "backend" and parents[1].name == "src":
+        return parents[3] / ".env"
+    return None
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Environment variables always take precedence over the file.
+    model_config = SettingsConfigDict(env_file=root_env_file(), extra="ignore")
 
     app_env: str = "local"
     database_url: SecretStr = Field(validation_alias="DATABASE_URL")
