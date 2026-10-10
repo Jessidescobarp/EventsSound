@@ -22,6 +22,8 @@ cd ../frontend                    # in another terminal
 npm ci && npm run dev
 ```
 
+There is a single `.env`, at the repo root. Compose, the backend (any working directory; real environment variables override the file) and the frontend (`envDir: ".."`, only `VITE_*` keys reach the browser bundle) all read it, so no other copies are needed. `frontend/.env.example` is no longer used; do not create `frontend/.env`.
+
 The whole stack in containers is opt-in: `docker compose --profile app up --build`.
 
 ## Tests

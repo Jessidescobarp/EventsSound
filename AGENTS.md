@@ -71,6 +71,7 @@ Phases P0-P5 with MVP target 2026-10-25: `documentacion/roadmap.md`.
 ## Known gotchas
 
 - Corporate TLS interception breaks Node/npm: use `NODE_OPTIONS=--use-system-ca`. Never disable certificate verification.
+- Image tags (`pgvector/pgvector:pg16`, `python:3.12-slim`) are floating by design for the MVP; pin digests if reproducibility starts to matter.
 - Local Python may be 3.14 while CI and Docker use 3.12. Do not rely on 3.13+ features.
 - On Windows use `127.0.0.1`, not `localhost`, in DB URLs: Docker publishes IPv4 only and `localhost` may resolve to `::1` and hang.
 - Line endings are LF (`.gitattributes`); keep `core.autocrlf false`.
