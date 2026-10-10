@@ -49,12 +49,13 @@ Additive only. Revert the PR chain in reverse order; `alembic downgrade` drops t
 - Hypothesis adds a dependency and CI time (small).
 - Timezone bugs: store timezone-aware UTC, interpret night/weekend rules in `America/Bogota` (domain takes a `tzinfo` from rules).
 
-## Open questions (developer to answer; defaults noted, not decided)
-1. Currency and rounding: whole COP pesos with rounding to the nearest 1000 (or 100, or none)?
-2. Do availability buffers (turnaround time between events) matter? If yes, a default length?
-3. Seed size: 25 or up to 40 items?
-4. Is a Colombian holiday calendar needed, or weekends only (default)?
-5. Is `GET /catalog/availability` wanted now or left to P2 tool wrappers?
+## Decisions (resolved by the developer, 2026-10-10)
+1. Money: whole COP pesos (BIGINT, columns named `*_cop`); final price rounded to the nearest 1000 pesos (half up). Add a one-line note about the deviation from the `*_cents` example in the database-conventions skill (PR B).
+2. Availability buffer: 2 hours of setup/teardown between events for the same equipment, stored as rule-set data (configurable).
+3. Seed: 30 catalog items and 5 packages (synthetic, Spanish display names, English identifiers).
+4. Holidays: weekends only for now. A Colombian holiday calendar can be added later as rule-set data once the owner defines it.
+5. `GET /catalog/availability` is NOT public in this change (the P2 agent calls availability internally).
+6. Accepted additions: Hypothesis as a dev dependency for property-based tests; a seed guard (requires `--confirm`; refuses non-local hosts unless `ALLOW_REMOTE_SEED=1`); pricing rules interpreted in the `America/Bogota` timezone.
 
 ## Review Workload Forecast
 | Metric | Value |
