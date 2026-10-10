@@ -1,9 +1,8 @@
 ---
 name: database-conventions
 description: "Trigger: database, table, column, index, Alembic migration, SQLAlchemy session, Neon, pgvector, DATABASE_URL. Apply Postgres schema and migration rules."
-license: Apache-2.0
 metadata:
-  author: eventssound
+  author: Jessid Alberto Escobar Palacio
   version: "1.0"
 ---
 

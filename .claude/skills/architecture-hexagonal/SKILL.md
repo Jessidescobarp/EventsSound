@@ -1,9 +1,8 @@
 ---
 name: architecture-hexagonal
 description: "Trigger: hexagonal, layers, ports, adapters, composition root, new use case, where does this code go. Place backend code in the right layer."
-license: Apache-2.0
 metadata:
-  author: eventssound
+  author: Jessid Alberto Escobar Palacio
   version: "1.0"
 ---
 

@@ -1,9 +1,8 @@
 ---
 name: design-patterns
 description: "Trigger: design pattern, repository, strategy, factory, facade, adapter, pipeline, LlmProvider, agent graph, over-engineering. Choose patterns only when justified."
-license: Apache-2.0
 metadata:
-  author: eventssound
+  author: Jessid Alberto Escobar Palacio
   version: "1.0"
 ---
 

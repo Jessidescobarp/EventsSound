@@ -1,9 +1,8 @@
 ---
 name: solid-principles
 description: "Trigger: SOLID, single responsibility, open closed, Liskov, interface segregation, dependency inversion, code review, refactor. Review designs against SOLID."
-license: Apache-2.0
 metadata:
-  author: eventssound
+  author: Jessid Alberto Escobar Palacio
   version: "1.0"
 ---
 

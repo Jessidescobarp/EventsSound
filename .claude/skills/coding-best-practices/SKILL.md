@@ -1,9 +1,8 @@
 ---
 name: coding-best-practices
 description: "Trigger: coding standards, typing, error handling, logging, config, secrets, tests, TDD, commits, PR size, language rules. Apply project coding conventions."
-license: Apache-2.0
 metadata:
-  author: eventssound
+  author: Jessid Alberto Escobar Palacio
   version: "1.0"
 ---
 
