@@ -26,6 +26,20 @@ There is a single `.env`, at the repo root. Compose, the backend (any working di
 
 The whole stack in containers is opt-in: `docker compose --profile app up --build`.
 
+## Local development (hybrid)
+
+Only Postgres runs in Docker; backend and frontend run natively with hot reload. Prerequisites: Docker Desktop, uv, Node 22+.
+
+```powershell
+scripts/dev.ps1           # start everything (idempotent); creates .env from .env.example if neither .env nor DATABASE_URL exists
+scripts/dev.ps1 -Smoke    # start, then run the smoke check
+scripts/smoke.ps1         # smoke check only; accepts -BackendUrl, -FrontendUrl, -Origin to target a deployed stack
+scripts/dev.ps1 -Down     # stop backend, frontend and the db container (keeps data)
+scripts/dev.ps1 -Reset    # stop and delete the db volume
+```
+
+Backend: http://127.0.0.1:8000, frontend: http://127.0.0.1:5173. Logs and PIDs are in `.dev/` (gitignored). From Git Bash run `powershell -NoProfile -File scripts/dev.ps1`. Production-like check with everything in containers: `docker compose --profile app up --build`.
+
 ## Tests
 
 ```bash
