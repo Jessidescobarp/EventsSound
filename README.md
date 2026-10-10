@@ -26,6 +26,34 @@ There is a single `.env`, at the repo root. Compose, the backend (any working di
 
 The whole stack in containers is opt-in: `docker compose --profile app up --build`.
 
+## Local development (hybrid)
+
+Only Postgres runs in Docker; backend and frontend run natively with hot reload. Prerequisites: Docker Desktop, uv, Node 22+.
+
+```powershell
+scripts/dev.ps1           # start everything (idempotent); creates .env from .env.example if neither .env nor DATABASE_URL exists
+scripts/dev.ps1 -Smoke    # start, then run the smoke check
+scripts/smoke.ps1         # smoke check only; accepts -BackendUrl, -FrontendUrl, -Origin to target a deployed stack
+scripts/dev.ps1 -Down     # stop backend, frontend and the db container (keeps data)
+scripts/dev.ps1 -Reset    # stop and delete the db volume
+```
+
+Backend: http://127.0.0.1:8000, frontend: http://localhost:5173 (the origin allowed by `.env.example`; Vite binds `::1` on Windows, which `localhost` resolves to). Logs and PIDs are in `.dev/` (gitignored). The script refuses to run migrations against a `DATABASE_URL` whose host is not `127.0.0.1`/`localhost` unless you pass `-AllowRemoteDb`. The compose project is pinned to `eventssound-dev`, so the volume is `eventssound-dev_pgdata` (data from an older `eventssound_pgdata` volume is not migrated).
+
+From Git Bash (Windows blocks unsigned scripts by default, hence the bypass):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
+```
+
+Smoke against a deployed stack (free-tier hosts can need 60-90 s to wake up):
+
+```powershell
+scripts/smoke.ps1 -BackendUrl https://<api> -FrontendUrl https://<app> -Origin https://<app> -TimeoutSec 30 -Retries 12 -RetryDelaySec 10
+```
+
+Verified on Windows PowerShell 5.1; PowerShell 7 and Vite HMR in a browser are unverified. Production-like check with everything in containers: `docker compose --profile app up --build`.
+
 ## Tests
 
 ```bash
