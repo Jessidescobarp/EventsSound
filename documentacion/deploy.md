@@ -23,7 +23,7 @@ If Render appends a suffix because a name is taken, update `CORS_ALLOWED_ORIGINS
 
 ## Deploy order
 
-1. Merge to `main` with green CI. Services deploy automatically only after CI checks pass (`autoDeployTrigger: checksPass`).
+1. Merge to `main` with green CI. Services deploy automatically only after CI checks pass (`autoDeployTrigger: checksPass`). If a merge does not deploy, check the service's Events tab and trigger a manual deploy (Render does not deploy when it detects no checks).
 2. Create the Blueprint (manual steps below) and set `DATABASE_URL`.
 3. The backend runs `alembic upgrade head` in `backend/start.sh` before serving (free instances have no `preDeployCommand`). A failing migration exits the container, so the new version never becomes healthy.
 4. Run the smoke check, then open the frontend.
@@ -48,7 +48,7 @@ Render dashboard, service, Deploys, "Rollback" on a previous successful deploy. 
 
 ## Manual steps for the developer (T4.6-T4.9)
 
-1. Neon: create a free project. In Connect, choose the DIRECT connection (pooling off, host without `-pooler`) and copy it. Replace the scheme with `postgresql+psycopg://` and keep `sslmode=require`. Do not paste it in chat, commits or files.
+1. Neon: create a free project in the region closest to Render `oregon` (the Render region defaults to `oregon` and cannot be changed after creation; to use another region, set `region:` in `render.yaml` before the first deploy). In Connect, choose the DIRECT connection (pooling off, host without `-pooler`) and copy it. Replace the scheme with `postgresql+psycopg://` and keep `sslmode=require`. Do not paste it in chat, commits or files.
 2. After this PR is merged and CI is green on `main`: in Render, workspace `EventsSoundDr`, New, Blueprint, select this repo. Render validates `render.yaml` here; fix any error it reports.
 3. When prompted for `DATABASE_URL`, paste the Neon string (dashboard only). If a card is requested for verification, note it.
 4. Check that the service URLs match the table above; if not, update both URL variables and redeploy.
