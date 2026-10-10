@@ -108,20 +108,20 @@ Split decided by the user. PR 1a = T1.1-T1.5 + T1.8. PR 1b = T1.6, T1.7, T1.9. M
 
 ## PR 2: Frontend skeleton (`feat/frontend-skeleton`, base `main`, ~180-250 lines)
 
-- [ ] **T2.0 [A]** Create branch `feat/frontend-skeleton` from `main` (independent of PR 1; do not branch from PR 1).
-- [ ] **T2.1 [A]** Scaffold `frontend/` manually (no generator boilerplate beyond need): `package.json` (Node 22, scripts `dev`, `build`, `lint`, `test`), `package-lock.json` (excluded from count), `vite.config.ts` (with Vitest config, jsdom), `tsconfig*.json`, `eslint.config.js`, `index.html` (`<html lang="es">`), `src/main.tsx`, `src/vite-env.d.ts`, `src/env.ts` (reads `VITE_API_BASE_URL`, no hardcoded host). Do not add Tailwind, shadcn, router, or auth. Satisfies: frontend-shell / Stack and build, Env-driven API URL.
-- [ ] **T2.2 [A]** Vitest + Testing Library setup and the first failing test: `src/App.test.tsx` "shell renders heading `EventsSound` and `document.documentElement.lang === 'es'`" (red), then minimal `App.tsx` + `App.css` (green). Satisfies: frontend-shell / Single-page shell, Smoke test.
-- [ ] **T2.3 [A]** Health call. TDD: extend `App.test.tsx` first with mocked `fetch`: pending shows `Cargando estado del servicio...`; 200 `{"status":"ok"}` shows `Servicio operativo`; rejection and 503 show `Servicio no disponible` without crashing; request URL equals `${VITE_API_BASE_URL}/health` (stub env, e.g. `https://api.example/health`). Then `src/api/health.ts` and wire into `App.tsx`. Satisfies: frontend-shell / Health status display, Env-driven API URL.
+- [x] **T2.0 [A]** Create branch `feat/frontend-skeleton` from `main` (independent of PR 1; do not branch from PR 1).
+- [x] **T2.1 [A]** Scaffold `frontend/` manually (no generator boilerplate beyond need): `package.json` (Node 22, scripts `dev`, `build`, `lint`, `test`), `package-lock.json` (excluded from count), `vite.config.ts` (with Vitest config, jsdom), `tsconfig*.json`, `eslint.config.js`, `index.html` (`<html lang="es">`), `src/main.tsx`, `src/vite-env.d.ts`, `src/env.ts` (reads `VITE_API_BASE_URL`, no hardcoded host). Do not add Tailwind, shadcn, router, or auth. Satisfies: frontend-shell / Stack and build, Env-driven API URL.
+- [x] **T2.2 [A]** Vitest + Testing Library setup and the first failing test: `src/App.test.tsx` "shell renders heading `EventsSound` and `document.documentElement.lang === 'es'`" (red), then minimal `App.tsx` + `App.css` (green). Satisfies: frontend-shell / Single-page shell, Smoke test.
+- [x] **T2.3 [A]** Health call. TDD: extend `App.test.tsx` first with mocked `fetch`: pending shows `Cargando estado del servicio...`; 200 `{"status":"ok"}` shows `Servicio operativo`; rejection and 503 show `Servicio no disponible` without crashing; request URL equals `${VITE_API_BASE_URL}/health` (stub env, e.g. `https://api.example/health`). Then `src/api/health.ts` and wire into `App.tsx`. Satisfies: frontend-shell / Health status display, Env-driven API URL.
   - Spec/design conflict: design describes a second "Base de datos" indicator via `/health/db` and a "waking up" copy; spec requires only the single `/health` status line with three states. Follow the spec; the extra indicator is NOT built in P0 (log as follow-up).
-- [ ] **T2.4 [A]** Run `npm ci`, `npm run lint`, `npm run test -- --run`, `npm run build`; open PR 2.
+- [x] **T2.4 [A]** Run `npm ci`, `npm run lint`, `npm run test -- --run`, `npm run build`; open PR 2.
 
 ### PR 2 verification checklist
-- [ ] `npm ci && npm run lint && npm run test -- --run && npm run build` all exit 0
-- [ ] Tests cover pending, ok, 503, network-error, URL, `lang="es"`
-- [ ] No hardcoded backend host (`rg "onrender|localhost:8000" frontend/src` returns nothing outside tests/docs)
-- [ ] No Tailwind/shadcn/router/auth dependencies in `package.json`
-- [ ] Lockfile committed; diff under 400 lines excluding `package-lock.json`
-- [ ] Spanish UI copy only in user-facing strings; code and identifiers in English
+- [x] `npm ci && npm run lint && npm run test -- --run && npm run build` all exit 0
+- [x] Tests cover pending, ok, 503, network-error, URL, `lang="es"`
+- [x] No hardcoded backend host (`rg "onrender|localhost:8000" frontend/src` returns nothing outside tests/docs)
+- [x] No Tailwind/shadcn/router/auth dependencies in `package.json`
+- [x] Lockfile committed; diff under 400 lines excluding `package-lock.json`
+- [x] Spanish UI copy only in user-facing strings; code and identifiers in English
 
 ---
 

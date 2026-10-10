@@ -1,0 +1,17 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+header,
+main {
+  padding: 1rem 2rem;
+}
+
+.status-ok {
+  color: #1a7f37;
+}
+
+.status-error {
+  color: #b42318;
+}
