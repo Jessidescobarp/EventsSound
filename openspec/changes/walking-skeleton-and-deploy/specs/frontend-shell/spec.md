@@ -13,12 +13,12 @@ The frontend MUST be a Vite + React + TypeScript app that builds with no type er
 - THEN it exits 0 and emits a static bundle
 
 ### Requirement: Single-page shell
-The app MUST render one page with a header showing the text `EventsSound`, a main area, and an `<html lang="es">` document.
+The app MUST render one page with a header showing the text `EventSoundDR`, a main area, and an `<html lang="es">` document. (Renamed from `EventsSound` by the `rename-eventsounddr` change.)
 
 #### Scenario: Shell renders
 - GIVEN the app is mounted
 - WHEN the DOM is queried
-- THEN a heading `EventsSound` is present and `document.documentElement.lang` is `es`
+- THEN a heading `EventSoundDR` is present and `document.documentElement.lang` is `es`
 
 ### Requirement: Env-driven API URL
 The API base URL MUST come from `VITE_API_BASE_URL`, documented in `.env.example`. The code MUST NOT hardcode a backend host.

@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Product: EventsSound, a web for a sound/lights/DJ events company (about us, event portfolio, service catalog, bookings, client/admin users). Master's thesis (TFM, Master en Desarrollo con IA). Data is SYNTHETIC, no real client data.
+  Product: EventSoundDR (repo and Python package keep the name eventssound), a web for a sound/lights/DJ events company (about us, event portfolio, service catalog, bookings, client/admin users). Master's thesis (TFM, Master en Desarrollo con IA). Data is SYNTHETIC, no real client data.
   Core: AI quote agent (LangGraph) with tools buscar_equipamiento, consultar_disponibilidad, calcular_precio (deterministic price function = eval oracle), RAG over catalog, generated proposal, public chat for non-logged users.
   Security/LLMOps: OWASP GenAI (prompt injection, rate limit, cost cap); LangSmith evals; provider-agnostic LlmProvider (Ollama/OpenRouter/APIs) with replay mode for tests.
   Planned stack: FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2, Pytest, Postgres, JWT+RBAC; Vite+React+TS+shadcn/ui; Docker Compose; GitHub Actions + Sentry.

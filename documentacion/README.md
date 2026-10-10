@@ -1,6 +1,6 @@
 # Documentation index
 
-Project documentation for EventsSound, the TFM of the Master in AI-assisted Development. Written in English; the product UI is in Spanish.
+Project documentation for EventSoundDR, the TFM of the Master in AI-assisted Development. Written in English; the product UI is in Spanish.
 
 - [requirements.md](requirements.md): TFM deliverables, functional and non-functional requirements.
 - [architecture.md](architecture.md): hexagonal layers, deployment topology, planned stack.

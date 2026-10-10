@@ -4,7 +4,9 @@ Guidance for AI coding agents and contributors working in this repository.
 
 ## Purpose
 
-EventsSound is the final project (TFM) of the Master in AI-assisted Development (Máster en Desarrollo con IA). It is a web app with an AI quote agent for a sound, lights and DJ events company. The AI agent is the core of the product. All data is synthetic; never add real customer or personal data.
+EventSoundDR is the final project (TFM) of the Master in AI-assisted Development (Máster en Desarrollo con IA). It is a web app with an AI quote agent for a sound, lights and DJ events company. The AI agent is the core of the product. All data is synthetic; never add real customer or personal data.
+
+Naming: the product and Render services are `EventSoundDR` / `eventsounddr-*`. The repository, the Python package (`eventssound`), the compose project and the DB names keep `eventssound` on purpose.
 
 ## Architecture
 
