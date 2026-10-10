@@ -11,5 +11,5 @@ ADR-style log. Each entry: decision, reason. Full reasoning lives in the linked 
 7. **Synthetic data only.** Avoids privacy issues and keeps the demo reproducible.
 8. **Liveness vs readiness health.** `/health` never touches the DB (so Render does not restart on a database blip); `/health/db` checks connectivity.
 9. **Prices computed by code, not by the LLM.** Makes quotes verifiable by an oracle and limits prompt-injection impact.
-10. **Migrations run in the start script.** Free Render instances have no pre-deploy hook (to be verified in PR 4).
+10. **Migrations run in the start script.** Free Render instances have no pre-deploy hook (verified 2026-10-10, see [apply-progress-pr4.md](../openspec/changes/walking-skeleton-and-deploy/apply-progress-pr4.md)).
 11. **Hybrid local development.** Only Postgres runs in Docker; backend (`uvicorn --reload`) and frontend (Vite) run natively for hot reload, driven by `scripts/dev.ps1`. The containerized stack (`docker compose --profile app up --build`) stays as the production-like check. Tradeoffs: requires uv and Node locally and the scripts are PowerShell-first (Windows target); in exchange, no image rebuilds per edit and no bind-mount file-watching issues on Docker Desktop. See [proposal](../openspec/changes/local-dev-workflow/proposal.md).
