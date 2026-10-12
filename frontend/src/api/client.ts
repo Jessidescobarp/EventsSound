@@ -23,8 +23,8 @@ export class ApiError extends Error {
   }
 }
 
-/** Upper bound for a response body (UTF-16 code units). The catalog is about 10 KB. */
-export const MAX_RESPONSE_CHARS = 1_000_000;
+/** Upper bound for a response body in bytes. The catalog is about 10 KB. */
+export const MAX_RESPONSE_BYTES = 1_000_000;
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
 export interface ApiFetchOptions<T> {
@@ -80,18 +80,20 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Pr
       throw new ApiError("http", `Unexpected status ${status}.`, status);
     }
 
+    // Content-Length is only an early exit: cross-origin responses do not expose it and
+    // it can lie, so the real cap is enforced while reading.
     const declared = Number(response.headers.get("Content-Length"));
-    if (Number.isFinite(declared) && declared > MAX_RESPONSE_CHARS) {
+    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
       throw new ApiError("too_large", "Response too large.");
     }
 
     let text: string;
     try {
-      text = await response.text();
-    } catch {
+      text = await readCapped(response, controller.signal);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       throw classifyAbort(timedOut, signal) ?? new ApiError("network", "Network error.");
     }
-    if (text.length > MAX_RESPONSE_CHARS) throw new ApiError("too_large", "Response too large.");
 
     try {
       return parse(JSON.parse(text));
@@ -101,6 +103,39 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Pr
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", onCallerAbort);
+  }
+}
+
+/** Reads the body as UTF-8 text, refusing to buffer more than MAX_RESPONSE_BYTES. */
+async function readCapped(response: Response, signal: AbortSignal): Promise<string> {
+  const tooLarge = () => new ApiError("too_large", "Response too large.");
+  if (!response.body) {
+    const text = await response.text(); // no stream available: same cap, after the fact
+    if (new Blob([text]).size > MAX_RESPONSE_BYTES) throw tooLarge();
+    return text;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  // A stalled stream does not always error on abort, so cancel the reader ourselves.
+  const onAbort = () => void reader.cancel().catch(() => undefined);
+  signal.addEventListener("abort", onAbort, { once: true });
+  let received = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (signal.aborted) throw new Error("aborted");
+      if (done) break;
+      received += value.byteLength;
+      if (received > MAX_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw tooLarge();
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    signal.removeEventListener("abort", onAbort);
   }
 }
 

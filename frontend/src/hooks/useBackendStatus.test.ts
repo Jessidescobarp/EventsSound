@@ -3,11 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useBackendStatus } from "./useBackendStatus";
 
 const reply = (body: unknown, status = 200) =>
-  Promise.resolve({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response);
+  Promise.resolve(new Response(JSON.stringify(body), { status }));
 
 // A fetch that never answers on its own and only settles when aborted.
 const hungFetch = (_input: RequestInfo | URL, init?: RequestInit) =>
