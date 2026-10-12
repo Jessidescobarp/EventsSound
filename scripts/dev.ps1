@@ -6,12 +6,15 @@
   dev.ps1 -Down    stop the two processes and the db container (keeps the volume)
   dev.ps1 -Reset   -Down plus drop the db volume
   dev.ps1 -Smoke   run scripts/smoke.ps1 after start
+  -Mocks           start the frontend with VITE_USE_MOCKS=true: the catalog is served from a fake
+                   API with demo data and every page shows a 'Datos de demostracion' banner.
+                   Stop first (-Down) if the frontend is already running without it.
   -AllowRemoteDb   permit a DATABASE_URL whose host is not 127.0.0.1/localhost (dangerous)
   Settings come from the process environment or the root .env (copied from .env.example
   when neither exists). Secrets are never printed. Logs and PIDs live in .dev/.
 #>
 [CmdletBinding()]
-param([switch]$Down, [switch]$Reset, [switch]$Smoke, [switch]$AllowRemoteDb, [int]$TimeoutSec = 90)
+param([switch]$Down, [switch]$Reset, [switch]$Smoke, [switch]$Mocks, [switch]$AllowRemoteDb, [int]$TimeoutSec = 90)
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -163,7 +166,13 @@ if ($backendUp) { Write-Host "backend already running (pid $($backendUp.Id))" } 
   Start-Tracked 'backend' 'uv' @('run', 'uvicorn', 'eventssound.entrypoints.api.app:create_app', '--factory',
     '--reload', '--host', '127.0.0.1', '--port', '8000') (Join-Path $Root 'backend')
 }
-if ($frontendUp) { Write-Host "frontend already running (pid $($frontendUp.Id))" } else {
+# Demo data is opt-in. Only -Mocks sets the flag (process environment, inherited by vite; never
+# written to a file); a value inherited from the caller's shell is cleared so it cannot leak in.
+if ($Mocks) { $env:VITE_USE_MOCKS = 'true' } else { Remove-Item Env:VITE_USE_MOCKS -ErrorAction SilentlyContinue }
+if ($frontendUp) {
+  Write-Host "frontend already running (pid $($frontendUp.Id))"
+  if ($Mocks) { Write-Warning 'The running frontend keeps its old settings: run -Down first for -Mocks to take effect.' }
+} else {
   # npm is npm.cmd on Windows; cmd.exe resolves it regardless of PowerShell script policy.
   Start-Tracked 'frontend' 'cmd.exe' @('/c', 'npm', 'run', 'dev', '--', '--host', 'localhost', '--port', '5173', '--strictPort') (Join-Path $Root 'frontend')
 }
@@ -174,7 +183,7 @@ Wait-Url 'frontend' $FrontendUrl
 
 Write-Host ''
 Write-Host "Backend : $BackendUrl  (docs: $BackendUrl/docs)"
-Write-Host "Frontend: $FrontendUrl"
+Write-Host "Frontend: $FrontendUrl$(if ($Mocks) { '  (demo data: VITE_USE_MOCKS=true)' })"
 Write-Host 'Stop: scripts/dev.ps1 -Down   Reset db: scripts/dev.ps1 -Reset'
 
 if ($Smoke) {

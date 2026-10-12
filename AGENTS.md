@@ -37,7 +37,7 @@ Run from `backend/`:
 
 Run from the repo root:
 
-- `scripts/dev.ps1` (`-Down`, `-Reset`, `-Smoke`): hybrid local stack (db in Docker, backend and frontend native with hot reload; logs in `.dev/`). `scripts/smoke.ps1 [-BackendUrl] [-FrontendUrl] [-Origin] [-Retries] [-RetryDelaySec]`: smoke check, also usable against deployed URLs. From Git Bash prefix with `powershell -NoProfile -ExecutionPolicy Bypass -File`.
+- `scripts/dev.ps1` (`-Down`, `-Reset`, `-Smoke`, `-Mocks`; `-Mocks` sets `VITE_USE_MOCKS=true` so the frontend serves demo catalog data and shows a demo banner; never set in production builds): hybrid local stack (db in Docker, backend and frontend native with hot reload; logs in `.dev/`). `scripts/smoke.ps1 [-BackendUrl] [-FrontendUrl] [-Origin] [-Retries] [-RetryDelaySec]`: smoke check, also usable against deployed URLs. From Git Bash prefix with `powershell -NoProfile -ExecutionPolicy Bypass -File`.
 - `docker compose up -d --wait db`: local Postgres (pgvector). Set `POSTGRES_PORT` if 5432 is taken. `docker compose down -v` wipes it. The compose project is pinned to `eventssound-dev` (volume `eventssound-dev_pgdata`).
 - `docker compose --profile app up --build`: also run the backend container.
 - `docker build backend`: build the production image.

@@ -33,6 +33,7 @@ Only Postgres runs in Docker; backend and frontend run natively with hot reload.
 ```powershell
 scripts/dev.ps1           # start everything (idempotent); creates .env from .env.example if neither .env nor DATABASE_URL exists
 scripts/dev.ps1 -Smoke    # start, then run the smoke check
+scripts/dev.ps1 -Mocks    # start with demo data (VITE_USE_MOCKS=true): fake catalog API and a "Datos de demostración" banner; run -Down first if already running
 scripts/smoke.ps1         # smoke check only; accepts -BackendUrl, -FrontendUrl, -Origin to target a deployed stack
 scripts/dev.ps1 -Down     # stop backend, frontend and the db container (keeps data)
 scripts/dev.ps1 -Reset    # stop and delete the db volume
