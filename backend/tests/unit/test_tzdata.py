@@ -1,5 +1,6 @@
 """The IANA database must not depend on the host: Windows and python:3.12-slim ship none."""
 
+import re
 import tomllib
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -12,7 +13,7 @@ PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
 
 def test_tzdata_is_a_runtime_dependency() -> None:
     project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]
-    assert any(dep.replace(" ", "").startswith("tzdata") for dep in project["dependencies"])
+    assert any(re.match(r"tzdata(?![\w.-])", dep.strip()) for dep in project["dependencies"])
 
 
 @pytest.mark.parametrize("month", [1, 7])

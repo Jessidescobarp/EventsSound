@@ -2,7 +2,7 @@
 
 import dataclasses
 from collections.abc import Callable
-from datetime import date, time
+from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -106,6 +106,23 @@ INVALID: dict[str, Callable[[], PricingRules]] = {
     "discount-cap-negative": lambda: make_rules(max_package_discount_bps=-1),
     "empty-version": lambda: make_rules(version=" "),
     "bad-currency": lambda: make_rules(currency="cop"),
+    "digit-currency": lambda: make_rules(currency="C0P"),
+    "none-currency": lambda: make_rules(currency=None),
+    "holidays-strings": lambda: make_rules(holidays=frozenset({"2026-12-25"})),
+    "holidays-datetime": lambda: make_rules(holidays=frozenset({datetime(2026, 12, 25)})),
+    "holidays-tuple-elements": lambda: make_rules(holidays=frozenset({(2026, 12, 25)})),
+    "holidays-not-iterable": lambda: make_rules(holidays=5),
+    "holidays-string": lambda: make_rules(holidays="2026-12-25"),
+    "weekend-days-not-iterable": lambda: make_rules(weekend_days=5),
+    "weekend-days-bool": lambda: make_rules(weekend_days=frozenset({True})),
+    "weekend-days-negative": lambda: make_rules(weekend_days=frozenset({-1})),
+    "weekend-days-empty": lambda: make_rules(weekend_days=frozenset()),
+    "tiers-wrong-element": lambda: make_rules(guest_tiers=(5,)),
+    "tiers-not-iterable": lambda: make_rules(guest_tiers=None),
+    "tiers-string": lambda: make_rules(guest_tiers="abc"),
+    "bands-wrong-element": lambda: make_rules(distance_bands=(5,)),
+    "bands-not-iterable": lambda: make_rules(distance_bands=None),
+    "night-wrong-type": lambda: make_rules(night=(time(22), time(6), 2000)),
     "band-currency-differs-from-rules": lambda: make_rules(currency="USD"),
 }
 
@@ -114,6 +131,27 @@ INVALID: dict[str, Callable[[], PricingRules]] = {
 def test_invalid_rules_are_rejected(build: Callable[[], PricingRules]) -> None:
     with pytest.raises(InvalidRules):
         build()
+
+
+def test_mutable_collections_are_coerced_so_rules_stay_hashable() -> None:
+    rules = make_rules(
+        holidays={date(2026, 12, 25)},
+        weekend_days={6},
+        guest_tiers=[GuestTier(1, 0)],
+        distance_bands=[band(None, 0)],
+    )
+    assert rules.holidays == frozenset({date(2026, 12, 25)})
+    assert rules.weekend_days == frozenset({6})
+    assert isinstance(rules.holidays, frozenset)
+    assert isinstance(rules.weekend_days, frozenset)
+    assert isinstance(rules.guest_tiers, tuple)
+    assert isinstance(rules.distance_bands, tuple)
+    assert hash(rules) == hash(dataclasses.replace(rules))
+
+
+def test_night_window_may_end_at_midnight() -> None:
+    night = NightWindow(time(22, 0), time(0, 0), 2000)
+    assert make_rules(night=night).night.end == time(0, 0)
 
 
 def test_single_open_band_and_single_tier_are_valid() -> None:

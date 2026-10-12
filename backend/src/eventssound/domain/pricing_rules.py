@@ -4,6 +4,7 @@ Percentages are integer basis points (1 bp = 0.01%) and money is whole pesos. Th
 `tzinfo` object, never a zone name, so only `default_pricing_rules()` touches the tz database.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import date, time, tzinfo
 from zoneinfo import ZoneInfo
@@ -12,6 +13,17 @@ from .errors import InvalidRules
 from .money import Money
 
 MAX_SURCHARGE_BPS = 100_000
+_CURRENCY = re.compile(r"[A-Z]{3}")  # same format as money.py
+
+
+def _collect[T: (tuple, frozenset)](value: object, kind: type[T], name: str) -> T:
+    """Coerce to an immutable collection; a string is never a collection of rule data."""
+    if isinstance(value, str | bytes):
+        raise InvalidRules(f"{name} must be a collection")
+    try:
+        return kind(value)  # type: ignore[call-arg]
+    except TypeError:
+        raise InvalidRules(f"{name} must be a collection") from None
 
 
 def _require_int(value: object, name: str) -> int:
@@ -85,16 +97,30 @@ class PricingRules:
     rounding_step: int
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "guest_tiers", tuple(self.guest_tiers))
-        object.__setattr__(self, "distance_bands", tuple(self.distance_bands))
+        guest_tiers = _collect(self.guest_tiers, tuple, "guest_tiers")
+        bands = _collect(self.distance_bands, tuple, "distance_bands")
+        weekend_days = _collect(self.weekend_days, frozenset, "weekend_days")
+        holidays = _collect(self.holidays, frozenset, "holidays")
+        object.__setattr__(self, "guest_tiers", guest_tiers)
+        object.__setattr__(self, "distance_bands", bands)
+        object.__setattr__(self, "weekend_days", weekend_days)
+        object.__setattr__(self, "holidays", holidays)
         if not isinstance(self.version, str) or not self.version.strip():
             raise InvalidRules("version must not be empty")
-        if not (len(self.currency) == 3 and self.currency.isascii() and self.currency.isupper()):
+        if type(self.currency) is not str or not _CURRENCY.fullmatch(self.currency):
             raise InvalidRules("currency must be a 3-letter uppercase code")
         if not isinstance(self.timezone, tzinfo):
             raise InvalidRules("timezone must be a tzinfo")
-        if not all(type(day) is int and 0 <= day <= 6 for day in self.weekend_days):
-            raise InvalidRules("weekend_days must hold weekday numbers 0..6")
+        if not isinstance(self.night, NightWindow):
+            raise InvalidRules("night must be a NightWindow")
+        if not all(isinstance(t, GuestTier) for t in guest_tiers):
+            raise InvalidRules("guest_tiers must contain only GuestTier")
+        if not all(isinstance(b, DistanceBand) for b in bands):
+            raise InvalidRules("distance_bands must contain only DistanceBand")
+        if not weekend_days or not all(type(d) is int and 0 <= d <= 6 for d in weekend_days):
+            raise InvalidRules("weekend_days must be a non-empty set of weekday numbers 0..6")
+        if not all(type(d) is date for d in holidays):
+            raise InvalidRules("holidays must contain only dates")
         _check_bps(self.weekend_holiday_surcharge_bps, "weekend_holiday_surcharge_bps")
         _check_bps(self.max_package_discount_bps, "max_package_discount_bps", 10_000)
         if _require_int(self.rounding_step, "rounding_step") < 1:
