@@ -40,14 +40,10 @@ def test_valid_request_is_built_and_frozen() -> None:
         request.guest_count = 1  # type: ignore[misc]
 
 
-def test_package_only_request_is_valid() -> None:
-    request = make_request(items=(), packages=(RequestedLine("pkg_basic", 1),))
+def test_package_only_request_with_list_input_is_valid() -> None:
+    request = make_request(items=[], packages=[RequestedLine("pkg_basic", 1)])
     assert request.packages == (RequestedLine("pkg_basic", 1),)
-
-
-def test_collections_are_coerced_to_tuples() -> None:
-    request = make_request(items=[RequestedLine("sound_speaker", 1)])
-    assert isinstance(request.items, tuple)
+    assert request.items == ()
 
 
 INVALID: dict[str, Callable[[], EventRequest]] = {
