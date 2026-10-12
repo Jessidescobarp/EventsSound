@@ -90,3 +90,17 @@ def session_factory(migrated_database: str) -> Iterator[sessionmaker[Session]]:
         yield build_session_factory(engine)
     finally:
         engine.dispose()
+
+
+UNREACHABLE_URL = "postgresql+psycopg://secret_user:S3cr3t-pw@127.0.0.1:1/secret_db"
+SECRETS_IN_UNREACHABLE_URL = ("secret_user", "S3cr3t-pw", "secret_db", "127.0.0.1")
+
+
+@pytest.fixture
+def unreachable_session_factory() -> Iterator[sessionmaker[Session]]:
+    """A session factory whose connections fail after one second; its URL holds sentinel secrets."""
+    engine = create_engine(UNREACHABLE_URL, connect_args={"connect_timeout": 1})
+    try:
+        yield sessionmaker(bind=engine)
+    finally:
+        engine.dispose()
