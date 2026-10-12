@@ -1,0 +1,243 @@
+"""Catalog, pricing and availability use cases over in-memory fakes."""
+
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from eventssound.application.availability import check_event_availability
+from eventssound.application.catalog import list_catalog
+from eventssound.application.errors import RepositoryUnavailable
+from eventssound.application.pricing import price_quote
+from eventssound.domain.availability import (
+    AvailabilityRules,
+    Booking,
+    BookingStatus,
+    check_request_availability,
+    default_availability_rules,
+)
+from eventssound.domain.catalog import (
+    Catalog,
+    EquipmentCategory,
+    EquipmentItem,
+    PackageLine,
+    ServicePackage,
+)
+from eventssound.domain.errors import InvalidAvailability
+from eventssound.domain.event_request import EventRequest, EventType, RequestedLine, VenueType
+from eventssound.domain.money import Money
+from eventssound.domain.pricing import calculate_price
+from eventssound.domain.pricing_rules import default_pricing_rules
+from fakes import (
+    BrokenBookingRepository,
+    BrokenCatalogRepository,
+    InMemoryBookingRepository,
+    InMemoryCatalogRepository,
+)
+
+START = datetime(2026, 11, 6, 14, tzinfo=UTC)
+END = datetime(2026, 11, 6, 18, tzinfo=UTC)
+CATALOG = Catalog(
+    items=(
+        EquipmentItem("speaker", "Speaker", EquipmentCategory.SOUND, 1, Money(100_000)),
+        EquipmentItem("mixer", "Mixer", EquipmentCategory.SOUND, 2, Money(50_000)),
+    ),
+    packages=(ServicePackage("pkg_basic", "Basic", (PackageLine("speaker", 1),), 0),),
+)
+
+
+def request(**overrides: object) -> EventRequest:
+    values: dict[str, object] = {
+        "event_type": EventType.CORPORATE,
+        "start": START,
+        "end": END,
+        "guest_count": 50,
+        "distance_km": 0,
+        "venue": VenueType.INDOOR,
+        "items": (RequestedLine("speaker", 1),),
+    }
+    values.update(overrides)
+    return EventRequest(**values)  # type: ignore[arg-type]
+
+
+def booking(item: str, start: datetime, end: datetime, **overrides: object) -> Booking:
+    fields: dict[str, object] = {
+        "code": "bk_1",
+        "item_code": item,
+        "quantity": 1,
+        "start": start,
+        "end": end,
+        "status": BookingStatus.CONFIRMED,
+    }
+    fields.update(overrides)
+    return Booking(**fields)  # type: ignore[arg-type]
+
+
+def test_list_catalog_returns_the_repository_catalog() -> None:
+    assert list_catalog(InMemoryCatalogRepository(CATALOG)) is CATALOG
+
+
+def test_price_quote_equals_the_pure_oracle() -> None:
+    rules = default_pricing_rules()
+
+    quote = price_quote(request(), InMemoryCatalogRepository(CATALOG), rules)
+
+    assert quote == calculate_price(request(), CATALOG, rules)
+
+
+def test_price_quote_prices_package_members() -> None:
+    quote = price_quote(
+        request(items=(), packages=(RequestedLine("pkg_basic", 1),)),
+        InMemoryCatalogRepository(CATALOG),
+        default_pricing_rules(),
+    )
+
+    assert quote.total.amount > 0
+
+
+def test_availability_equals_the_pure_function_over_the_fake_bookings() -> None:
+    held = (booking("speaker", START - timedelta(hours=1), START + timedelta(hours=1)),)
+    rules = default_availability_rules()
+
+    report = check_event_availability(
+        request(), InMemoryCatalogRepository(CATALOG), InMemoryBookingRepository(held), rules
+    )
+
+    assert report == check_request_availability(request(), CATALOG, held, rules)
+    assert not report.is_available
+
+
+def test_booking_inside_the_buffer_before_the_event_blocks_the_item() -> None:
+    # Ends one hour before the event starts: outside [start, end) but inside the 2h buffer.
+    held = (booking("speaker", START - timedelta(hours=5), START - timedelta(hours=1)),)
+
+    report = check_event_availability(
+        request(),
+        InMemoryCatalogRepository(CATALOG),
+        InMemoryBookingRepository(held),
+        AvailabilityRules(buffer=timedelta(hours=2)),
+    )
+
+    assert not report.items[0].is_available
+
+
+def test_booking_inside_the_buffer_after_the_event_blocks_the_item() -> None:
+    held = (booking("speaker", END + timedelta(hours=1), END + timedelta(hours=5)),)
+
+    report = check_event_availability(
+        request(),
+        InMemoryCatalogRepository(CATALOG),
+        InMemoryBookingRepository(held),
+        AvailabilityRules(buffer=timedelta(hours=2)),
+    )
+
+    assert not report.items[0].is_available
+
+
+def test_booking_beyond_the_buffer_does_not_block() -> None:
+    held = (booking("speaker", START - timedelta(hours=9), START - timedelta(hours=3)),)
+
+    report = check_event_availability(
+        request(),
+        InMemoryCatalogRepository(CATALOG),
+        InMemoryBookingRepository(held),
+        AvailabilityRules(buffer=timedelta(hours=2)),
+    )
+
+    assert report.items[0].is_available
+
+
+def test_package_members_are_checked() -> None:
+    held = (booking("speaker", START, END),)
+
+    report = check_event_availability(
+        request(items=(), packages=(RequestedLine("pkg_basic", 1),)),
+        InMemoryCatalogRepository(CATALOG),
+        InMemoryBookingRepository(held),
+        default_availability_rules(),
+    )
+
+    assert [(a.item_code, a.is_available) for a in report.items] == [("speaker", False)]
+
+
+def test_broken_catalog_propagates_repository_unavailable() -> None:
+    with pytest.raises(RepositoryUnavailable):
+        list_catalog(BrokenCatalogRepository())
+    with pytest.raises(RepositoryUnavailable):
+        price_quote(request(), BrokenCatalogRepository(), default_pricing_rules())
+    with pytest.raises(RepositoryUnavailable):
+        check_event_availability(
+            request(),
+            BrokenCatalogRepository(),
+            InMemoryBookingRepository(),
+            default_availability_rules(),
+        )
+
+
+def test_broken_bookings_propagate_repository_unavailable() -> None:
+    with pytest.raises(RepositoryUnavailable):
+        check_event_availability(
+            request(),
+            InMemoryCatalogRepository(CATALOG),
+            BrokenBookingRepository(),
+            default_availability_rules(),
+        )
+
+
+BUFFER = timedelta(hours=2)
+
+
+def availability_with(held: tuple[Booking, ...], req: EventRequest | None = None):
+    return check_event_availability(
+        req or request(),
+        InMemoryCatalogRepository(CATALOG),
+        InMemoryBookingRepository(held),
+        AvailabilityRules(buffer=BUFFER),
+    )
+
+
+@pytest.mark.parametrize(
+    ("gap", "available"),
+    [(BUFFER, True), (BUFFER - timedelta(minutes=1), False)],
+    ids=["gap-equals-buffer", "one-minute-inside-buffer"],
+)
+def test_buffer_boundary_before_the_event(gap: timedelta, available: bool) -> None:
+    held = (booking("speaker", START - gap - timedelta(hours=3), START - gap),)
+
+    assert availability_with(held).items[0].is_available is available
+
+
+@pytest.mark.parametrize(
+    ("gap", "available"),
+    [(BUFFER, True), (BUFFER - timedelta(minutes=1), False)],
+    ids=["gap-equals-buffer", "one-minute-inside-buffer"],
+)
+def test_buffer_boundary_after_the_event(gap: timedelta, available: bool) -> None:
+    held = (booking("speaker", END + gap, END + gap + timedelta(hours=3)),)
+
+    assert availability_with(held).items[0].is_available is available
+
+
+def test_window_is_widened_in_absolute_time_across_a_dst_change() -> None:
+    new_york = ZoneInfo("America/New_York")
+    start = datetime(2026, 3, 8, 3, 30, tzinfo=new_york)  # 07:30Z; clocks jumped at 02:00 local
+    req = request(start=start, end=start + timedelta(hours=3))
+    # Ends 06:00Z: 1.5h before the event, inside the 2h buffer. Wall-clock subtraction would
+    # search from 06:30Z and never load it.
+    held = (
+        booking(
+            "speaker", datetime(2026, 3, 8, 2, tzinfo=UTC), datetime(2026, 3, 8, 6, tzinfo=UTC)
+        ),
+    )
+
+    report = availability_with(held, req)
+
+    assert report == check_request_availability(req, CATALOG, held, AvailabilityRules(BUFFER))
+    assert not report.is_available
+
+
+def test_window_out_of_the_datetime_range_is_a_domain_error() -> None:
+    req = request(start=datetime(1, 1, 1, tzinfo=UTC), end=datetime(1, 1, 2, tzinfo=UTC))
+
+    with pytest.raises(InvalidAvailability):
+        availability_with((), req)

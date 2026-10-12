@@ -30,6 +30,10 @@ If Render appends a suffix because a name is taken, update `CORS_ALLOWED_ORIGINS
 3. The backend runs `alembic upgrade head` in `backend/start.sh` before serving (free instances have no `preDeployCommand`). A failing migration exits the container, so the new version never becomes healthy.
 4. Run the smoke check, then open the frontend.
 
+## Public API docs
+
+Swagger UI (`/docs`) and the schema (`/openapi.json`) stay enabled when `APP_ENV=production`: the API is read-only with synthetic data, so they add no sensitive surface. `scripts/smoke.ps1` checks `/docs`. Deploying migration `0002` creates the four catalog and booking tables in Neon, empty; the catalog endpoints return empty lists until the guarded seed CLI is run deliberately (see the README).
+
 ## Neon branch policy
 
 The production branch is for the deployed app only. Never run tests, experiments or local development against it; use the local Docker Postgres (`docker compose up -d --wait db`) or a separate throwaway Neon branch.

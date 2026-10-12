@@ -8,9 +8,10 @@ from collections.abc import Callable, Iterator
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from eventssound.adapters.db.catalog_repository import SqlAlchemyCatalogRepository
 from eventssound.adapters.db.health import SqlAlchemyDatabaseHealth
 from eventssound.adapters.db.session import build_engine, build_session_factory
-from eventssound.application.ports import DatabaseHealthPort
+from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
 from eventssound.config import Settings
 
 SessionProvider = Callable[[], Iterator[Session]]
@@ -30,3 +31,7 @@ def make_session_provider(factory: sessionmaker[Session]) -> SessionProvider:
 
 def make_database_health(factory: sessionmaker[Session]) -> DatabaseHealthPort:
     return SqlAlchemyDatabaseHealth(factory)
+
+
+def make_catalog_repository(factory: sessionmaker[Session]) -> CatalogRepository:
+    return SqlAlchemyCatalogRepository(factory)

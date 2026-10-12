@@ -59,6 +59,10 @@ Add-Check 'backend /health/db' {
   $r = Get-Safe "$BackendUrl/health/db"
   ($r.StatusCode -eq 200), "HTTP $($r.StatusCode)"
 }
+Add-Check 'backend /docs (public Swagger)' {
+  $r = Get-Safe "$BackendUrl/docs"
+  ($r.StatusCode -eq 200), "HTTP $($r.StatusCode)"
+}
 Add-Check 'frontend root' {
   $r = Get-Safe $FrontendUrl
   $mount = $r.Content -match 'id="root"'

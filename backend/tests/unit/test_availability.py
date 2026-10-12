@@ -663,3 +663,47 @@ def test_report_accepts_sorted_distinct_items_from_any_iterable() -> None:
     assert report.items == (OTHER, GOOD)
     assert report.shortages == (GOOD,)
     assert hash(report) == hash(AvailabilityReport((OTHER, GOOD)))
+
+
+# --- booking search window ----------------------------------------------------------------------
+
+
+def test_search_window_is_the_utc_instants_widened_by_the_buffer() -> None:
+    from eventssound.domain.availability import booking_search_window
+
+    low, high = booking_search_window(at(6, 10), at(6, 14), AvailabilityRules(timedelta(hours=2)))
+
+    assert (low, high) == (at(6, 8), at(6, 16))
+    assert low.tzinfo is UTC and high.tzinfo is UTC
+
+
+def test_search_window_uses_absolute_time_across_a_dst_change() -> None:
+    from zoneinfo import ZoneInfo
+
+    from eventssound.domain.availability import booking_search_window
+
+    new_york = ZoneInfo("America/New_York")
+    # 2026-03-08 03:30 EDT is 07:30Z; clocks jumped forward at 02:00 local, so wall-clock
+    # subtraction of 2 hours would land on 06:30Z instead of the true 05:30Z.
+    start = datetime(2026, 3, 8, 3, 30, tzinfo=new_york)
+    end = datetime(2026, 3, 8, 6, 30, tzinfo=new_york)
+
+    low, high = booking_search_window(start, end, AvailabilityRules(timedelta(hours=2)))
+
+    assert low == datetime(2026, 3, 8, 5, 30, tzinfo=UTC)
+    assert high == datetime(2026, 3, 8, 12, 30, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        (datetime(1, 1, 1, tzinfo=UTC), datetime(1, 1, 2, tzinfo=UTC)),
+        (datetime(9999, 12, 30, tzinfo=UTC), datetime(9999, 12, 31, 23, tzinfo=UTC)),
+    ],
+    ids=["min", "max"],
+)
+def test_search_window_out_of_range_is_a_domain_error(start: datetime, end: datetime) -> None:
+    from eventssound.domain.availability import booking_search_window
+
+    with pytest.raises(InvalidAvailability):
+        booking_search_window(start, end, AvailabilityRules(timedelta(hours=2)))

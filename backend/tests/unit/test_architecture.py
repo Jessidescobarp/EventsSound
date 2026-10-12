@@ -268,3 +268,30 @@ def test_dynamic_imports_in_domain_are_flagged(tmp_path: Path, source: str) -> N
     violations = find_non_stdlib_violations(tmp_path, "eventssound.domain")
 
     assert any("sneaky.py" in v and "dynamic import" in v for v in violations)
+
+
+ROUTES_FORBIDDEN = {f"{PROJECT}.adapters", "sqlalchemy"}
+
+
+def test_routes_do_not_import_adapters() -> None:
+    routes = PACKAGE_ROOT / "entrypoints" / "api" / "routes"
+
+    assert find_violations(routes, ROUTES_FORBIDDEN, "eventssound.entrypoints.api.routes") == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("from eventssound.adapters.db.session import Base", "eventssound.adapters.db.session"),
+        ("import sqlalchemy", "sqlalchemy"),
+        ("from sqlalchemy.orm import Session", "sqlalchemy.orm"),
+    ],
+)
+def test_a_route_importing_an_adapter_or_sqlalchemy_is_detected(
+    tmp_path: Path, source: str, expected: str
+) -> None:
+    (tmp_path / "bad.py").write_text(source, encoding="utf-8")
+
+    violations = find_violations(tmp_path, ROUTES_FORBIDDEN, "eventssound.entrypoints.api.routes")
+
+    assert any(v.startswith("bad.py") and expected in v for v in violations)

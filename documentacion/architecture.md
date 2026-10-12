@@ -8,12 +8,14 @@ entrypoints  ->  adapters  ->  application  ->  domain
                  LLM, ...)      ports)
 ```
 
-- `domain`: pure rules, no framework imports.
-- `application`: use cases and ports (Protocols), e.g. `DatabaseHealthPort`.
+- `domain`: pure rules, stdlib only: `Money`, catalog entities, `EventRequest`, pricing rules, `calculate_price` (the deterministic oracle), availability.
+- `application`: use cases and ports (Protocols): `DatabaseHealthPort`, `CatalogRepository`, `BookingRepository`. Use cases are plain functions over ports (`list_catalog`, `price_quote`, `check_event_availability`).
 - `adapters`: port implementations (database session and health today; LLM providers later).
-- `entrypoints`: FastAPI app factory, routes, and the composition root where adapters are wired.
+- `entrypoints`: FastAPI app factory, routes and response schemas, and the composition root where adapters are wired. Routes never import adapters (checked by the architecture test). Swagger UI is public at `/docs`.
 
 The rule is checked by an AST-based architecture test. The composition root is the only place that constructs adapters, and the extension point for the future `LlmProvider`.
+
+Quote domain and catalog API: [quote-domain-core](../openspec/changes/quote-domain-core/design.md).
 
 Spec: [hexagonal-layout](../openspec/changes/walking-skeleton-and-deploy/specs/hexagonal-layout/spec.md). Design: [design.md](../openspec/changes/walking-skeleton-and-deploy/design.md).
 

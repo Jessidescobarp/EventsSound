@@ -26,7 +26,7 @@ Use when introducing an abstraction, a new port, a provider, or multiple interch
 
 ### Repository
 - Intent: give the core collection-like access to aggregates without exposing SQL.
-- Example (planned, P1): `EquipmentRepository` Protocol in `application/ports.py`, `SqlAlchemyEquipmentRepository` in `adapters/db/`.
+- Example: `CatalogRepository` and `BookingRepository` Protocols in `application/ports.py`, `SqlAlchemyCatalogRepository` and `SqlAlchemyBookingRepository` in `adapters/db/`.
 - Not when: a single query for one use case; a method on the adapter is enough. Never a generic `BaseRepository[T]` with CRUD for everything.
 
 ### Strategy

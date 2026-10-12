@@ -13,6 +13,6 @@ MVP target: **2026-10-25**. Plan source: [exploration](../openspec/changes/tfm-p
 
 P0 is tracked in [tasks.md](../openspec/changes/walking-skeleton-and-deploy/tasks.md) as PR 1a, 1b, 2, 3 and 4.
 
-## Fallback floor
+## Scope
 
-If the schedule is behind at day 10, drop auth and the admin page and ship the public chat only (an AI-focused demo). The AI quote agent always stays; everything else is cut first.
+The AI quote agent, database persistence, RAG with embeddings and the full frontend (chat page, proposal view, static pages, login and admin quotes list) are all in scope. The earlier fallback that dropped auth and the admin page was withdrawn (2026-10-12). If the schedule slips, the levers are the number of catalog and pricing refinements and the size of the P3 golden set, not the P4 scope.
