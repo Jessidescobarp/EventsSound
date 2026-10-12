@@ -76,7 +76,7 @@ PowerShell: set the variable first with `$env:DATABASE_URL_TEST = "..."`.
 
 ## Deploy
 
-Backend (Docker) and frontend (static site) on Render via `render.yaml`; Postgres on Neon. Live URLs (placeholders until verified): frontend `https://eventsounddr-web.onrender.com`, backend `https://eventsounddr-api.onrender.com`. Required variable: `DATABASE_URL` (set in the Render dashboard only). Free instances sleep after 15 minutes idle and need about a minute to wake up. Deploy order, rollback and the manual setup steps are in [documentacion/deploy.md](documentacion/deploy.md).
+Backend (Docker) and frontend (static site) on Render via `render.yaml`; Postgres on Neon. Live URLs (smoke check passed 2026-10-12): frontend `https://eventsounddr-web.onrender.com`, backend `https://eventsounddr-api.onrender.com`. Required variable: `DATABASE_URL` (set in the Render dashboard only). Free instances sleep after 15 minutes idle and need about a minute to wake up. Deploy order, rollback and the manual setup steps are in [documentacion/deploy.md](documentacion/deploy.md).
 
 ## CI
 
