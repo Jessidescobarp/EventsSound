@@ -179,12 +179,9 @@ class LlmRequest:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", _messages(self.messages))
-        if not isinstance(self.node, str) or not _NODE.fullmatch(self.node):
-            raise LlmValidationError("node must match [a-z][a-z0-9_]{0,31}")
-        if self.scenario is not None and (
-            not isinstance(self.scenario, str) or not _IDENTIFIER.fullmatch(self.scenario)
-        ):
-            raise LlmValidationError("scenario must be dot-separated words, 1..64 chars")
+        check_node(self.node)
+        if self.scenario is not None:
+            check_scenario(self.scenario)
         if not isinstance(self.response_format, ResponseFormat):
             raise LlmValidationError("response_format must be a ResponseFormat")
         if self.json_schema is not None and (
@@ -195,6 +192,18 @@ class LlmRequest:
         _number(self.temperature, "temperature", 0, 2)
         _int(self.max_output_tokens, "max_output_tokens", 1, MAX_OUTPUT_TOKENS)
         _number(self.timeout_s, "timeout_s", 0, MAX_TIMEOUT_S, open_low=True)
+
+
+def check_node(value: object) -> str:
+    if not isinstance(value, str) or not _NODE.fullmatch(value):
+        raise LlmValidationError("node must match [a-z][a-z0-9_]{0,31}")
+    return value
+
+
+def check_scenario(value: object) -> str:
+    if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
+        raise LlmValidationError("scenario must be dot-separated words, 1..64 chars")
+    return value
 
 
 def _messages(value: object) -> tuple[LlmMessage, ...]:
