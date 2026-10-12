@@ -1,7 +1,7 @@
 """Application settings loaded from environment variables."""
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # Comma-separated in the environment; NoDecode skips the default JSON parsing.
     cors_allowed_origins: Annotated[list[str], NoDecode] = []
     log_level: str = "INFO"
+    # Embeddings (vector retrieval). `off` means keyword search only.
+    embedding_provider: Literal["off", "fake", "openrouter"] = "off"
+    embedding_model: str = ""
+    embedding_dimensions: int = Field(default=1024, ge=1, le=2000)
+    openrouter_api_key: SecretStr | None = None
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -41,6 +46,25 @@ class Settings(BaseSettings):
                 if value.startswith(scheme):
                     return "postgresql+psycopg://" + value.removeprefix(scheme)
         return value
+
+    @field_validator("openrouter_api_key", mode="before")
+    @classmethod
+    def _blank_key_is_missing(cls, value: object) -> object:
+        # `OPENROUTER_API_KEY=` in .env.example means "not set".
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("embedding_model", mode="after")
+    @classmethod
+    def _strip_model(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def _openrouter_embeddings_need_a_key_and_model(self) -> "Settings":
+        if self.embedding_provider == "openrouter" and not (
+            self.embedding_model and self.openrouter_api_key
+        ):
+            raise ValueError("EMBEDDING_PROVIDER=openrouter needs EMBEDDING_MODEL and the API key")
+        return self
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod

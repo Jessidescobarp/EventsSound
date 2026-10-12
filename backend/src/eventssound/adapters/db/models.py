@@ -23,9 +23,13 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .session import Base
+from .vector import VectorType
 
 CATEGORIES = "('sound', 'lighting', 'dj', 'stage', 'effects', 'video')"
 BOOKING_STATUSES = "('pending', 'confirmed', 'cancelled')"
+EMBEDDING_KINDS = "('item', 'package')"
+# Frozen in migration 0003: a different size is a new revision plus a full refresh.
+EMBEDDING_DIMENSIONS = 1024
 
 
 class TimestampMixin:
@@ -112,3 +116,21 @@ class BookingModel(TimestampMixin, Base):
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), server_default="pending")
+
+
+class CatalogEmbeddingModel(TimestampMixin, Base):
+    """One embedding per catalog entry and model. `code` is polymorphic (item or package), so
+    there is no foreign key; readers drop codes that left the catalog and refresh deletes them."""
+
+    __tablename__ = "catalog_embeddings"
+    __table_args__ = (
+        UniqueConstraint("kind", "code", "model", name="uq_catalog_embeddings_kind_code_model"),
+        CheckConstraint(f"kind IN {EMBEDDING_KINDS}", name="kind_valid"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    code: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(120))
+    content_hash: Mapped[str] = mapped_column(String(64))
+    embedding: Mapped[tuple[float, ...]] = mapped_column(VectorType(EMBEDDING_DIMENSIONS))
