@@ -9,6 +9,8 @@ from .money import Money
 
 _CODE = re.compile(r"[a-z0-9_]{3,64}")
 MAX_UNIT_PRICE = 1_000_000_000
+MAX_NAME_LENGTH = 120  # VARCHAR(120) in the database
+MAX_INT32 = 2**31 - 1  # INTEGER in the database
 
 
 class EquipmentCategory(StrEnum):
@@ -28,12 +30,16 @@ def _check_code(code: str) -> None:
 def _require_int(value: object, name: str) -> int:
     if type(value) is not int:
         raise InvalidCatalog(f"{name} must be an int")
+    if value > MAX_INT32:
+        raise InvalidCatalog(f"{name} must be at most {MAX_INT32}")
     return value
 
 
 def _check_name(name: str) -> None:
     if not isinstance(name, str) or not name.strip():
         raise InvalidCatalog("name must not be empty")
+    if len(name) > MAX_NAME_LENGTH:
+        raise InvalidCatalog(f"name must have at most {MAX_NAME_LENGTH} characters")
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,24 +1,11 @@
 from pathlib import Path
 
-import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-
-
-@pytest.fixture
-def alembic_config(database_url: str, monkeypatch: pytest.MonkeyPatch) -> Config:
-    monkeypatch.setenv("DATABASE_URL", database_url)
-    engine = create_engine(database_url)
-    with engine.begin() as connection:
-        connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
-    engine.dispose()
-    config = Config(str(BACKEND_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
-    return config
 
 
 def current_versions(database_url: str) -> list[str]:

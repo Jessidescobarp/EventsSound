@@ -17,6 +17,7 @@ Naming (Postgres, snake_case, ASCII, English):
 - Tables: plural nouns (`events`, `equipment_items`). Columns: singular (`starts_at`, `unit_price_cents`).
 - Primary key `id`; foreign key `<entity>_id`; timestamps `*_at` (timezone-aware); booleans `is_*`/`has_*`.
 - Money as integer cents or `Numeric`, never float.
+- Money: `*_cents` is the generic example; COP has no practical minor unit, so this project stores whole pesos in `*_cop` BIGINT columns (ADR 12). Never float.
 - Constraint and index names are generated, not hand-written. `adapters/db/session.py` sets `NAMING_CONVENTION` on `Base.metadata`:
 
 ```python

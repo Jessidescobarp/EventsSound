@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from .catalog import Catalog, EquipmentItem
+from .catalog import MAX_INT32, Catalog, EquipmentItem
 from .errors import InvalidAvailability, InvalidRules
 from .event_request import EventRequest
 
@@ -80,7 +80,8 @@ class Booking:
             raise InvalidAvailability("booking code must match [A-Za-z0-9_-]{1,64}")
         if not isinstance(self.item_code, str) or not _ITEM_CODE.fullmatch(self.item_code):
             raise InvalidAvailability("item_code must match [a-z0-9_]{3,64}")
-        _require_quantity(self.quantity, "quantity")
+        if _require_quantity(self.quantity, "quantity") > MAX_INT32:
+            raise InvalidAvailability(f"quantity must be at most {MAX_INT32}")
         _check_interval(self.start, self.end)
         if not isinstance(self.status, BookingStatus):
             raise InvalidAvailability("status must be a BookingStatus")

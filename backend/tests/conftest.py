@@ -1,11 +1,19 @@
 """Shared pytest fixtures."""
 
 import os
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import ArgumentError
+from sqlalchemy.orm import Session, sessionmaker
 
 from network_guard import install
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(autouse=True)
@@ -36,3 +44,79 @@ def database_url() -> str:
     finally:
         engine.dispose()
     return url
+
+
+class UnsafeResetTarget(RuntimeError):
+    """The database a destructive test helper was pointed at is not a local one."""
+
+
+def reset_schema(url: str) -> None:
+    """Drop every application table and the Alembic bookkeeping table.
+
+    Table names come from the models metadata, so a new model is cleaned up without edits here.
+    This is deliberately not `DROP SCHEMA public CASCADE`: it never touches extensions. It refuses,
+    before any connection, a URL that is not local (same rule as the seed CLI, which also looks at
+    the libpq environment). The database name is NOT checked: the README points DATABASE_URL_TEST
+    at the local compose database, so a name rule would break the documented workflow.
+    """
+    import eventssound.adapters.db.models  # noqa: F401  (registers the tables on Base.metadata)
+    from eventssound.adapters.db.session import Base
+    from eventssound.entrypoints.cli.seed_catalog import is_local_target
+
+    try:
+        local = is_local_target(url)
+    except (ArgumentError, ValueError):
+        local = False
+    if not local:
+        raise UnsafeResetTarget("refusing to reset the schema of a non-local database")
+
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            Base.metadata.drop_all(connection)
+            connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture
+def alembic_config(database_url: str, monkeypatch: pytest.MonkeyPatch) -> Config:
+    """Alembic config bound to the test database, starting from an empty schema."""
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    reset_schema(database_url)
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+    return config
+
+
+@pytest.fixture
+def migrated_database(alembic_config: Config, database_url: str) -> Iterator[str]:
+    """A test database upgraded to head (empty tables); the schema is dropped afterwards."""
+    command.upgrade(alembic_config, "head")
+    yield database_url
+    reset_schema(database_url)
+
+
+@pytest.fixture
+def session_factory(migrated_database: str) -> Iterator[sessionmaker[Session]]:
+    from eventssound.adapters.db.session import build_engine, build_session_factory
+
+    engine = build_engine(migrated_database)
+    try:
+        yield build_session_factory(engine)
+    finally:
+        engine.dispose()
+
+
+UNREACHABLE_URL = "postgresql+psycopg://secret_user:S3cr3t-pw@127.0.0.1:1/secret_db"
+SECRETS_IN_UNREACHABLE_URL = ("secret_user", "S3cr3t-pw", "secret_db", "127.0.0.1")
+
+
+@pytest.fixture
+def unreachable_session_factory() -> Iterator[sessionmaker[Session]]:
+    """A session factory whose connections fail after one second; its URL holds sentinel secrets."""
+    engine = create_engine(UNREACHABLE_URL, connect_args={"connect_timeout": 1})
+    try:
+        yield sessionmaker(bind=engine)
+    finally:
+        engine.dispose()
