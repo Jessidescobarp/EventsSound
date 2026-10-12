@@ -93,8 +93,9 @@ Process agreed 2026-10-12: fewer, larger PRs (up to ~1,500 real lines acceptable
 | `feat(db): add sqlalchemy catalog and booking repositories` | two adapters, DB tests | 558 |
 | `feat(db): add synthetic seed data and idempotent upsert` | seed data, upsert, tests | 620 |
 | `feat(cli): add guarded seed catalog command` | CLI, guard, tests | 423 |
+| `test(db): cover remaining seed and cli error paths` | coverage of the last error paths | 26 |
 
-MEASURED: **2,613 changed lines** (2,599 added, 14 deleted; excluding `uv.lock` and `openspec/`): 912 in `src`/`migrations`, 1,700 in `tests`. This is ABOVE the ~2,000 split threshold of the agreed process. The developer decides: ship as one PR with a note, or split at commit boundaries (the commits are independent work units, so the split is a pure cut: PR "schema" = first three commits, ~720; PR "ports and repositories" = next two, ~850; PR "seed" = last two, ~1,040). Estimated before: ~1,120 for B1-B3; real cost is 2.3x because the validation checklist (every invalid case, secret-leak checks, host-classification table) multiplies tests.
+MEASURED: **2,639 changed lines** (2,625 added, 14 deleted; excluding `uv.lock` and `openspec/`): 912 in `src`/`migrations`, 1,726 in `tests`. This is ABOVE the ~2,000 split threshold of the agreed process. The developer decides: ship as one PR with a note, or split at commit boundaries (the commits are independent work units, so the split is a pure cut: PR "schema" = first three commits, ~720; PR "ports and repositories" = next two, ~850; PR "seed" = last two, ~1,040). Estimated before: ~1,120 for B1-B3; real cost is 2.3x because the validation checklist (every invalid case, secret-leak checks, host-classification table) multiplies tests.
 
 Deviations recorded here (also reflected in the specs and design in the same PR):
 - Seed gained demo bookings (`SEED_BOOKINGS`) and the upsert writes only those (keyed by `(booking_code, item_code)`); the earlier statement "never touch bookings" now reads "touch no booking outside the seed definition".
