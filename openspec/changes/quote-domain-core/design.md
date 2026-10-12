@@ -36,7 +36,8 @@ backend/src/eventssound/
     event_request.py   EventType, VenueType, RequestedLine, EventRequest (+ input bounds)
     pricing_rules.py   GuestTier, DistanceBand, NightWindow, PricingRules, default_pricing_rules()
     pricing.py         LineKind, QuoteLine, Quote, calculate_price
-    availability.py    BookingStatus, Reservation, AvailabilityRules, default_availability_rules(),
+    availability.py    BookingStatus, Booking, AvailabilityRules, default_availability_rules(),
+                       Availability, AvailabilityReport,
                        available_units, check_availability, check_request_availability, required_units
   application/
     ports.py           (existing) + CatalogRepository, BookingRepository
@@ -202,22 +203,22 @@ Invariants (all property-tested): `sum(l.amount for l in lines) == total`; `tota
 
 ## 6. Availability (`domain/availability.py`)
 
-Types: `BookingStatus(StrEnum)`: `PENDING, CONFIRMED, CANCELLED`, with `BookingStatus.blocking() -> {PENDING, CONFIRMED}`. `Reservation(item_code, quantity >= 1, start, end)`: one reserved item of one booking, tz-aware, `end > start`. `AvailabilityRules(buffer: timedelta)` with `default_availability_rules()` = 2 hours (decision 2); validated `>= 0` and a whole number of minutes. Kept apart from `PricingRules`: the buffer is not a pricing datum, and `calculate_price` should not receive fields it never reads.
+Types: `BookingStatus(StrEnum)`: `PENDING, CONFIRMED, CANCELLED`, with `BookingStatus.blocking() -> {PENDING, CONFIRMED}`. `Booking(code, item_code, quantity >= 1, start, end, status)`: one reserved item of one booking, tz-aware, `end > start`, `code` matching `[A-Za-z0-9_-]{1,64}`, `item_code` matching the catalog code pattern; `(code, item_code)` is unique per booking (a duplicated row counts twice, which errs toward unavailable). The domain, not the repository, ignores `CANCELLED` bookings. `AvailabilityRules(buffer: timedelta)` with `default_availability_rules()` = 2 hours (decision 2); validated `>= 0` and a whole number of minutes. Kept apart from `PricingRules`: the buffer is not a pricing datum, and `calculate_price` should not receive fields it never reads.
 
-Naming vs the proposal: the proposal's `bookings` argument becomes `reservations` (the repository returns item-level reservations of blocking bookings only; a `Booking` header exists only in the database for now).
+Naming: the pure function receives item-level `Booking` values (one per booked item). The repository may pre-filter by status in SQL as defence in depth, but correctness does not depend on it. The buffer is passed as `rules: AvailabilityRules` (`0 <= buffer <= 7 days`, whole minutes).
 
 ### D8. Algorithm: interval-graph peak concurrency with buffers split in half
 Two uses of one unit are compatible iff the gap between them is `>= buffer` (half-open intervals, so a gap of exactly `buffer` is allowed). Expanding every interval by `buffer/2` on each side turns that into plain half-open overlap, and units are interchangeable, so the minimum units needed is the maximum clique of an interval graph = peak concurrency (exact, no heuristics).
 
-`available_units(stock, start, end, reservations, buffer)`:
-1. `lo = start - buffer/2`, `hi = end + buffer/2`.
-2. Keep reservations whose expanded interval `[r.start - buffer/2, r.end + buffer/2)` overlaps `[lo, hi)` (equivalently `r.start < end + buffer and r.end > start - buffer`).
-3. Sweep line: events `(time, +quantity)` at `max(r.start - buffer/2, lo)` and `(time, -quantity)` at `min(r.end + buffer/2, hi)`; sort by `(time, delta)` so releases (negative) precede acquisitions at equal timestamps (half-open: touching intervals do not overlap); track the running sum, `peak = max`.
+`available_units(item, start, end, bookings, rules)` (all instants converted with `.astimezone(UTC)`):
+1. Ignore bookings of other items and non-blocking statuses (`CANCELLED`).
+2. Keep bookings whose expanded interval `[b.start - buffer/2, b.end + buffer/2)` overlaps the expanded request, tested on the raw UTC bounds as `b.start < end + buffer and b.end > start - buffer`, so a booking far from the window is never shifted (a far-future booking cannot break unrelated queries). A booking that does overlap but cannot be expanded within the datetime range fails closed with `InvalidAvailability`.
+3. Sweep line: events `(b.start - buffer/2, +quantity)` and `(b.end + buffer/2, -quantity)`; sort by `(time, delta)` so releases (negative) precede acquisitions at equal timestamps regardless of input order (half-open: touching intervals do not overlap); track the running sum, `peak = max`. No clamping to the window is needed: bookings that overlap the window are convex, so any clique of them also meets the window.
 4. Return `max(0, stock - peak)`.
 
-`check_availability(item, start, end, reservations, buffer, quantity=1)` returns `Availability(item_code, requested, available, is_available = available >= requested)` using `item.stock_quantity` (reservations for other item codes are ignored). `check_request_availability(request, catalog, reservations, buffer)` first computes `required_units`: the sum over loose items plus `package.quantity * line.quantity` for package components, per item code (a package consumes stock like its parts), then checks each item and returns `AvailabilityReport(is_available, shortages: tuple[Shortage(item_code, requested, available), ...])`, sorted by code.
+`check_availability(item, start, end, bookings, rules, quantity=1)` returns `Availability(item_code, requested, stock, remaining)` with properties `is_available` (`remaining >= requested`) and `shortfall` (`max(0, requested - remaining)`), using `item.stock_quantity` (bookings for other item codes are ignored). `Availability` and `AvailabilityReport` validate themselves (types, `0 <= remaining <= stock`, non-empty report sorted by distinct code). `check_request_availability(request, catalog, bookings, rules)` first computes `required_units`: the sum over loose items plus `package.quantity * line.quantity` for package components, per item code (a package consumes stock like its parts), then checks each item and returns `AvailabilityReport(items)` sorted by code, with `is_available` and `shortages` (the limiting items, each carrying `requested`, `remaining` and `shortfall` for the Spanish explanation). Malformed bookings and queries raise `InvalidAvailability`; unknown codes raise `UnknownCatalogEntry`.
 
-Complexity: `O(n log n)` for `n` reservations overlapping the window (sort dominates); `O(I * n log n)` for `I` distinct items in the request (`I <= 100`).
+Complexity: `O(n log n)` for `n` bookings overlapping the window (sort dominates); `O(I * n log n)` for `I` distinct items in the request (`I <= 100`).
 
 Semantics worth stating: back-to-back events are allowed only if the gap is `>= buffer`, so with the 2-hour default "back-to-back" means a 2-hour gap; with `buffer = 0` they may touch exactly. Multi-day events are plain long intervals. Existing data that already violates the buffer is counted conservatively (peak may overcount; never undercounts). Pending bookings block stock (conservative); cancelled ones do not.
 
@@ -274,20 +275,20 @@ class CatalogRepository(Protocol):
 class BookingRepository(Protocol):
     def find_reservations(
         self, item_codes: Collection[str], window_start: datetime, window_end: datetime
-    ) -> Sequence[Reservation]:
-        """Reservations of blocking bookings whose [start, end) intersects the window.
+    ) -> Sequence[Booking]:
+        """Item-level bookings (any status; blocking ones at least) whose [start, end) intersects the window.
         Unknown codes yield no rows. Raises RepositoryUnavailable on storage failure."""
 ```
 ### D12. `get_catalog()` returns the whole `Catalog`; two ports, not one
 Items and packages are always used together (a package must resolve its items), the catalog is tens of rows, and a single method gives pricing, listing and availability the same consistent snapshot. Rejected: `list_items()` / `list_packages()` / `get_item(code)` (three queries, possible inconsistency, a chatty 15-method port). `BookingRepository` is a separate port (ISP): the catalog read side and the reservation read side change for different reasons and P2 tools use them independently. No `EquipmentRepository` (the design-patterns skill mentions that name as "planned"; the skill reference should be updated in PR C2 docs).
 `RepositoryUnavailable` (in `application/errors.py`) is raised by adapters wrapping `SQLAlchemyError`, with a generic message (no URL, host or SQL, per the coding skill). Routes map it to 503.
 
-Use cases: `list_catalog(catalog_repo) -> Catalog`; `price_quote(request, catalog_repo, rules) -> Quote` (loads the catalog, calls `calculate_price`); `check_event_availability(request, catalog_repo, booking_repo, rules: AvailabilityRules) -> AvailabilityReport` (loads catalog, `required_units`, queries reservations for those codes in `[start - buffer, end + buffer)`, calls `check_request_availability`). Data flow for availability:
+Use cases: `list_catalog(catalog_repo) -> Catalog`; `price_quote(request, catalog_repo, rules) -> Quote` (loads the catalog, calls `calculate_price`); `check_event_availability(request, catalog_repo, booking_repo, rules: AvailabilityRules) -> AvailabilityReport` (loads catalog, `required_units`, queries bookings for those codes in `[start - buffer, end + buffer)`, calls `check_request_availability`). Data flow for availability:
 
 ```
 use case ──get_catalog()──────────────> CatalogRepository ──> Catalog
 use case ──required_units(req, cat)──> {code: qty}
-use case ──find_reservations(codes, start-buffer, end+buffer)──> BookingRepository ──> [Reservation]
+use case ──find_reservations(codes, start-buffer, end+buffer)──> BookingRepository ──> [Booking]
 use case ──check_request_availability(...)──> AvailabilityReport (domain, pure)
 ```
 Neither `price_quote` nor `check_event_availability` is exposed over HTTP in P1 (decision 5); they are covered by unit tests with fakes and become the bodies of the P2 tools.
@@ -296,7 +297,7 @@ Neither `price_quote` nor `check_event_availability` is exposed over HTTP in P1 
 
 - `models.py`: `EquipmentItemModel`, `ServicePackageModel`, `PackageItemModel`, `BookingModel`, `BookingItemModel` (SQLAlchemy 2.0 `Mapped[...]` / `mapped_column`, `DateTime(timezone=True)`, `BigInteger`, `relationship` only where the repository needs it: `ServicePackageModel.lines` with `selectinload`). Class names do not collide with domain names.
 - `SqlAlchemyCatalogRepository(session_factory)`: `with factory() as session`, two `select` statements ordered by `code`, mapped to domain entities in private `_to_domain` functions (a bad row, for example an unknown category, raises the domain validation error and surfaces as a 500, never silently skipped).
-- `SqlAlchemyBookingRepository(session_factory)`: the SQL in D9 via SQLAlchemy Core expressions, `status` filter from `BookingStatus.blocking()`, returns `Reservation`s. Read-only; no commit.
+- `SqlAlchemyBookingRepository(session_factory)`: the SQL in D9 via SQLAlchemy Core expressions, `status` filter from `BookingStatus.blocking()`, returns `Booking`s (the booking `code` must match the validated pattern `[A-Za-z0-9_-]{1,64}`; a bad row raises the domain error). Read-only; no commit.
 - Both wrap `SQLAlchemyError` into `RepositoryUnavailable` (`raise ... from None` to avoid leaking the driver message).
 
 ### D13. Seed: idempotent upsert keyed on `code`, guarded, never part of a migration
@@ -390,7 +391,7 @@ tests/integration/
   test_catalog_api.py          (no DB) create_app(catalog_repository=fake) through TestClient
   test_catalog_api_db.py       (DB) seeded database through the real wiring
 ```
-Table-driven cases use `pytest.mark.parametrize` with `id=` labels. Availability table: back-to-back with buffer 0 (allowed), gap exactly buffer (allowed), gap buffer minus 1 minute (rejected), overlap, contained, containing, multi-day, same-day turnaround, stock 1 vs 3 with partial overlap, two sequential reservations inside one long request (peak 1, the case SUM gets wrong), cancelled excluded (repository), quantity above stock, package components consuming stock, other item's reservations ignored.
+Table-driven cases use `pytest.mark.parametrize` with `id=` labels. Availability table: back-to-back with buffer 0 (allowed), gap exactly buffer (allowed), gap buffer minus 1 minute (rejected), overlap, contained, containing, multi-day, same-day turnaround, stock 1 vs 3 with partial overlap, two sequential reservations inside one long request (peak 1, the case SUM gets wrong), cancelled excluded (domain, by status), quantity above stock, package components consuming stock, other item's bookings ignored; input order irrelevant (tie ordering pinned in both orders).
 
 ### D20. Hypothesis strategies (`tests/strategies.py`)
 - `money_pesos = st.integers(0, 10**9)`; `unit_prices = st.integers(1, 2_000).map(lambda n: n * 1000)` (realistic, rounding-friendly) plus a separate `odd_unit_prices = st.integers(1, 2_000_000)` to exercise rounding.

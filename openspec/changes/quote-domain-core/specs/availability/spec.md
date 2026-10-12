@@ -18,7 +18,7 @@ Time ranges MUST be half-open `[start, end)` over timezone-aware datetimes. Naiv
 - Then they are treated as the same interval
 
 ### Requirement: Stock is consumed by overlapping bookings
-`check_availability(item, start, end, reservations, buffer, quantity=1)` MUST return the remaining quantity of an item for the requested interval as `stock_quantity - peak concurrent quantity` of the reservations of that item, computed by a sweep over intervals each expanded by `buffer/2` on both sides (design D8), and MUST report available when the remaining quantity is >= the requested quantity. Only reservations for the same item code count. Cancelled bookings are excluded by the repository (the domain `Reservation` carries no status). Sequential reservations that do not overlap one another are NOT summed (peak, not sum).
+`check_availability(item, start, end, bookings, rules, quantity=1)` MUST return an `Availability(item_code, requested, stock, remaining)` where `remaining` is `stock_quantity - peak concurrent quantity` of the bookings of that item, computed by a sweep over intervals each expanded by `rules.buffer/2` on both sides (design D8), and MUST report available when `remaining >= requested`. Only bookings for the same item code count. A `Booking(code, item_code, quantity, start, end, status)` consumes stock when its status is pending or confirmed; cancelled bookings are ignored by the domain itself. Sequential bookings that do not overlap one another are NOT summed (peak, not sum), and the result does not depend on the input order.
 
 #### Scenario: Free calendar
 - Given an item with stock 4 and no bookings
@@ -51,7 +51,7 @@ Time ranges MUST be half-open `[start, end)` over timezone-aware datetimes. Naiv
 - Then a domain validation error is raised
 
 ### Requirement: Buffer around existing bookings
-Two uses of one unit MUST be at least `buffer` apart. This is implemented by expanding every interval, reservations and the request alike, by `buffer/2` on each side and testing half-open overlap. The buffer lives in `AvailabilityRules` (default 2 hours) and MUST be a non-negative whole number of minutes; buffer 0 gives pure interval overlap.
+Two uses of one unit MUST be at least `buffer` apart. This is implemented by expanding every interval, bookings and the request alike, by `buffer/2` on each side and testing half-open overlap. The buffer lives in `AvailabilityRules` (default 2 hours) and MUST be a whole number of minutes within 0 and 7 days; buffer 0 gives pure interval overlap.
 
 #### Scenario: Back-to-back with zero buffer
 - Given a booking `[10:00, 14:00)`, buffer 0, stock 1
@@ -92,7 +92,7 @@ Bookings and requests spanning multiple days MUST be handled as single continuou
 - Then the item is available
 
 ### Requirement: Package availability
-A package MUST be available for quantity `q` over an interval only if every member item is available for `member_quantity * q` over that interval. The result MUST identify the limiting items (those that fail) and the remaining quantity per member. Requested items and packages in the same request that share a member item MUST have their quantities aggregated before the check.
+A package MUST be available for quantity `q` over an interval only if every member item is available for `member_quantity * q` over that interval. The `AvailabilityReport` MUST identify the limiting items (`shortages`, each with `requested`, `remaining` and `shortfall`) and list every checked item sorted by code. Requested items and packages in the same request that share a member item MUST have their quantities aggregated before the check.
 
 #### Scenario: All members available
 - Given a package of 2 speakers and 1 mixer, with ample stock
@@ -110,17 +110,12 @@ A package MUST be available for quantity `q` over an interval only if every memb
 - Then it is unavailable (4 needed, 3 in stock)
 
 ### Requirement: Availability property-based invariants
-Property-based tests MUST verify: remaining quantity never exceeds stock; adding a reservation never increases remaining quantity; availability agrees with an independent brute-force slot-count oracle; a larger buffer never makes an unavailable request available; shifting all intervals by the same offset does not change the result; and a request entirely outside every buffered booking is available whenever stock >= quantity.
-
-#### Scenario: Properties hold
-- Given generated bookings, intervals and buffers
-- When the property suite runs
-- Then no counterexample is found
+REMOVED (scope cut 2): no Hypothesis and no brute-force oracle. The contract is pinned by table-driven boundary tests with explicit cases instead (buffer edges to the second, overlap shapes, multi-day, offsets, peak vs sum, input-order independence, packages).
 
 ### Requirement: Availability use case and port
-The `application/` layer MUST provide a use case that loads reservations through the `BookingRepository` port for the required item codes over `[start - buffer, end + buffer)` and delegates to the pure function. The domain function MUST NOT access the repository.
+The `application/` layer MUST provide a use case that loads bookings through the `BookingRepository` port for the required item codes over `[start - buffer, end + buffer)` and delegates to the pure function. The domain function MUST NOT access the repository.
 
 #### Scenario: Use case with fake repository
 - Given an in-memory fake booking repository
 - When the use case checks an item and interval
-- Then the result equals the pure function applied to the fake's reservations
+- Then the result equals the pure function applied to the fake's bookings

@@ -49,7 +49,7 @@ Schema MUST be created by Alembic revisions numbered after `0001_baseline` (`000
 - Then all five tables are empty
 
 ### Requirement: Repository ports in the application layer
-`application/` MUST define two Protocol ports: `CatalogRepository.get_catalog() -> Catalog` (whole catalog snapshot) and `BookingRepository.find_reservations(item_codes, window_start, window_end)` (reservations of blocking bookings only). Ports MUST use domain types, MUST NOT import SQLAlchemy, FastAPI or adapters, and use cases MUST depend only on ports. The architecture test (`test_architecture.py`) MUST keep passing.
+`application/` MUST define two Protocol ports: `CatalogRepository.get_catalog() -> Catalog` (whole catalog snapshot) and `BookingRepository.find_reservations(item_codes, window_start, window_end)` (returns item-level `Booking` values; blocking ones at least, the domain ignores cancelled). Ports MUST use domain types, MUST NOT import SQLAlchemy, FastAPI or adapters, and use cases MUST depend only on ports. The architecture test (`test_architecture.py`) MUST keep passing.
 
 #### Scenario: Dependency rule
 - Given the new modules
@@ -67,7 +67,7 @@ Schema MUST be created by Alembic revisions numbered after `0001_baseline` (`000
 #### Scenario: Bookings by interval
 - Given bookings inside and outside a window
 - When the booking adapter is queried for item codes and a window
-- Then it returns one `Reservation` per booking item of every pending or confirmed booking intersecting the window (the use case passes the window widened by the buffer)
+- Then it returns one `Booking` (with its status and a `code` matching the validated pattern) per booking item of every pending or confirmed booking intersecting the window (the use case passes the window widened by the buffer)
 
 ### Requirement: DB test policy
 Tests needing a database MUST skip cleanly when `DATABASE_URL_TEST` is unset and MUST fail (never skip) when it is set but unreachable. Tests MUST NOT target a production database.
