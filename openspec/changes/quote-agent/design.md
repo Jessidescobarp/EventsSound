@@ -726,3 +726,19 @@ Per-PR manual tasks for the developer ([M]): `.env.example` lines (Q6b, Q10a), G
 12. Verification cannot detect an invented equipment name that is not in the catalog (D25.7); the FACTS-only draft prompt and the template fallback bound the exposure.
 13. Public Swagger plus a public LLM endpoint advertises the attack surface; accepted by the developer for the domain API, and here backed by caps, limits and the budget.
 14. Open questions still at recommended defaults (not confirmed): provider/model/monthly budget, stateless conversation, Spanish proposal, LangSmith optional, no quote persistence. Changing 3 (stateful) or 6 (persist quotes) adds a table, retention and a PII surface and invalidates parts of D5/D28.
+
+## 20. Implementation notes: G2a (keyword search and tools)
+
+Delivered as one PR (`feat/agent-search-tools`) instead of Q3a + Q3b. Deviations from the sketches above:
+- `SearchHit` carries `kind, code, rank, keyword_score, vector_similarity` (as in section 3); names, categories and prices are NOT in the hit: `buscar_equipamiento` joins them from the `Catalog`, so retrieval can never return a price of its own. This supersedes the `SearchHit(code, name, category, unit_price, score, kind)` sketch of the equipment-retrieval spec.
+- The port is batched (`search(queries, category, limit)` returns one `SearchResult` per query). When a category is given, packages are excluded (they have no category), so "all hits belong to the category" holds.
+- `ToolError` has a fourth, optional field `subject`, set only for `unknown_code` (a catalog-code-shaped string that passed the same regex as every code), because the spec asks the error to name the code while forbidding free user text.
+- Rejected tool calls (unknown name or invalid arguments) also consume the per-request call budget; exceeding it raises `ToolBudgetExceeded` (not a `ToolError`, because it stops the pipeline).
+- `container.py` is untouched: the executor takes injected callables, and the first consumer (the graph, Q4/Q6b) will wire them. The deterministic acceptance rule of D23 belongs to `resolve_items` and is not built here.
+- Keyword recall@5 on the seed catalog is checked by `test_keyword_recall_at_5_on_the_seed_catalog` (19 Spanish queries); the full eval harness (Q8) will reuse those cases.
+- The keyword adapter is named `KeywordSearch` (the spec says `KeywordEquipmentSearch`); the `led` synonym of D23 was left out on purpose, because `led` appears in unrelated names ("Luz LED", "Pantalla LED") and would merge them. Number words (`dos`, `tres`, ...) are stopwords. Argument validation of the port lives in `adapters/search/validation.py`, shared by the future vector adapter.
+- Ties are broken items first, then by ascending code: package documents contain their members' names, so without this a package outranks the item it contains on every exact match and the D23 acceptance rule would always see a tie.
+- `buscar_equipamiento` describes a package with `base_price_cop` (undiscounted, per day) and `discount_bps`, NOT with `unit_price_cop`: a package has no unit price, and only `calcular_precio` may produce a price the model quotes. Hits missing from the freshly loaded catalog are skipped (the index is a snapshot).
+- Only `InvalidEventRequest`, `InvalidAvailability` and `InvalidMoney` mean "invalid arguments"; any other domain error comes from stored or system data and is `internal`. Datetimes must match a strict ISO-8601 pattern with an offset and must not overflow when converted to UTC.
+- The money-arithmetic scan is a heuristic (AST, names such as `amount`, `unit_price`, `total`), not a proof: it does not follow aliases. `ToolExecutor` is per request and not thread-safe.
+
