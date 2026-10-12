@@ -8,9 +8,9 @@ Change: quote-domain-core. Read-only, unauthenticated, synthetic data, no LLM su
 `GET /catalog/items` MUST return HTTP 200 with a JSON object `{"items": [...]}` ordered by `code`. Each element MUST contain `code`, `name`, `category`, `stock_quantity` and `unit_price_cop` (integer). It MUST NOT expose database `id` values or any internal field. A Pydantic v2 response model MUST define the shape.
 
 #### Scenario: Seeded catalog
-- Given a database seeded with 30 items
+- Given a database seeded with 20 items
 - When `GET /catalog/items` is called
-- Then the response is 200 with 30 items, ordered by `code`, each with integer `unit_price_cop`
+- Then the response is 200 with 20 items, ordered by `code`, each with integer `unit_price_cop`
 
 #### Scenario: Empty database
 - Given a migrated database with no rows

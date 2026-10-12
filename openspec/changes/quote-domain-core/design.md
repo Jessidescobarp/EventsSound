@@ -1,6 +1,6 @@
 # Design: quote-domain-core (P1 Domain core)
 
-> **Scope cuts (2026-10-12):** this design was written for the full 11-PR plan. Where it conflicts with `tasks.md` section "Scope cuts and decisions (2026-10-12)", `tasks.md` wins. Affected: Hypothesis/property tests (D19, D20) replaced by table-driven tests; `booking_items` table (D10) dropped for a flat `bookings` table; seed 20 items / 4 packages (D13); seed CLI keeps only `--confirm` and the remote guard (D14); `Quote` versioning is a single `version` field (D7); OpenAPI/Swagger is public in production (D15/D17); use cases ship inside the API PR. The design body below is intentionally not rewritten.
+> **Scope cuts (2026-10-12):** this design was written for the full 11-PR plan. Where it conflicts with `tasks.md` section "Scope cuts and decisions (2026-10-12)", `tasks.md` wins. Affected: Hypothesis/property tests (D19, D20) replaced by table-driven tests; `booking_items` table (D10) dropped for a flat `bookings` table; seed 20 items / 4 packages (D13); seed CLI keeps only `--confirm` and the remote guard (D14); `Quote` versioning is a single `version` field (D7); OpenAPI/Swagger is public in production (D15/D17); use cases ship inside the API PR. The design body below is intentionally not rewritten, EXCEPT the persistence parts (layout, D9-D11, section 9 with D13-D14, the fixtures in D19), which were rewritten on 2026-10-12 to match the delivered persistence PR (B1+B2+B3 consolidated).
 
 Inputs: `proposal.md` (same folder, including its Decisions section), `openspec/config.yaml`, `AGENTS.md`, `documentacion/{architecture,decisions}.md`, the P0 backend and the five project skills.
 Scope: architecture only. No application code is written in this phase of SDD.
@@ -41,20 +41,21 @@ backend/src/eventssound/
                        available_units, check_availability, check_request_availability, required_units
   application/
     ports.py           (existing) + CatalogRepository, BookingRepository
-    errors.py          RepositoryUnavailable
+    errors.py          RepositoryUnavailable, InvalidStoredData
+    booking_query.py   ReservationQuery (validated input of find_reservations, shared by every implementation)
     catalog.py         list_catalog(catalog_repo) -> Catalog
     pricing.py         price_quote(request, catalog_repo, rules) -> Quote
     availability.py    check_event_availability(request, catalog_repo, booking_repo, rules) -> AvailabilityReport
   adapters/db/
-    models.py          5 SQLAlchemy models on Base
+    models.py          4 SQLAlchemy models on Base (flat bookings)
     catalog_repository.py   SqlAlchemyCatalogRepository
     booking_repository.py   SqlAlchemyBookingRepository
-    seed_data.py       SEED_ITEMS, SEED_PACKAGES (domain entities, pure data)
-    seed.py            seed_catalog(session_factory, items, packages) -> SeedResult
+    seed_data.py       SEED_ITEMS (20), SEED_PACKAGES (4), SEED_BOOKINGS (demo, domain values, pure data)
+    seed.py            seed_catalog(session_factory, items, packages, bookings=()) -> SeedResult
   entrypoints/
     cli/__init__.py, cli/seed_catalog.py   python -m eventssound.entrypoints.cli.seed_catalog
     api/schemas.py, api/routes/catalog.py, api/container.py (extended), api/app.py (extended)
-backend/migrations/versions/0002_catalog_tables.py, 0003_booking_tables.py
+backend/migrations/versions/0002_catalog_and_bookings.py
 ```
 
 ### D1. Seed is a `python -m` module inside the package, not `backend/scripts/`
@@ -225,43 +226,41 @@ Semantics worth stating: back-to-back events are allowed only if the gap is `>= 
 ### D9. SQL strategy: coarse overlap filter in SQL, exact computation in the domain
 The adapter returns candidates with an indexed range predicate; the sweep runs in Python.
 ```sql
-SELECT i.code, bi.quantity, b.starts_at, b.ends_at
-FROM booking_items bi
-JOIN bookings b        ON b.id = bi.booking_id
-JOIN equipment_items i ON i.id = bi.equipment_item_id
-WHERE i.code = ANY(:codes)
-  AND b.status IN ('pending', 'confirmed')
-  AND b.starts_at < :window_end AND b.ends_at > :window_start
+SELECT booking_code, item_code, quantity, starts_at, ends_at, status
+FROM bookings
+WHERE item_code = ANY(:codes)
+  AND status IN ('pending', 'confirmed')
+  AND starts_at < :window_end AND ends_at > :window_start
+ORDER BY starts_at, booking_code, item_code
 ```
+The flat table keeps this a single-table select (no join).
 The use case passes `window = [start - buffer, end + buffer)`. Why not SQL-only:
 - `SUM(quantity)` over overlapping rows counts reservations that overlap the window but not each other, so it overstates demand (two sequential 1-unit bookings inside a long request would look like 2 concurrent). Computing true peak concurrency in SQL needs a window-function sweep over event rows, which is harder to read and to test.
 - A Postgres `tstzrange` + GiST `EXCLUDE` constraint is perfect for "one resource, no overlap" but cannot express stock `> 1`.
 - Keeping the algorithm in the domain gives one implementation shared by the API, the P2 agent tool and the Hypothesis oracle test, with zero database in the property tests.
-Cost: the number of rows fetched equals the bookings near the window (tens at MVP volume). Index: `ix_bookings_starts_at` on `(starts_at, ends_at)` plus `ix_booking_items_equipment_item_id` (section 7). A GiST range index is premature.
+Cost: the number of rows fetched equals the bookings near the window (tens at MVP volume). Index: `ix_bookings_item_code` on `(item_code, starts_at, ends_at)` (section 7). A GiST range index is premature.
 
 ## 7. Database schema
 
 Conventions applied: plural snake_case tables, singular columns, `id` PK, `<entity>_id` FKs, `*_at` timezone-aware, constraint and index names generated by `NAMING_CONVENTION` (check constraints carry a short `name=`), models subclass `Base` and live only in `adapters/db/`.
 
-### D10. Five tables, not four
-The proposal names `equipment_items, service_packages, package_items, bookings`. With only a `bookings` table each row would have to carry one `equipment_item_id` and `quantity`, so one real-world booking becomes N unrelated rows, and the P2+ "pending booking from a quote" change would need an expand/contract migration to introduce the header. Decision: add `booking_items` now (booking header + lines, mirroring `service_packages` + `package_items`). Cost: one small table and ~30 lines in PR B1. Flagged in Risks. If the developer rejects it, the fallback is a single flat `bookings` table with `(equipment_item_id, quantity, starts_at, ends_at, status)`; the repository port and the domain are unaffected.
+### D10. Four tables with a FLAT `bookings` (supersedes the five-table proposal)
+The earlier draft added a `booking_items` child table. Scope cut 3 (2026-10-12) replaced it with a flat `bookings` table: one row per equipment item per booking, `(booking_code, item_code)` unique. It mirrors the domain `Booking(code, item_code, quantity, start, end, status)` one to one, keeps the availability query a single-table select and needs no header row. Cost: a booking header (customer, totals) is not modelled; when the P2+ "pending booking from a quote" change needs one, it adds a header table with an expand/contract migration. `bookings.item_code` references `equipment_items.code` (unique), not the surrogate id, so the availability query needs no join; package lines still reference ids.
 
 | Table | Columns | Constraints and indexes |
 | ----- | ------- | ----------------------- |
 | `equipment_items` | `id` BIGINT identity PK; `code` VARCHAR(64) NOT NULL; `name` VARCHAR(120) NOT NULL; `category` VARCHAR(16) NOT NULL; `stock_quantity` INTEGER NOT NULL; `unit_price_cop` BIGINT NOT NULL; `created_at`, `updated_at` TIMESTAMPTZ NOT NULL DEFAULT now() | UNIQUE `code`; CHECK `category_valid` (`category IN (...)`); CHECK `stock_nonnegative`; CHECK `unit_price_nonnegative` |
 | `service_packages` | `id` PK; `code` VARCHAR(64) NOT NULL; `name` VARCHAR(120) NOT NULL; `discount_bps` INTEGER NOT NULL DEFAULT 0; `created_at`, `updated_at` | UNIQUE `code`; CHECK `discount_range` (`0..10000`) |
 | `package_items` | `id` PK; `package_id` BIGINT NOT NULL; `equipment_item_id` BIGINT NOT NULL; `quantity` INTEGER NOT NULL | UNIQUE (`package_id`, `equipment_item_id`); FK `package_id` -> `service_packages.id` ON DELETE CASCADE; FK `equipment_item_id` -> `equipment_items.id` ON DELETE RESTRICT; CHECK `quantity_positive`; index on `equipment_item_id` (reverse lookup; `package_id` is covered by the unique constraint) |
-| `bookings` | `id` PK; `starts_at`, `ends_at` TIMESTAMPTZ NOT NULL; `status` VARCHAR(16) NOT NULL DEFAULT `'pending'`; `created_at`, `updated_at` | CHECK `ends_after_starts` (`ends_at > starts_at`); CHECK `status_valid`; index on (`starts_at`, `ends_at`) |
-| `booking_items` | `id` PK; `booking_id` BIGINT NOT NULL; `equipment_item_id` BIGINT NOT NULL; `quantity` INTEGER NOT NULL | UNIQUE (`booking_id`, `equipment_item_id`); FK `booking_id` -> `bookings.id` ON DELETE CASCADE; FK `equipment_item_id` -> `equipment_items.id` ON DELETE RESTRICT; CHECK `quantity_positive`; index on `equipment_item_id` |
+| `bookings` | `id` BIGINT identity PK; `booking_code` VARCHAR(64) NOT NULL; `item_code` VARCHAR(64) NOT NULL; `quantity` INTEGER NOT NULL; `starts_at`, `ends_at` TIMESTAMPTZ NOT NULL; `status` VARCHAR(16) NOT NULL DEFAULT `'pending'`; `created_at`, `updated_at` | UNIQUE (`booking_code`, `item_code`); FK `item_code` -> `equipment_items.code` ON DELETE RESTRICT; CHECK `quantity_positive`; CHECK `ends_after_starts` (`ends_at > starts_at`); CHECK `status_valid` (`pending`, `confirmed`, `cancelled`); index `ix_bookings_item_code` on (`item_code`, `starts_at`, `ends_at`) |
 
-Money columns are `*_cop` BIGINT (decision 1); `_bps` is basis points. `category` and `status` are `VARCHAR + CHECK`, not native PG ENUM types: adding a value to an ENUM and dropping the type on downgrade are the painful parts of migrations; the CHECK is dropped and recreated in a normal revision. ON DELETE policy: children owned by a parent (`package_items`, `booking_items`) cascade; references to catalog items are `RESTRICT` so an item with history cannot be deleted by accident (catalog rows are retired by a later `is_active` column, not deleted; not needed in P1, so not added). `updated_at` is set by `onupdate=func.now()` in the model and explicitly in the seed upsert.
+Money columns are `*_cop` BIGINT (decision 1); `_bps` is basis points. `category` and `status` are `VARCHAR + CHECK`, not native PG ENUM types: adding a value to an ENUM and dropping the type on downgrade are the painful parts of migrations; the CHECK is dropped and recreated in a normal revision. ON DELETE policy: children owned by a parent (`package_items`) cascade; references to catalog items are `RESTRICT` so an item with history cannot be deleted by accident (catalog rows are retired by a later `is_active` column, not deleted; not needed in P1, so not added). `updated_at` is set by `onupdate=func.now()` in the model and explicitly in the seed upsert.
 
-### D11. Migrations: two reversible, hand-written revisions, schema only
-- `0002_catalog_tables`: `equipment_items`, `service_packages`, `package_items` (+ their indexes). `down_revision = "0001"`. `downgrade()` drops `package_items`, `service_packages`, `equipment_items` in FK order.
-- `0003_booking_tables`: `bookings`, `booking_items`. `downgrade()` drops `booking_items` then `bookings`.
-One concern per revision (catalog vs reservations), one head. Written by hand after `alembic revision --autogenerate` for a draft (skill: review autogenerate by hand), with explicit `sa.CheckConstraint(..., name="...")`. Alembic builds `op.create_table` constraint names from `target_metadata.naming_convention`, which `migrations/env.py` already passes, so the names in the database equal the model names. The migrations hardcode literal category/status strings (revisions are frozen history and must not import from application code).
+### D11. Migration: one reversible, hand-written revision, schema only
+- `0002_catalog_and_bookings` (`down_revision = "0001"`): `equipment_items`, `service_packages`, `package_items`, `bookings` and their indexes. `downgrade()` drops `bookings`, `package_items`, `service_packages`, `equipment_items` in FK order. One revision because the four tables are one deployable unit and one head keeps the history simple.
+Drafted from `alembic revision --autogenerate` and then written by hand (skill: review autogenerate by hand). Every constraint and index name is literal, wrapped in `op.f(...)` so Alembic never re-applies the naming convention: the revision stays frozen history even if the convention or the models change later, and the names equal the model names (pinned by the drift test and the naming test). The category/status value lists are literal strings for the same reason (revisions must not import application code).
 `migrations/env.py` gets `import eventssound.adapters.db.models  # noqa: F401`. Without it `Base.metadata` is empty in the Alembic process and autogenerate would propose dropping the tables.
-Tests (all under `DATABASE_URL_TEST`): upgrade to head creates exactly the five tables; downgrade to `0002`, to `0001` and to base each leave the expected set; upgrade/downgrade/upgrade round trip; named constraints exist (`uq_equipment_items_code`, `ck_equipment_items_stock_nonnegative`, `fk_package_items_equipment_item_id_equipment_items`); and a drift test using `alembic.autogenerate.compare_metadata` that asserts an empty diff between the migrated database and `Base.metadata` (guards model/migration divergence).
+Tests (all under `DATABASE_URL_TEST`, `tests/integration/test_catalog_schema.py`): upgrade to head creates exactly the four tables and they are empty; downgrade to `0001` and to base leave none; upgrade/downgrade/upgrade round trip; repeat upgrade is a no-op; the expected constraint and index names exist and all follow the `pk_/fk_/uq_/ck_/ix_` prefixes; every CHECK, UNIQUE, FK (RESTRICT and CASCADE) is exercised with an invalid row; a UTC-5 timestamp round-trips as the same instant; a drift test using `alembic.autogenerate.compare_metadata` asserts an empty diff between the migrated database and `Base.metadata`; and a DB-free test asserts that `migrations/env.py` imports the models module.
 `start.sh` runs `alembic upgrade head` on every deploy, so merging B1 creates empty tables in Neon automatically; harmless (schema only). The seed never runs automatically (D14).
 
 ## 8. Application layer
@@ -295,39 +294,40 @@ Neither `price_quote` nor `check_event_availability` is exposed over HTTP in P1 
 
 ## 9. Adapters
 
-- `models.py`: `EquipmentItemModel`, `ServicePackageModel`, `PackageItemModel`, `BookingModel`, `BookingItemModel` (SQLAlchemy 2.0 `Mapped[...]` / `mapped_column`, `DateTime(timezone=True)`, `BigInteger`, `relationship` only where the repository needs it: `ServicePackageModel.lines` with `selectinload`). Class names do not collide with domain names.
-- `SqlAlchemyCatalogRepository(session_factory)`: `with factory() as session`, two `select` statements ordered by `code`, mapped to domain entities in private `_to_domain` functions (a bad row, for example an unknown category, raises the domain validation error and surfaces as a 500, never silently skipped).
-- `SqlAlchemyBookingRepository(session_factory)`: the SQL in D9 via SQLAlchemy Core expressions, `status` filter from `BookingStatus.blocking()`, returns `Booking`s (the booking `code` must match the validated pattern `[A-Za-z0-9_-]{1,64}`; a bad row raises the domain error). Read-only; no commit.
-- Both wrap `SQLAlchemyError` into `RepositoryUnavailable` (`raise ... from None` to avoid leaking the driver message).
+- `models.py`: `EquipmentItemModel`, `ServicePackageModel`, `PackageItemModel`, `BookingModel` (SQLAlchemy 2.0 `Mapped[...]` / `mapped_column`, `DateTime(timezone=True)`, `BigInteger`, `relationship` only where needed: `ServicePackageModel.lines` loaded with `selectinload`). Class names do not collide with domain names.
+- `SqlAlchemyCatalogRepository(session_factory)`: `with factory() as session`, one `REPEATABLE READ` snapshot for two `select` statements ordered by `code` (items, then packages with their lines), mapped to domain entities in a private `_to_domain` (lines sorted by item code). A bad row (unknown category, malformed code, absurd price, dangling line) raises `InvalidStoredData` carrying only the generic domain message, never a raw `ValueError`/`KeyError`; it is never skipped silently.
+- `SqlAlchemyBookingRepository(session_factory)`: validates the input through `ReservationQuery` first (`InvalidAvailability` before any storage access; an empty code set returns `()` without a query), then the SQL in D9 via SQLAlchemy Core expressions (selecting columns, so ORM objects never leave the adapter), `status` filter from `BookingStatus.blocking()`, deterministic order. `booking_from_row` maps one row to a `Booking`: the booking `code` must match `[A-Za-z0-9_-]{1,64}`, the item code the catalog pattern, quantity is a real `int`, instants are tz-aware and the status is a `BookingStatus`; anything else raises `InvalidStoredData`. Read-only; no commit.
+- Both wrap `SQLAlchemyError` into `RepositoryUnavailable("... storage unavailable")` with `raise ... from None`; tests assert that neither the message nor the formatted traceback contains the user, password, host or database name of an unreachable URL.
 
 ### D13. Seed: idempotent upsert keyed on `code`, guarded, never part of a migration
-`seed_catalog(session_factory, items, packages) -> SeedResult(items, packages)` runs in one transaction (commit explicitly, roll back on error):
+`seed_catalog(session_factory, items, packages, bookings=()) -> SeedResult(items, packages, bookings)` (counts of definitions upserted) validates its input first (collections of the right types, never a bare string; `Catalog(items, packages)` for duplicate codes and dangling references; every booking references a seeded item and `(code, item_code)` is unique; failures raise a domain error and write nothing), then runs in one transaction via `session_factory.begin()` (commit on success, roll back on error; `SQLAlchemyError` becomes `RepositoryUnavailable`):
 - Items: `INSERT ... ON CONFLICT (code) DO UPDATE SET name, category, stock_quantity, unit_price_cop, updated_at = now()` (`sqlalchemy.dialects.postgresql.insert`; the stack is Postgres-only, so a dialect-specific upsert is atomic and shorter than select-then-update).
 - Packages: upsert on `code`; resolve item ids by code; upsert `package_items` on (`package_id`, `equipment_item_id`); delete `package_items` of that package whose item is not in the seed definition (so editing a package definition converges).
-- Never deletes rows absent from the seed data (it cannot destroy data a developer added by hand).
-- Running it twice yields identical row counts and identical content (tested).
+- Demo bookings: upsert on (`booking_code`, `item_code`), restoring quantity, interval and status. Only the bookings in the definition are ever written.
+- Never deletes rows absent from the seed data (it cannot destroy data a developer added by hand) and never touches other bookings.
+- Running it twice yields identical row counts and identical content, `created_at` included (tested).
 
-Seed data (`seed_data.py`, compact helper `_item(code, name, category, stock, price)`; prices multiples of 1000, stock 1-24, Spanish `name`, English snake_case `code` with a category prefix):
+Seed data (`adapters/db/seed_data.py`, compact helper `_item(code, name, category, stock, price)`; prices multiples of 1000, stock 2-24 except a few scarce items, Spanish `name`, English snake_case `code` with a category prefix):
 | Category | Count | Outline |
 | -------- | ----- | ------- |
-| sound | 10 | active speakers 12"/15", subwoofer 18", line-array module, stage monitor, 16-ch mixer, wired mic, wireless mic, speaker stand, cable snake |
-| lighting | 8 | LED par, moving head spot, moving head wash, beam, laser, strobe, DMX controller, light truss tower |
-| dj | 4 | DJ controller, CDJ pair, DJ mixer, DJ booth/table |
-| stage | 3 | 2x1 m stage module, skirting set, access stairs |
-| effects | 3 | fog machine, haze machine, cold-spark fountain |
-| video | 2 | LED screen module 3x2 m, projector with screen |
-| **Total** | **30** | |
+| sound | 7 | active speakers 12"/15", subwoofer 18", line-array module, stage monitor, 16-channel console, wireless mic |
+| lighting | 5 | LED par, moving head spot, moving head wash, strobe, DMX controller |
+| dj | 3 | DJ controller, CDJ pair, DJ mixer |
+| stage | 2 | 2x1 m stage module, access stairs |
+| effects | 2 | fog machine, cold-spark fountain |
+| video | 1 | LED screen 3x2 m |
+| **Total** | **20** | |
 
-Five packages, each 4-8 lines (so each references real items), `discount_bps` between 500 and 1500: `pkg_basic_party` (Fiesta Basica), `pkg_wedding` (Boda), `pkg_corporate` (Evento corporativo), `pkg_dj_night` (Noche DJ), `pkg_concert` (Concierto). The module-level tuples are plain domain entities; a unit test builds `Catalog(SEED_ITEMS, SEED_PACKAGES)` (validates references and uniqueness), asserts 30 / 5 and prices multiple of 1000, and runs `calculate_price` on a sample request so the data and the oracle are tested together.
+Four packages, each 5-6 lines (so each references real items), `discount_bps` between 500 and 1500: `pkg_basic_party` (Fiesta Basica), `pkg_wedding` (Boda), `pkg_corporate` (Evento corporativo), `pkg_dj_night` (Noche DJ). Five demo bookings (`DEMO-001`..`DEMO-004`, Saturday 2026-11-14 and 2026-11-21 in Bogota time) mix confirmed, pending and cancelled statuses, so the availability demo shows reduced stock where bookings block and full stock where one is cancelled. The module-level tuples are plain domain entities; a unit test builds `Catalog(SEED_ITEMS, SEED_PACKAGES)` (validates references and uniqueness), asserts 20 / 4, price multiples of 1000 and slug codes, runs `calculate_price` on a sample request per package so the data and the oracle are tested together, and checks `check_availability` against the demo bookings.
 
 ### D14. Seed guard (`entrypoints/cli/seed_catalog.py`)
-`main(argv, settings=None, session_factory=None) -> int` (injectable, so tests never touch a real database or the environment):
-1. No `--confirm`: print `dry run: would upsert 30 items and 5 packages`, exit 2, no connection opened.
-2. Target classification uses `sqlalchemy.engine.make_url(url).host`: local = `{"localhost", "127.0.0.1", "::1", "db"}` or no host (unix socket). `"db"` mirrors `LOCAL_HOSTS` in `test_env_example.py` (compose service name).
-3. Non-local host, or `APP_ENV == "production"`, requires `settings.allow_remote_seed` (env `ALLOW_REMOTE_SEED=1`); otherwise exit 3 with `refusing to seed a non-local target; set ALLOW_REMOTE_SEED=1 to override`.
-4. Output never contains the URL, the host, the user or exception text from the driver; only counts and the local/remote classification.
-5. Only `DATABASE_URL` from `Settings` is used; `.env*` files are never opened by this code (Settings' own optional root `.env` loading is unchanged and not read by tooling).
-`ALLOW_REMOTE_SEED` is a `Settings` field (`allow_remote_seed: bool = False`, alias `ALLOW_REMOTE_SEED`) because the coding skill forbids `os.environ` outside `Settings`. Consequence: `test_every_setting_is_documented_in_env_example` requires a placeholder line `ALLOW_REMOTE_SEED=0` in `.env.example` in the same commit (apply agent must be allowed to edit that committed, placeholders-only file; it must never open `.env`, `.env.local` or `.neon`). Rejected: a `--allow-remote` CLI flag (the proposal fixed the env var, and a flag in shell history is easier to paste into the wrong terminal than an explicit env var).
+`main(argv=None, settings=None, session_factory=None, environ=None) -> int` (injectable, so tests never touch a real database or the real environment). `ALLOW_REMOTE_SEED` is read ONLY here, from `environ` (default `os.environ`), compared with exactly `"1"`; it is NOT a `Settings` field, so `config.py` and `.env.example` are unchanged (developer rule, supersedes the earlier draft that added `Settings.allow_remote_seed`). This is the one documented exception to "no `os.environ` outside Settings": it is an operator override of a script, not application configuration.
+1. No `--confirm`: print `dry run: would upsert 20 items, 4 packages and 5 demo bookings. Pass --confirm to write.`, exit 2, before loading `Settings` or building any engine. `--confirm` is the only option (argparse rejects others with exit 2).
+2. Target classification (`is_local_target`) uses `sqlalchemy.engine.make_url(url)`: local = host in `{"localhost", "127.0.0.1", "::1", "db"}` (case-insensitive), a unix-socket directory, or no host. libpq lets the query string override the URL host, so `?host=` values (comma-separated lists too) must all be local, and `?hostaddr=` or `?service=` are always non-local. `"db"` mirrors `LOCAL_HOSTS` in `test_env_example.py` (compose service name).
+3. A non-local target, or `APP_ENV` equal to `production` (trimmed, case-insensitive), requires `environ["ALLOW_REMOTE_SEED"] == "1"` (`"true"`, `"0"`, `""`, `" 1"` all refuse); otherwise exit 3 with `refusing to seed a non-local or production target; set ALLOW_REMOTE_SEED=1 to override`. The check precedes any connection.
+4. Output never contains the URL, the host, the user or exception text from the driver; only counts and the local/remote classification. A missing `DATABASE_URL`, an unparsable or non-PostgreSQL URL, an unavailable database and invalid definitions each give a fixed generic message and exit 1.
+5. Only `DATABASE_URL` and `APP_ENV` from `Settings` are used; `.env*` files are never opened by this code (Settings' own optional root `.env` loading is unchanged and not read by tooling).
+Rejected: a `--allow-remote` CLI flag (a flag in shell history is easier to paste into the wrong terminal than an explicit env var).
 
 ## 10. Entrypoint: catalog API
 
@@ -366,9 +366,9 @@ Required for the new code to be checked, all in the same commit as the code they
 The allowed-set for `adapters` and `entrypoints` is unchanged. `test_layout.py` needs no change.
 
 ### D19. Test infrastructure
-- `tests/integration/test_migrations.py::alembic_config` currently drops only `alembic_version`. With real tables, `test_upgrade_to_head_records_baseline` would leave them behind and the next test's `upgrade` fails with "relation already exists". The reset moves to `tests/conftest.py` as `reset_schema(url)`: `Base.metadata.drop_all` (importing `models`) plus `DROP TABLE IF EXISTS alembic_version`. Rejected: `DROP SCHEMA public CASCADE` (broader blast radius if `DATABASE_URL_TEST` is mis-set; it would also destroy extensions P2 adds).
-- New fixtures in `tests/conftest.py`: `migrated_database` (session scope: reset, `upgrade head`), `session_factory(migrated_database)` (function scope: `TRUNCATE ... RESTART IDENTITY CASCADE` on the five tables, then yields a `sessionmaker`). All depend on `database_url`, so the skip-unset / fail-unreachable rule is inherited. Because migration tests also reset the schema, `migrated_database` must re-run `upgrade head` when the schema is absent: it checks for `equipment_items` per test (cheap) instead of trusting session order.
-- `tests/fakes.py`: `InMemoryCatalogRepository`, `InMemoryBookingRepository` (implement the Protocols, filter by window), `BrokenCatalogRepository` (raises `RepositoryUnavailable`). `tests/strategies.py`: Hypothesis strategies (D20). Both are importable by name (tests are collected in prepend mode with `tests/` on `sys.path`, as `conftest.py` already is); no `__init__.py` is added.
+- `tests/integration/test_migrations.py::alembic_config` used to drop only `alembic_version`. With real tables, `test_upgrade_to_head_records_baseline` would leave them behind and the next test's `upgrade` fails with "relation already exists". The reset moved to `tests/conftest.py` as `reset_schema(url)`: `Base.metadata.drop_all` (importing `models`) plus `DROP TABLE IF EXISTS alembic_version`. Rejected: `DROP SCHEMA public CASCADE` (broader blast radius if `DATABASE_URL_TEST` is mis-set; it would also destroy extensions P2 adds).
+- Fixtures in `tests/conftest.py` (all function scoped and built on `database_url`, so skip-unset / fail-unreachable is inherited): `alembic_config` (reset schema, config bound to the test database), `migrated_database` (`upgrade head`, schema dropped afterwards) and `session_factory` (a `sessionmaker` on `migrated_database`). A fresh migration per test (about 0.3 s) replaced the planned session-scoped fixture with `TRUNCATE`: migration tests reset the schema, so a shared migrated database would depend on test order. `unreachable_session_factory` (connection to a closed port with sentinel credentials, 1 s timeout) backs the "no secrets in errors" tests.
+- `tests/fakes.py`: `InMemoryCatalogRepository`, `InMemoryBookingRepository` (implement the Protocols, validate the query with `ReservationQuery`, filter by item code and half-open window, return every status), `BrokenCatalogRepository` and `BrokenBookingRepository` (raise `RepositoryUnavailable`). `tests/strategies.py`: Hypothesis strategies (D20). Both are importable by name (tests are collected in prepend mode with `tests/` on `sys.path`, as `conftest.py` already is); no `__init__.py` is added.
 - Hypothesis profile registered in `conftest.py`: `settings.register_profile("ci", max_examples=100, deadline=None, derandomize=True)` selected when `CI` is set, a `dev` profile (`max_examples=50`, `deadline=None`) otherwise. `derandomize` keeps CI deterministic; failures reproduce locally with the printed `@reproduce_failure`/seed.
 - Dependencies: `hypothesis>=6.100` in the `dev` group; `tzdata>=2024.1` runtime (D6).
 
@@ -403,9 +403,9 @@ Pricing properties: determinism and invariance under shuffling/duplicate-splitti
 Availability properties: agreement with a brute-force oracle (discretise the window into 30-minute slots, expand intervals by `buffer/2`, count per slot, take the max; independent code path from the sweep, so an off-by-one in either shows up); adding a reservation never increases available units; increasing stock never decreases them; reservations farther than `buffer` from the window are irrelevant; order invariance; request larger than stock is never available.
 
 ## 12. Documentation and skill note
-- `documentacion/decisions.md`: ADR 12 "Money is whole COP pesos" (BIGINT `*_cop`, final rounding to 1000 half-up, why not cents) in PR B1, per the proposal; ADR 13 "Availability computed in the domain" (D8/D9 summary) in PR C2.
+- `documentacion/decisions.md`: ADR 12 "Money is whole COP pesos" (BIGINT `*_cop`, final rounding to 1000 half-up, why not cents), per the proposal (NOT yet written: the persistence PR did not touch `documentacion/`; open item in tasks.md B1.5); ADR 13 "Availability computed in the domain" (D8/D9 summary) in PR C2.
 - `documentacion/architecture.md` (PR C2): domain module list, the two ports, the `quote-domain-core` spec/design links.
-- One-line note in `.claude/skills/database-conventions/SKILL.md` under "Naming" (PR B1): "Money: `*_cents` is the generic example; COP has no practical minor unit, so this project stores whole pesos in `*_cop` BIGINT columns (ADR 12). Never float."
+- One-line note in `.claude/skills/database-conventions/SKILL.md` under "Naming" (PR B1): "Money: `*_cents` is the generic example; COP has no practical minor unit, so this project stores whole pesos in `*_cop` BIGINT columns (see the quote-domain-core design). Never float." Delivered; the reference points at the design until ADR 12 exists.
 - `.claude/skills/design-patterns/SKILL.md` reference to the planned `EquipmentRepository` is updated to `CatalogRepository` / `BookingRepository` (PR C2, one line).
 
 ## 13. PR slicing plan (stacked to main; each PR states start, end, dependencies, follow-up, out-of-scope)
@@ -418,9 +418,9 @@ Honest forecast: the proposal's 3 PRs of about 400 lines under-count. Strict TDD
 | A2 | `feat/quote-domain-rules` | `domain/{event_request,pricing_rules}.py`; tests `test_event_request`, `test_pricing_rules`; `pyproject.toml` (`tzdata`) | ~340 | No |
 | A3 | `feat/quote-domain-calculate-price` | `domain/pricing.py`; `pyproject.toml` (`hypothesis`); `tests/strategies.py`, conftest profiles; tests `test_pricing`, `test_pricing_properties`, `test_quote_contract` | ~420-450 | Borderline. Cut: land `test_pricing_properties.py` and the Hypothesis dependency in an A3b follow-up (~170 lines); A3 keeps table-driven + golden tests |
 | A4 | `feat/quote-domain-availability` | `domain/availability.py`; tests `test_availability`, `test_availability_properties` | ~270 | No |
-| B1 | `feat/quote-persistence-schema` | `adapters/db/models.py`; `0002`, `0003`; `migrations/env.py` import; `conftest` reset + fixtures; `test_migrations.py` fixture change; `test_catalog_schema.py`; ADR 12; skill note | ~370 | No |
+| B1 | `feat/quote-persistence-schema` (delivered together with B2 and B3 as `feat/quote-persistence`, see tasks.md) | `adapters/db/models.py`; `0002_catalog_and_bookings`; `migrations/env.py` import; `conftest` reset + fixtures; `test_migrations.py` fixture change; `test_catalog_schema.py`; ADR 12; skill note | ~370 | No |
 | B2 | `feat/quote-persistence-repositories` | `application/{ports,errors}.py`; `adapters/db/{catalog,booking}_repository.py`; `tests/fakes.py`; `test_catalog_repository.py`, `test_booking_repository.py` | ~320 | No |
-| B3 | `feat/quote-seed` | `adapters/db/{seed_data,seed}.py`; `entrypoints/cli/{__init__,seed_catalog}.py`; `config.py` (+`allow_remote_seed`), `.env.example` line; `test_seed_data`, `test_seed_guard`, `test_seed` | ~420-450 | Yes. Cut: B3a = seed data + upsert + `test_seed_data` + `test_seed` (~280); B3b = CLI, guard, Settings flag, `.env.example`, `test_seed_guard` (~170) |
+| B3 | `feat/quote-seed` | `adapters/db/{seed_data,seed}.py`; `entrypoints/cli/{__init__,seed_catalog}.py` (no `config.py` or `.env.example` change); `test_seed_data`, `test_seed_guard`, `test_seed` | ~420-450 | Yes. Cut: B3a = seed data + upsert + `test_seed_data` + `test_seed` (~280); B3b = CLI, guard, `test_seed_guard` (~170) |
 | C1 | `feat/quote-use-cases` | `application/{catalog,pricing,availability}.py`; `test_use_cases.py` | ~220 | No |
 | C2 | `feat/catalog-api` | `entrypoints/api/{schemas,routes/catalog,container,app}.py`; routes-do-not-import-adapters test; `test_catalog_api`, `test_catalog_api_db`; docs (ADR 13, `architecture.md`, skill line) | ~380 | Borderline. Cut: move the docs edits to a trailing `docs:` commit/PR (~70 lines) |
 

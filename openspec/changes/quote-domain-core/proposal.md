@@ -29,7 +29,7 @@ Hexagonal, inside-out and TDD: domain first (pure, fast tests), then ports and a
 - Availability is a pure function over bookings supplied by a repository port; the use case lives in `application/`.
 
 ## Affected areas
-`backend/src/eventssound/{domain,application,adapters/db,entrypoints/api}`, `backend/migrations/versions/0002-0003`, `backend/scripts/seed_catalog.py` (or `python -m` module), `backend/tests/{unit,integration}`, `backend/pyproject.toml` (Hypothesis dev dep), `documentacion/{architecture,decisions}.md`. The architecture test (`test_architecture.py`) must keep passing; it may need to allow the new `domain` modules (stdlib only).
+`backend/src/eventssound/{domain,application,adapters/db,entrypoints/api}`, `backend/migrations/versions/0002_catalog_and_bookings.py`, `backend/src/eventssound/entrypoints/cli/seed_catalog.py` (`python -m` module), `backend/tests/{unit,integration}`, `backend/pyproject.toml` (Hypothesis dev dep), `documentacion/{architecture,decisions}.md`. The architecture test (`test_architecture.py`) must keep passing; it may need to allow the new `domain` modules (stdlib only).
 Agent/security impact: none now. This change fixes the oracle contract (`Quote` shape and `calculate_price` signature) that P2 tools and P3 evals consume; the API is read-only, unauthenticated, synthetic data, no LLM surface.
 
 ## Rollback

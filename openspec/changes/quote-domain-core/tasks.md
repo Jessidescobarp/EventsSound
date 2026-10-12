@@ -80,6 +80,29 @@ A1 -> A2 -> A3 -> A4 -> B1 -> B2 -> B3 -> C
 
 Roadmap note: after this change comes P2 (AI agent), P3 (evals), P4 (full UI, fully in scope: chat page, proposal view, static pages, minimal JWT login, admin quotes list), then slides and video. The "drop auth/admin" fallback is withdrawn. If time pressure appears, the lever is the number of catalog/pricing refinements and the P3 golden-set size, NOT the P4 scope.
 
+## Consolidated persistence PR (B1+B2+B3, `feat/quote-persistence`, base A4 `feat/quote-domain-availability`)
+
+Process agreed 2026-10-12: fewer, larger PRs (up to ~1,500 real lines acceptable, split above ~2,000), safeguards are CI, an independent fresh-context review and the author's own verification. B1, B2 and B3 were implemented as ONE branch with one commit per work unit (stacked on PR #15):
+
+| Commit | Content | Real lines |
+| ------ | ------- | ---------- |
+| `test(backend): move schema reset to conftest` | `reset_schema`, shared `alembic_config` | 24 |
+| `feat(db): add catalog and flat bookings schema with reversible migration` | models, migration `0002`, `env.py`, schema tests, fixtures | 699 |
+| `docs(skills): note whole-peso money columns in database conventions` | skill line | 1 |
+| `feat(application): add catalog and booking ports with fakes` | ports, errors, `ReservationQuery`, fakes, tests | 294 |
+| `feat(db): add sqlalchemy catalog and booking repositories` | two adapters, DB tests | 558 |
+| `feat(db): add synthetic seed data and idempotent upsert` | seed data, upsert, tests | 620 |
+| `feat(cli): add guarded seed catalog command` | CLI, guard, tests | 423 |
+
+MEASURED: **2,613 changed lines** (2,599 added, 14 deleted; excluding `uv.lock` and `openspec/`): 912 in `src`/`migrations`, 1,700 in `tests`. This is ABOVE the ~2,000 split threshold of the agreed process. The developer decides: ship as one PR with a note, or split at commit boundaries (the commits are independent work units, so the split is a pure cut: PR "schema" = first three commits, ~720; PR "ports and repositories" = next two, ~850; PR "seed" = last two, ~1,040). Estimated before: ~1,120 for B1-B3; real cost is 2.3x because the validation checklist (every invalid case, secret-leak checks, host-classification table) multiplies tests.
+
+Deviations recorded here (also reflected in the specs and design in the same PR):
+- Seed gained demo bookings (`SEED_BOOKINGS`) and the upsert writes only those (keyed by `(booking_code, item_code)`); the earlier statement "never touch bookings" now reads "touch no booking outside the seed definition".
+- `InvalidStoredData` and `ReservationQuery` are new (typed errors for untrusted rows; one validated query value shared by the real adapter and the fake).
+- `ALLOW_REMOTE_SEED` and `APP_ENV=production` handling: production is matched case-insensitively and trimmed; `?host=`, `?hostaddr=` and `?service=` URL overrides are classified (a URL with no host but `?host=remote` would otherwise have looked local).
+- The catalog repository reads inside one `REPEATABLE READ` snapshot (design D12 promised a consistent snapshot).
+- ADR 12 not written (B1.5 open); `documentacion/` untouched.
+
 ## Merge order and MERGE PROCEDURE (avoids the earlier mistake)
 
 Earlier incident: a stacked PR was merged into its parent branch instead of `main`, so the work never reached `main` (AGENTS.md, Conventions). For this chain, follow this for EVERY merge. All steps are [M] (developer) except the verification commands, which the agent can run when asked.
@@ -102,7 +125,7 @@ Earlier incident: a stacked PR was merged into its parent branch instead of `mai
 2. **tzdata (A2)**: runtime dependency (not dev). On Windows there is no system tzdata, so `ZoneInfo("America/Bogota")` fails without it.
 3. **Stdlib-only domain (all PRs touching `domain/`)**: the allowlist test from A1 must stay green; no third-party import in `domain/`.
 4. **conftest reset and models import (B1)**: schema reset lives in `tests/conftest.py` (`reset_schema(url)`: import models, `Base.metadata.drop_all`, `DROP TABLE IF EXISTS alembic_version`; NOT `DROP SCHEMA public CASCADE`); `migrations/env.py` imports `eventssound.adapters.db.models  # noqa: F401`.
-5. **COP vs cents note (B1)**: ONE line in `.claude/skills/database-conventions/SKILL.md` under "Naming": "Money: `*_cents` is the generic example; COP has no practical minor unit, so this project stores whole pesos in `*_cop` BIGINT columns (ADR 12). Never float." Plus ADR 12 in `documentacion/decisions.md`.
+5. **COP vs cents note (B1)**: ONE line in `.claude/skills/database-conventions/SKILL.md` under "Naming": "Money: `*_cents` is the generic example; COP has no practical minor unit, so this project stores whole pesos in `*_cop` BIGINT columns (ADR 12). Never float." Plus ADR 12 in `documentacion/decisions.md` (OPEN: the skill line was delivered, ADR 12 was not; see B1.5).
 
 ## Commit boundaries
 
@@ -117,13 +140,13 @@ Conventional commits, one per work unit, tests in the same commit as the behavio
 | A3 | `feat(domain): add quote types and calculate_price` | A3.1, A3.2 |
 | A3 | `test(domain): pin quote contract and pricing invariants` | A3.3 |
 | A4 | `feat(domain): add availability algorithm` | A4.1, A4.2 |
-| B1 | `test(backend): move schema reset to conftest` | B1.1 |
-| B1 | `feat(db): add catalog and flat bookings schema with reversible migration` | B1.2-B1.4 |
-| B1 | `docs: record whole-peso money decision` (ADR 12 + skill line) | B1.5 |
-| B2 | `feat(application): add catalog and booking ports with fakes` | B2.1 |
-| B2 | `feat(db): add sqlalchemy catalog and booking repositories` | B2.2, B2.3 |
-| B3 | `feat(db): add synthetic seed data and idempotent upsert` | B3.1, B3.2 |
-| B3 | `feat(cli): add guarded seed catalog command` | B3.3, B3.4 |
+| B1 | `test(backend): move schema reset to conftest` (DONE) | B1.1 |
+| B1 | `feat(db): add catalog and flat bookings schema with reversible migration` (DONE) | B1.2-B1.4 |
+| B1 | `docs(skills): note whole-peso money columns in database conventions` (DONE; ADR 12 open) | B1.5 |
+| B2 | `feat(application): add catalog and booking ports with fakes` (DONE) | B2.1 |
+| B2 | `feat(db): add sqlalchemy catalog and booking repositories` (DONE) | B2.2, B2.3 |
+| B3 | `feat(db): add synthetic seed data and idempotent upsert` (DONE) | B3.1, B3.2 |
+| B3 | `feat(cli): add guarded seed catalog command` (DONE) | B3.3, B3.4 |
 | C | `feat(application): add catalog, pricing and availability use cases` | C.1 |
 | C | `feat(api): add read-only catalog routes with public OpenAPI` | C.2-C.5 |
 | C | `test(backend): forbid adapter imports in routes` | C.6 |
@@ -165,29 +188,29 @@ Real size: **649 changed lines** (estimate was 330; tests ~62%). Accepted by the
 
 ## PR B1: Schema, one migration, DB fixtures, flat bookings (`feat/quote-domain-schema`, base A4, ~360 lines)
 
-- [ ] **B1.1 [A]** Move schema reset to `tests/conftest.py` (`reset_schema(url)`, special rule 4) and use it in `tests/integration/test_migrations.py`. Refactor-only; P0 migration tests stay green with `DATABASE_URL_TEST`.
-- [ ] **B1.2 [A]** Tests first, `tests/integration/test_catalog_schema.py` (DB): upgrade head creates exactly four tables (`equipment_items`, `service_packages`, `package_items`, `bookings`); downgrade to `0001` and to base leaves the expected sets; upgrade/downgrade/upgrade round trip; repeat upgrade is a no-op; named constraints exist; integrity errors for negative stock, `ends_at <= starts_at`, quantity <= 0, duplicate code, package item quantity 0; tables empty after migration; tz-aware round trip of a UTC-5 booking; `compare_metadata` drift test (empty diff vs `Base.metadata`); one-head test (DB-free). Fixtures: `migrated_database`, `session_factory` (`TRUNCATE ... RESTART IDENTITY CASCADE`).
-- [ ] **B1.3 [A]** `adapters/db/models.py`: four models on `Base` (BIGINT `*_cop`, `*_bps`, `DateTime(timezone=True)`, named `CheckConstraint`s, `category`/`status` as VARCHAR + CHECK, indexes). Flat `bookings`: `booking_code`, `item_code` (FK to `equipment_items.code`, RESTRICT), `quantity`, `starts_at`, `ends_at`, `status`; index on (`item_code`, `starts_at`, `ends_at`). No `booking_items`.
-- [ ] **B1.4 [A]** ONE migration `migrations/versions/0002_catalog_and_bookings.py` (drafted with autogenerate, hand-edited: explicit constraint names, literal strings, `downgrade()` in FK order, schema only, no seed) and `migrations/env.py` models import (special rule 4).
-- [ ] **B1.5 [A]** Docs (special rule 5): ADR 12 in `documentacion/decisions.md` and the one-line skill note. Last commit of the block.
-- [ ] **B1.6 [A]** PR B1 verification, migration round trip and drift test against a throwaway local Postgres; measurement.
+- [x] **B1.1 [A]** Move schema reset to `tests/conftest.py` (`reset_schema(url)`, special rule 4) and use it in `tests/integration/test_migrations.py`. Refactor-only; P0 migration tests stay green with `DATABASE_URL_TEST`. Commit `test(backend): move schema reset to conftest`. The shared `alembic_config` fixture also moved to `conftest.py`.
+- [x] **B1.2 [A]** Tests first, `tests/integration/test_catalog_schema.py` (DB, 36 tests): upgrade head creates exactly four tables and they are empty; downgrade to `0001` and to base; round trip; repeat upgrade is a no-op; expected constraint and index names exist and follow the prefixes; every CHECK, UNIQUE and FK (RESTRICT and CASCADE) is hit with an invalid row, asserting the constraint name in the error; tz-aware round trip of a UTC-5 booking; `compare_metadata` drift test; DB-free test that `env.py` imports the models module. Fixtures in `conftest.py`: `alembic_config`, `migrated_database`, `session_factory`, all function scoped (a fresh migration per test, about 0.3 s; replaces the planned `TRUNCATE` fixture because migration tests reset the schema).
+- [x] **B1.3 [A]** `adapters/db/models.py`: four models on `Base` (BIGINT `*_cop`, `*_bps`, `DateTime(timezone=True)`, named `CheckConstraint`s, `category`/`status` as VARCHAR + CHECK, indexes). Flat `bookings`: `booking_code`, `item_code` (FK to `equipment_items.code`, RESTRICT), `quantity`, `starts_at`, `ends_at`, `status`; UNIQUE (`booking_code`, `item_code`) (mirrors the domain's `(code, item_code)` uniqueness); index `ix_bookings_item_code` on (`item_code`, `starts_at`, `ends_at`). No `booking_items`.
+- [x] **B1.4 [A]** ONE migration `migrations/versions/0002_catalog_and_bookings.py` (hand-written; every name literal via `op.f`, literal value lists, `downgrade()` in FK order, schema only, no seed) and `migrations/env.py` models import (special rule 4). Commit `feat(db): add catalog and flat bookings schema with reversible migration`.
+- [ ] **B1.5 [A]** Docs (special rule 5). DONE: the one-line skill note (commit `docs(skills): note whole-peso money columns in database conventions`; it points at the quote-domain-core design instead of ADR 12). OPEN: ADR 12 in `documentacion/decisions.md` was NOT written because this PR's allowed file scope excluded `documentacion/`; add it (or fold it into PR C's docs commit) and then change the skill note to cite "ADR 12".
+- [x] **B1.6 [A]** Verification against a throwaway `pgvector/pgvector:pg16` container: upgrade, repeat, downgrade to `0001` and `base`, upgrade again, `alembic heads` single, drift test empty, migration has no `INSERT`, exactly four tables.
 - [ ] **B1.7 [M]** Acknowledge before merging B1: on the next deploy `start.sh` runs `alembic upgrade head` and creates EMPTY tables in Neon (schema only, harmless).
 
 ## PR B2: Ports, repositories, fakes (`feat/quote-domain-repositories`, base B1, ~380 lines)
 
-- [ ] **B2.1 [A]** `application/ports.py` (`CatalogRepository.get_catalog() -> Catalog`, `BookingRepository.find_reservations(item_codes, window_start, window_end) -> Sequence[Booking]`), `application/errors.py` (`RepositoryUnavailable`), `tests/fakes.py` (`InMemoryCatalogRepository`, `InMemoryBookingRepository` filtering by window, `BrokenCatalogRepository`) with a small test that fakes satisfy the Protocols. Architecture test stays green.
-- [ ] **B2.2 [A]** `adapters/db/catalog_repository.py` + `tests/integration/test_catalog_repository.py` (DB): two ordered selects with `selectinload`, private `_to_domain`, `SQLAlchemyError` -> `RepositoryUnavailable` via `raise ... from None`; tests: integer `Money` round trip, package members, ordering, empty catalog, bad category row, DB failure without URL/host in the message. Tests red first.
-- [ ] **B2.3 [A]** `adapters/db/booking_repository.py` + `tests/integration/test_booking_repository.py` (DB): one row = one `Booking` (flat table, no join; maps booking `code` to the validated pattern `[A-Za-z0-9_-]{1,64}` and `status`), `status IN blocking()`, read-only; tests: inside/outside window, cancelled excluded, pending and confirmed included, unknown codes yield nothing, half-open edges. Red first.
-- [ ] **B2.4 [A]** PR B2 verification and measurement.
+- [x] **B2.1 [A]** `application/ports.py` (`CatalogRepository.get_catalog() -> Catalog`, `BookingRepository.find_reservations(item_codes, window_start, window_end) -> Sequence[Booking]`, both `runtime_checkable`), `application/errors.py` (`RepositoryUnavailable`, plus `InvalidStoredData` for stored rows that violate the domain contract), `application/booking_query.py` (`ReservationQuery`: validates and normalizes the query once for every implementation), `tests/fakes.py` (`InMemoryCatalogRepository`, `InMemoryBookingRepository` filtering by item code and half-open window, `BrokenCatalogRepository`, `BrokenBookingRepository`) with `tests/unit/test_repository_ports.py` (fakes satisfy the Protocols, window edges, offsets compared as instants, 11 invalid query cases). Architecture test stays green. Commit `feat(application): add catalog and booking ports with fakes`.
+- [x] **B2.2 [A]** `adapters/db/catalog_repository.py` + `tests/integration/test_catalog_repository.py` (DB): one `REPEATABLE READ` snapshot, two ordered selects with `selectinload`, private `_to_domain`, `SQLAlchemyError` -> `RepositoryUnavailable` via `raise ... from None`; tests: integer `Money` round trip, package members, ordering, empty catalog, bad rows (unknown category with the CHECK dropped, uppercase and short codes, blank name, absurd price, bad package code, empty package) -> `InvalidStoredData`, DB failure with sentinel credentials absent from the message and the traceback.
+- [x] **B2.3 [A]** `adapters/db/booking_repository.py` + `tests/integration/test_booking_repository.py` (DB plus DB-free mapping tests): one row = one `Booking`; `booking_from_row` validates code, item code, quantity (`bool`/`float`/`None` rejected), instants and status and raises `InvalidStoredData`; `status IN blocking()`, read-only, deterministic order; tests: inside/outside window, half-open edges, cancelled excluded, pending and confirmed included, unknown codes and empty collections yield nothing, offsets compared as instants, malformed queries raise `InvalidAvailability` before any storage access. Commit `feat(db): add sqlalchemy catalog and booking repositories`.
+- [x] **B2.4 [A]** Verification (see the consolidated PR section above).
 
 ## PR B3: Seed data 20/4, idempotent upsert, guarded CLI (`feat/quote-domain-seed`, base B2, ~380 lines)
 
-- [ ] **B3.1 [A]** `adapters/db/seed_data.py` (`SEED_ITEMS` 20, `SEED_PACKAGES` 4; Spanish names, English codes; prices multiples of 1000; stock 1-24 with at least one item with stock > 1; packages with 4-6 lines and `discount_bps` 500-1500; categories `sound, lighting, dj, stage, effects, video` all covered; extend by editing this module only) and `tests/unit/test_seed_data.py` (no DB): `Catalog(...)` builds, counts 20/4, slug regex, categories covered, price multiples, `calculate_price` on each package with default rules gives a positive `Quote`. Red first.
-- [ ] **B3.2 [A]** `adapters/db/seed.py` (`seed_catalog(session_factory, items, packages) -> SeedResult`; one transaction, rollback on error; `ON CONFLICT (code) DO UPDATE` via `sqlalchemy.dialects.postgresql.insert`; upsert `package_items`; delete only the package's stale `package_items`; never touch bookings or other rows) and `tests/integration/test_seed.py` (DB): two runs give 20/4 identical, drifted price restored, extra hand-made row survives, bookings untouched. Red first.
-- [ ] **B3.3 [A]** Tests first `tests/unit/test_seed_guard.py` (no DB, no network): without `--confirm` prints the dry-run line, exits 2, never builds an engine; local hosts (`localhost`, `127.0.0.1`, `::1`, `db`, no host) proceed; non-local host refused (exit 3) unless `environ["ALLOW_REMOTE_SEED"] == "1"`; `"true"`, `"0"`, `""` refuse; `APP_ENV=production` also requires `"1"`; check runs before any connection; output never contains the URL, host, user or password (sentinel values).
-- [ ] **B3.4 [A]** `entrypoints/cli/{__init__.py,seed_catalog.py}`: `main(argv, settings=None, session_factory=None, environ=None) -> int`, host classification via `sqlalchemy.engine.make_url(url).host`, only the `--confirm` option. Special rule 1. Do not open `.env*`.
-- [ ] **B3.5 [M]** Contingency: if any task would force an edit to `.env.example` or any `.env*` path, the agent STOPS and the developer applies it. Expected: none. Do NOT add `ALLOW_REMOTE_SEED` to `.env.example` unless `test_env_example.py` is confirmed to tolerate non-`Settings` keys (U3).
-- [ ] **B3.6 [A]** PR B3 verification: `git diff --name-only <base>...HEAD | rg "^\.env"` empty; `git diff <base>...HEAD -- backend/src/eventssound/config.py` empty; measurement.
+- [x] **B3.1 [A]** `adapters/db/seed_data.py` (`SEED_ITEMS` 20, `SEED_PACKAGES` 4, plus `SEED_BOOKINGS` 5 demo rows `DEMO-001..004` mixing confirmed, pending and cancelled; Spanish names, English codes; prices multiples of 1000; stock 2-24 except scarce items; packages with 5-6 lines and `discount_bps` 500-1500; all six categories covered) and `tests/unit/test_seed_data.py` (no DB): `Catalog(...)` builds, counts 20/4, slug `fullmatch`, categories covered, price multiples, `calculate_price` on each package gives a positive rounded `Quote`, demo bookings reference seed items and reduce availability except the cancelled one.
+- [x] **B3.2 [A]** `adapters/db/seed.py` (`seed_catalog(session_factory, items, packages, bookings=()) -> SeedResult(items, packages, bookings)`; typed validation first, one transaction via `session_factory.begin()`; `ON CONFLICT DO UPDATE` via `sqlalchemy.dialects.postgresql.insert`; upserts `package_items` and the demo bookings; deletes only the seeded package's stale `package_items`; touches no other row) and `tests/integration/test_seed.py` (DB): counts, round trip through the catalog repository, two runs identical (including `created_at`), drifted price/stock/discount/line quantity/booking status restored, stray package line removed, hand-made item/package and a real booking survive, rollback on failure part way, 7 invalid definitions write nothing. Commit `feat(db): add synthetic seed data and idempotent upsert`.
+- [x] **B3.3 [A]** `tests/unit/test_seed_guard.py` (no DB, no network; 44 tests): without `--confirm` prints the dry-run line, exits 2, needs neither `Settings` nor an engine; classification table of 19 URLs (local names, case, unix socket, `?host=`, comma lists, `?hostaddr=`, `?service=`, look-alike hosts such as `localhost.evil.example.com`); local hosts proceed; remote refused (exit 3) unless `environ["ALLOW_REMOTE_SEED"] == "1"` (`"true"`, `"0"`, `""`, `"yes"`, `" 1"`, `"1 "`, `"11"`, `"TRUE"` refuse); `APP_ENV` production in three spellings also needs `"1"`; the flag is read from `os.environ` by default; check precedes any use of the session factory; output never contains URL, host, user or password (sentinels), also on database failure and unusable URLs; `Settings` has no remote-seed field.
+- [x] **B3.4 [A]** `entrypoints/cli/{__init__.py,seed_catalog.py}`: `main(argv=None, settings=None, session_factory=None, environ=None) -> int`, host classification via `sqlalchemy.engine.make_url`, only the `--confirm` option, exit codes 0/1/2/3. `tests/integration/test_seed_cli.py` (DB) runs `main` twice and the module as a subprocess. Special rule 1. `.env*` untouched. Commit `feat(cli): add guarded seed catalog command`.
+- [ ] **B3.5 [M]** Contingency: if any task would force an edit to `.env.example` or any `.env*` path, the agent STOPS and the developer applies it. Result: NONE needed (`config.py` and `.env.example` untouched).
+- [x] **B3.6 [A]** Verification: `git diff --name-only <base>...HEAD | rg "^\.env"` empty; `git diff <base>...HEAD -- backend/src/eventssound/config.py` empty; measurement (see the consolidated PR section above).
 
 ## PR C: Use cases, catalog API, public Swagger, docs (`feat/quote-domain-catalog-api`, base B3, ~450 lines) [borderline]
 
@@ -247,15 +270,15 @@ Developer manual actions (summary): GitHub "delete head branches" setting and me
 | - | ---------- | -------- | -------- |
 | U1 | The repo allows "Create a merge commit"; with squash/rebase the `merge-base --is-ancestor` check cannot work | A2.0 | With squash: verify with `git diff --stat origin/main <branch-tip>` empty and rebase each child with `git rebase --onto origin/main <old-parent-tip> <child>` |
 | U2 | GitHub "automatically delete head branches" retargets child PRs; manual retarget first is still safer | A2.0, procedure step 2 | Manual retarget always |
-| U3 | `test_env_example.py` fails if `.env.example` has keys that are not `Settings` fields (or checks only the reverse) | B3.5 (read the test, not `.env*`) | Leave `.env.example` untouched (default plan) |
-| U4 | `test_architecture.py` has no rule forbidding `os.environ` in `entrypoints/` | B3.4 | Allow-list the CLI module with a comment, or a tiny `entrypoints/cli/env.py` helper |
+| U3 | `test_env_example.py` fails if `.env.example` has keys that are not `Settings` fields (or checks only the reverse) | B3.5 (read the test, not `.env*`) | Leave `.env.example` untouched (default plan). RESOLVED: untouched, not needed |
+| U4 | `test_architecture.py` has no rule forbidding `os.environ` in `entrypoints/` | B3.4 | Allow-list the CLI module with a comment, or a tiny `entrypoints/cli/env.py` helper. RESOLVED: no such rule exists, nothing to allow-list |
 | U5 | The next ADR number in `documentacion/decisions.md` is 12 (then 13) | B1.5, C.7 | Use the next free numbers and fix cross references |
-| U6 | The throwaway local Postgres (`pgvector/pgvector:pg16` on 127.0.0.1) is available for `DATABASE_URL_TEST` | Before B1 | CI is the authority for DB tests |
+| U6 | The throwaway local Postgres (`pgvector/pgvector:pg16` on 127.0.0.1) is available for `DATABASE_URL_TEST` | Before B1 | CI is the authority for DB tests. RESOLVED: a throwaway container on a free port was used and removed |
 | U7 | `uv add tzdata` works behind corporate proxy/TLS interception | A2.1 | Ask the developer to run it; lockfile excluded |
-| U8 | `compare_metadata` drift test is stable across Postgres versions | B1.2 | Compare table/column/constraint names only |
+| U8 | `compare_metadata` drift test is stable across Postgres versions | B1.2 | Compare table/column/constraint names only. RESOLVED on pg16: empty diff; a `timestamptz` -> `timestamp` model mutation is caught (CHECK constraints are not compared by Alembic, the naming and violation tests cover them) |
 | U9 | Calibrated estimates hold (tests ~55-60% of each PR). A3, B3 and C are the likely overruns; ~2,620 remaining lines is the honest number, not 1,800 | Each PR measurement step | Apply the per-PR cut lines; ask before exceeding 450 |
 | U10 | Developer accepts the design over the specs (conflict table in A1.1) and the new cuts | Already confirmed for cuts 1-9 | n/a |
 | U11 | No existing P0 test or `config.py` logic asserts that docs are hidden in production (grep of `docs_url` found only `app.py`) | C.2 | Update the assertion in the same commit |
 | U12 | `scripts/smoke.ps1` can take a `/docs` expectation cheaply | C.5 | Defer to a follow-up note in the PR description |
-| U13 | Flat `bookings.item_code` as FK to `equipment_items.code` keeps the availability query a single-table select | B1.3, B2.3 | Use `equipment_item_id` FK and join once in the repository |
+| U13 | Flat `bookings.item_code` as FK to `equipment_items.code` keeps the availability query a single-table select | B1.3, B2.3 | Use `equipment_item_id` FK and join once in the repository. RESOLVED: holds, no join |
 | U14 | `documentacion/deploy.md`, `documentacion/roadmap.md` and a root `README.md` exist to carry the Swagger and P4 notes | C.7 | Create the minimal section in the nearest existing doc |
