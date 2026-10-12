@@ -1,13 +1,22 @@
 """Hexagonal dependency rule, enforced by static import scanning."""
 
 import ast
+import sys
 from pathlib import Path
 
 import pytest
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "eventssound"
 PROJECT = "eventssound"
-FRAMEWORKS = {"fastapi", "sqlalchemy", "pydantic_settings", "alembic"}
+FRAMEWORKS = {
+    "fastapi",
+    "starlette",
+    "pydantic",
+    "pydantic_settings",
+    "sqlalchemy",
+    "alembic",
+    "psycopg",
+}
 
 FORBIDDEN: dict[str, set[str]] = {
     "domain": {
@@ -17,7 +26,12 @@ FORBIDDEN: dict[str, set[str]] = {
         f"{PROJECT}.config",
         *FRAMEWORKS,
     },
-    "application": {f"{PROJECT}.adapters", f"{PROJECT}.entrypoints"},
+    "application": {
+        f"{PROJECT}.adapters",
+        f"{PROJECT}.entrypoints",
+        f"{PROJECT}.config",
+        *FRAMEWORKS,
+    },
     "adapters": {f"{PROJECT}.entrypoints"},
 }
 
@@ -67,6 +81,26 @@ def find_violations(
         source = path.read_text(encoding="utf-8")
         for module in sorted(imported_modules(source, package)):
             if is_forbidden(module, forbidden):
+                violations.append(f"{path.relative_to(layer_dir).as_posix()} imports {module}")
+    return violations
+
+
+def is_allowed_in_domain(module: str) -> bool:
+    """Domain may import the stdlib and itself, nothing else (allowlist)."""
+    if module.split(".")[0] in sys.stdlib_module_names:
+        return True
+    own = f"{PROJECT}.domain"
+    return module in {PROJECT, own} or module.startswith(f"{own}.")
+
+
+def find_non_stdlib_violations(layer_dir: Path, layer_package: str | None = None) -> list[str]:
+    if layer_package is None:
+        layer_package = ".".join(layer_dir.relative_to(PACKAGE_ROOT.parent).parts)
+    violations: list[str] = []
+    for path in sorted(layer_dir.rglob("*.py")):
+        package = package_of(path, layer_dir, layer_package)
+        for module in sorted(imported_modules(path.read_text(encoding="utf-8"), package)):
+            if not is_allowed_in_domain(module):
                 violations.append(f"{path.relative_to(layer_dir).as_posix()} imports {module}")
     return violations
 
@@ -126,3 +160,56 @@ def test_relative_import_inside_layer_is_allowed(tmp_path: Path) -> None:
     (tmp_path / "ok.py").write_text("from . import entities\nfrom .entities import X\n", "utf-8")
 
     assert find_violations(tmp_path, FORBIDDEN["domain"], "eventssound.domain") == []
+
+
+def test_domain_imports_only_stdlib_and_itself() -> None:
+    assert find_non_stdlib_violations(PACKAGE_ROOT / "domain") == []
+
+
+def test_third_party_import_in_domain_is_flagged(tmp_path: Path) -> None:
+    (tmp_path / "leaky.py").write_text("import numpy\n", encoding="utf-8")
+
+    violations = find_non_stdlib_violations(tmp_path, "eventssound.domain")
+
+    assert len(violations) == 1
+    assert "leaky.py" in violations[0]
+    assert "numpy" in violations[0]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from datetime import datetime\n",
+        "import dataclasses, functools\n",
+        "from . import money\n",
+        "from .money import Money\n",
+        "from eventssound.domain.money import Money\n",
+    ],
+    ids=["stdlib-from", "stdlib-multi", "relative-package", "relative-module", "absolute-domain"],
+)
+def test_stdlib_and_domain_imports_are_not_flagged(tmp_path: Path, source: str) -> None:
+    (tmp_path / "ok.py").write_text(source, encoding="utf-8")
+
+    assert find_non_stdlib_violations(tmp_path, "eventssound.domain") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["from eventssound.config import Settings\n", "from eventssound import adapters\n"],
+    ids=["config", "sibling-layer"],
+)
+def test_non_domain_project_imports_are_flagged(tmp_path: Path, source: str) -> None:
+    (tmp_path / "bad.py").write_text(source, encoding="utf-8")
+
+    assert find_non_stdlib_violations(tmp_path, "eventssound.domain") != []
+
+
+@pytest.mark.parametrize("framework", ["pydantic", "starlette", "psycopg"])
+def test_application_must_not_import_frameworks_or_config(tmp_path: Path, framework: str) -> None:
+    (tmp_path / "bad.py").write_text(f"import {framework}\n", encoding="utf-8")
+    (tmp_path / "bad_config.py").write_text("from eventssound.config import Settings\n", "utf-8")
+
+    violations = find_violations(tmp_path, FORBIDDEN["application"], "eventssound.application")
+
+    assert any(v.startswith("bad.py") and framework in v for v in violations)
+    assert any(v.startswith("bad_config.py") and "eventssound.config" in v for v in violations)
