@@ -5,6 +5,14 @@ import os
 import pytest
 from sqlalchemy import create_engine, text
 
+from network_guard import install
+
+
+@pytest.fixture(autouse=True)
+def _network_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail any test that connects to or resolves a non-loopback host (see network_guard)."""
+    install(monkeypatch)
+
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
