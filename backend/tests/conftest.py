@@ -36,3 +36,20 @@ def database_url() -> str:
     finally:
         engine.dispose()
     return url
+
+
+def reset_schema(url: str) -> None:
+    """Drop every application table and the Alembic bookkeeping table.
+
+    Table names come from the models metadata, so a new model is cleaned up without edits here.
+    This is deliberately not `DROP SCHEMA public CASCADE`: it never touches extensions.
+    """
+    from eventssound.adapters.db.session import Base
+
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            Base.metadata.drop_all(connection)
+            connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    finally:
+        engine.dispose()
