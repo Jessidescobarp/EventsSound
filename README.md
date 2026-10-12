@@ -57,7 +57,7 @@ Verified on Windows PowerShell 5.1; PowerShell 7 and Vite HMR in a browser are u
 
 ## API docs
 
-The backend serves Swagger UI at `/docs` and the OpenAPI schema at `/openapi.json`, in every environment including production (live: `https://eventsounddr-api.onrender.com/docs`). It is public on purpose: the API is read-only and its data is synthetic. ReDoc is off. Catalog endpoints: `GET /catalog/items` and `GET /catalog/packages`.
+The backend serves Swagger UI at `/docs` and the OpenAPI schema at `/openapi.json`, in every environment including production (on the live API once this version is deployed). It is public on purpose: the API is read-only and its data is synthetic. ReDoc is off. Catalog endpoints: `GET /catalog/items` and `GET /catalog/packages`.
 
 Load the synthetic catalog into a LOCAL database (a dry run without `--confirm` exits 2 and changes nothing):
 

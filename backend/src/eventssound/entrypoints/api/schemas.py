@@ -37,12 +37,40 @@ class ItemsResponse(BaseModel):
                 {
                     "items": [
                         {
+                            "code": "dj_controller",
+                            "name": "Controlador DJ de 4 canales",
+                            "category": "dj",
+                            "stock_quantity": 3,
+                            "unit_price_cop": 200000,
+                        },
+                        {
+                            "code": "fx_fog_machine",
+                            "name": "Máquina de humo",
+                            "category": "effects",
+                            "stock_quantity": 5,
+                            "unit_price_cop": 55000,
+                        },
+                        {
+                            "code": "light_led_par",
+                            "name": "Luz LED PAR RGB",
+                            "category": "lighting",
+                            "stock_quantity": 24,
+                            "unit_price_cop": 25000,
+                        },
+                        {
                             "code": "sound_active_speaker_12",
                             "name": "Parlante activo de 12 pulgadas",
                             "category": "sound",
                             "stock_quantity": 12,
                             "unit_price_cop": 60000,
-                        }
+                        },
+                        {
+                            "code": "sound_wireless_mic",
+                            "name": "Micrófono inalámbrico de mano",
+                            "category": "sound",
+                            "stock_quantity": 12,
+                            "unit_price_cop": 35000,
+                        },
                     ]
                 }
             ]
@@ -102,8 +130,11 @@ class PackagesResponse(BaseModel):
                             "discount_bps": 500,
                             "base_price_cop": 560000,
                             "items": [
-                                {"item_code": "sound_active_speaker_12", "quantity": 2},
                                 {"item_code": "dj_controller", "quantity": 1},
+                                {"item_code": "fx_fog_machine", "quantity": 1},
+                                {"item_code": "light_led_par", "quantity": 6},
+                                {"item_code": "sound_active_speaker_12", "quantity": 2},
+                                {"item_code": "sound_wireless_mic", "quantity": 1},
                             ],
                         }
                     ]

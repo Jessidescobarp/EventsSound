@@ -1,11 +1,11 @@
 """Read-only catalog routes and the public OpenAPI schema, without a database."""
 
-import json
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from eventssound.application.errors import InvalidStoredData
 from eventssound.config import Settings
 from eventssound.domain.catalog import (
     Catalog,
@@ -16,6 +16,7 @@ from eventssound.domain.catalog import (
 )
 from eventssound.domain.money import Money
 from eventssound.entrypoints.api.app import create_app
+from eventssound.entrypoints.api.schemas import ItemsResponse, PackagesResponse
 from fakes import BrokenCatalogRepository, InMemoryCatalogRepository
 
 CATALOG = Catalog(
@@ -182,10 +183,63 @@ def test_schema_documents_both_catalog_routes_for_a_business_reader() -> None:
         assert "$ref" in ok
 
 
-def test_every_response_model_carries_an_example() -> None:
-    client = client_for(InMemoryCatalogRepository(CATALOG))
-    schemas = client.get("/openapi.json").json()["components"]["schemas"]
+@pytest.mark.parametrize(
+    ("path", "model"),
+    [("/catalog/items", ItemsResponse), ("/catalog/packages", PackagesResponse)],
+)
+def test_each_operation_response_model_has_a_valid_example(path: str, model: type) -> None:
+    schema = client_for(InMemoryCatalogRepository(CATALOG)).get("/openapi.json").json()
+    ref = schema["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    component = schema["components"]["schemas"][ref["$ref"].rsplit("/", 1)[1]]
 
-    for name in ("ItemsResponse", "PackagesResponse"):
-        assert schemas[name]["examples"], name
-        assert json.dumps(schemas[name]["examples"])
+    assert component["examples"]
+    for example in component["examples"]:
+        model.model_validate(example)
+
+
+def test_the_package_example_prices_add_up() -> None:
+    example = PackagesResponse.model_json_schema()["examples"][0]["packages"][0]
+    prices = {
+        item["code"]: item["unit_price_cop"]
+        for item in ItemsResponse.model_json_schema()["examples"][0]["items"]
+    }
+
+    total = sum(prices[line["item_code"]] * line["quantity"] for line in example["items"])
+
+    assert total == example["base_price_cop"]
+
+
+def test_the_documented_error_responses_match_the_behaviour() -> None:
+    schema = client_for(InMemoryCatalogRepository(CATALOG)).get("/openapi.json").json()
+
+    for path in ("/catalog/items", "/catalog/packages"):
+        assert {"503", "500"} <= set(schema["paths"][path]["get"]["responses"])
+
+
+class CorruptCatalogRepository:
+    def get_catalog(self) -> Catalog:
+        raise InvalidStoredData("row 7 violates the contract: secret detail")
+
+
+@pytest.mark.parametrize("env", ["local", "production"])
+@pytest.mark.parametrize("path", ["/catalog/items", "/catalog/packages"])
+def test_invalid_stored_data_returns_a_fixed_500_without_details(path: str, env: str) -> None:
+    client = client_for(CorruptCatalogRepository(), app_env=env)
+
+    response = client.get(path)
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "catalog_invalid"}
+    assert "secret" not in response.text
+
+
+def test_an_unavailable_catalog_is_logged_without_reaching_the_client(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = client_for(BrokenCatalogRepository())
+
+    with caplog.at_level("WARNING", logger="eventssound.entrypoints.api.routes.catalog"):
+        response = client.get("/catalog/items")
+
+    assert "catalog unavailable" in caplog.text
+    assert "catalog unavailable" not in response.text

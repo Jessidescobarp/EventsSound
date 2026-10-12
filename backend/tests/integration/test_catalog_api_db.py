@@ -1,5 +1,6 @@
 """The catalog API through the real wiring: Settings -> container -> SQLAlchemy -> Postgres."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -23,6 +24,14 @@ def test_seeded_database_is_served_through_the_real_wiring(
     items = client.get("/catalog/items").json()["items"]
     packages = client.get("/catalog/packages").json()["packages"]
 
+    assert all(
+        set(item) == {"code", "name", "category", "stock_quantity", "unit_price_cop"}
+        for item in items
+    )
+    assert all(
+        set(package) == {"code", "name", "discount_bps", "base_price_cop", "items"}
+        for package in packages
+    )
     assert len(items) == len(SEED_ITEMS) == 20
     assert [item["code"] for item in items] == sorted(item["code"] for item in items)
     assert all(type(item["unit_price_cop"]) is int for item in items)
@@ -39,7 +48,9 @@ def test_migrated_empty_database_returns_empty_lists(migrated_database: str) -> 
     assert client.get("/catalog/packages").json() == {"packages": []}
 
 
-def test_unreachable_database_returns_503_without_connection_details() -> None:
+def test_unreachable_database_returns_503_without_connection_details(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     client = client_for(UNREACHABLE_URL)
 
     for path in ("/catalog/items", "/catalog/packages"):
@@ -48,3 +59,4 @@ def test_unreachable_database_returns_503_without_connection_details() -> None:
         assert response.status_code == 503
         assert response.json() == {"detail": "catalog_unavailable"}
         assert not any(secret in response.text for secret in SECRETS_IN_UNREACHABLE_URL)
+        assert not any(secret in caplog.text for secret in SECRETS_IN_UNREACHABLE_URL)
