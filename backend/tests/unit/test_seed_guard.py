@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.exc import OperationalError
 
 from eventssound.config import Settings
+from eventssound.domain.errors import InvalidCatalog
 from eventssound.entrypoints.cli import seed_catalog as cli
 
 SENTINELS = ("sentinel_user", "sentinel_pw", "sentinel-host", "sentinel_db")
@@ -218,3 +219,21 @@ def test_missing_configuration_is_reported_generically(
 
 def test_the_flag_is_not_a_settings_field() -> None:
     assert not [name for name in Settings.model_fields if "remote" in name.lower()]
+
+
+def test_invalid_seed_definitions_are_reported_generically(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def broken(*args: object, **kwargs: object) -> None:
+        raise InvalidCatalog("detail that must stay out of the output: sentinel_pw")
+
+    monkeypatch.setattr(cli, "seed_catalog", broken)
+
+    code = cli.main(
+        ["--confirm"],
+        settings=settings_for(url_for("localhost")),
+        session_factory=RecordingFactory(),
+    )
+
+    assert code == 1
+    assert "seed definitions are invalid" in capsys.readouterr().err

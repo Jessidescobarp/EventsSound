@@ -184,6 +184,7 @@ def custom_item(code: str = "custom_mixer") -> EquipmentItem:
         ([custom_item()], [], ["DEMO-1"], InvalidCatalog),
         ("custom_mixer", [], [], InvalidCatalog),
         ([object()], [], [], InvalidCatalog),
+        (None, [], [], InvalidCatalog),
     ],
     ids=[
         "duplicate-items",
@@ -193,6 +194,7 @@ def custom_item(code: str = "custom_mixer") -> EquipmentItem:
         "booking-is-a-string",
         "items-is-a-string",
         "item-is-an-object",
+        "items-is-none",
     ],
 )
 def test_invalid_definitions_raise_a_domain_error_and_write_nothing(
@@ -212,3 +214,8 @@ def test_a_custom_definition_can_be_seeded_without_bookings(
 
     assert result == SeedResult(items=1, packages=0, bookings=0)
     assert run(session_factory, "SELECT code FROM equipment_items") == [("custom_mixer",)]
+
+
+def test_an_empty_definition_is_a_valid_no_op(session_factory: sessionmaker[Session]) -> None:
+    assert seed_catalog(session_factory, [], []) == SeedResult(items=0, packages=0, bookings=0)
+    assert run(session_factory, "SELECT count(*) FROM equipment_items") == [(0,)]
