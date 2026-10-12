@@ -6,8 +6,8 @@ Topology: backend (Docker web service) and frontend (static site) on Render, def
 
 | Component | URL |
 | --------- | --- |
-| Frontend | `https://eventsounddr-web.onrender.com` (placeholder until verified) |
-| Backend | `https://eventsounddr-api.onrender.com` (placeholder until verified) |
+| Frontend | `https://eventsounddr-web.onrender.com` (smoke check passed 2026-10-12) |
+| Backend | `https://eventsounddr-api.onrender.com` (smoke check passed 2026-10-12) |
 
 Naming: the product and the Render services are `EventSoundDR` / `eventsounddr-*`. The GitHub repository and the internal Python package keep the name `eventssound` (as do the compose project and DB names); only user-visible and deployed names changed.
 
@@ -75,5 +75,5 @@ If the new `.onrender.com` names get a suffix, update the two URL values in `ren
 6. Run the smoke command above (cold, then again warm) and expect all PASS.
 7. Open the web URL in a browser: expect `Servicio operativo` and no CORS errors in the console.
 8. In the Neon SQL editor run `select * from alembic_version;` and confirm the baseline revision.
-9. Replace the placeholder URLs in this file and in the README with the verified ones (`docs: add live urls`).
+9. Done 2026-10-12: the URLs above are the verified ones. If Render ever appends a suffix to a service name, update `render.yaml` and these tables.
 10. Optional: confirm a failing migration blocks release (reason from `start.sh` instead of breaking the live deploy).
