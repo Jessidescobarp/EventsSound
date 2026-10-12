@@ -78,9 +78,9 @@ Calendar target: Q1-Q2 Oct 12-14; Q3-Q5 Oct 15-18; Q6-Q7 Oct 18-20; Q8 Oct 20-21
 
 ## Open questions (recommended default in brackets; NOT decided)
 1. LLM provider, model and monthly budget? [OpenRouter, one `:free` or cheapest Spanish-capable model chosen after a 20-minute trial in Q2; cap about 100k tokens/day; the key lives only in the Render dashboard]
-2. Embeddings? [No; keyword retrieval, port left open]
+2. Embeddings? **DECIDED by the developer (2026-10-12): YES.** Retrieval over the catalog uses embeddings stored in Postgres with pgvector (Neon free supports `CREATE EXTENSION vector`, documented; HNSW limit 2,000 dimensions; free plan limits: 100 CU-hours/month, scale-to-zero after 5 minutes, storage 0.5 or 1 GB depending on the source). Embedding provider candidate: OpenRouter's OpenAI-compatible `/embeddings` endpoint with the free `liquid/lfm-2.5-embedding-350m:free` model (1,024 dimensions, 512-token context; exact model id UNVERIFIED, daily free limits reported as 50-200 requests/day and UNVERIFIED, provider may retain data: acceptable because data is synthetic). Design requirements: an `EmbeddingProvider` port with a Replay/deterministic fake for CI, catalog embeddings computed at seed time (not per request), a query embedding per chat message with a cache and a graceful fallback to keyword search when the provider fails or the free limit is hit, the keyword retriever kept behind the same `EquipmentSearch` port, one extra PR (about 350 real lines) AFTER persistence (B) and before deploy. This is a must-ship item together with the AI agent and database persistence.
 3. Conversation storage? [Stateless]
 4. Proposal language? [Spanish; instructions in English, output and refusals in Spanish]
 5. LangSmith wanted? [Optional live run only, off in production]
 6. Persist final quotes (needed by the P4 admin list)? [Defer to the P4 change; `quote_chat` returns the data so a persistence hook is a one-function addition]
-7. Does the "RAG" claim in the TFM require embeddings? [Describe as catalog retrieval tool; revisit if the rubric demands vectors]
+7. Does the "RAG" claim in the TFM require embeddings? **Resolved by decision 2: yes, the project ships vector retrieval (pgvector) so the RAG claim is defensible.**
