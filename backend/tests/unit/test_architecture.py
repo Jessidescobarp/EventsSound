@@ -268,3 +268,25 @@ def test_dynamic_imports_in_domain_are_flagged(tmp_path: Path, source: str) -> N
     violations = find_non_stdlib_violations(tmp_path, "eventssound.domain")
 
     assert any("sneaky.py" in v and "dynamic import" in v for v in violations)
+
+
+def test_routes_do_not_import_adapters() -> None:
+    routes = PACKAGE_ROOT / "entrypoints" / "api" / "routes"
+
+    assert (
+        find_violations(routes, {f"{PROJECT}.adapters"}, "eventssound.entrypoints.api.routes") == []
+    )
+
+
+def test_a_route_importing_an_adapter_is_detected(tmp_path: Path) -> None:
+    (tmp_path / "bad.py").write_text(
+        "from eventssound.adapters.db.session import Base\n", encoding="utf-8"
+    )
+
+    violations = find_violations(
+        tmp_path, {f"{PROJECT}.adapters"}, "eventssound.entrypoints.api.routes"
+    )
+
+    assert any(
+        v.startswith("bad.py") and "eventssound.adapters.db.session" in v for v in violations
+    )
