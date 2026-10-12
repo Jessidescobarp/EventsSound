@@ -27,3 +27,7 @@ class UnknownCatalogEntry(DomainError):
     def __init__(self, code: str) -> None:
         super().__init__(f"unknown catalog entry: {code}")
         self.code = code
+
+
+class InvalidCatalog(DomainError):
+    """A catalog entity or the catalog as a whole is inconsistent."""

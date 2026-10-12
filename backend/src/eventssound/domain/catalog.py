@@ -1,0 +1,120 @@
+"""Equipment catalog: items, packages and the validated Catalog aggregate."""
+
+import re
+from dataclasses import dataclass, field
+from enum import StrEnum
+
+from .errors import InvalidCatalog, UnknownCatalogEntry
+from .money import Money
+
+_CODE = re.compile(r"^[a-z0-9_]{3,64}$")
+MAX_UNIT_PRICE = 1_000_000_000
+
+
+class EquipmentCategory(StrEnum):
+    SOUND = "sound"
+    LIGHTING = "lighting"
+    DJ = "dj"
+    STAGE = "stage"
+    EFFECTS = "effects"
+    VIDEO = "video"
+
+
+def _check_code(code: str) -> None:
+    if not isinstance(code, str) or not _CODE.match(code):
+        raise InvalidCatalog("code must match ^[a-z0-9_]{3,64}$")
+
+
+def _check_name(name: str) -> None:
+    if not isinstance(name, str) or not name.strip():
+        raise InvalidCatalog("name must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class EquipmentItem:
+    """A rentable item. `unit_price` is per rental day."""
+
+    code: str
+    name: str
+    category: EquipmentCategory
+    stock_quantity: int
+    unit_price: Money
+
+    def __post_init__(self) -> None:
+        _check_code(self.code)
+        _check_name(self.name)
+        if self.stock_quantity < 0:
+            raise InvalidCatalog("stock_quantity must be >= 0")
+        if not 0 <= self.unit_price.amount <= MAX_UNIT_PRICE:
+            raise InvalidCatalog(f"unit_price must be within 0..{MAX_UNIT_PRICE}")
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLine:
+    item_code: str
+    quantity: int
+
+    def __post_init__(self) -> None:
+        if self.quantity < 1:
+            raise InvalidCatalog("package line quantity must be >= 1")
+
+
+@dataclass(frozen=True, slots=True)
+class ServicePackage:
+    """A bundle of items. It has no price of its own: it is derived from its lines."""
+
+    code: str
+    name: str
+    lines: tuple[PackageLine, ...]
+    discount_bps: int = 0
+
+    def __post_init__(self) -> None:
+        _check_code(self.code)
+        _check_name(self.name)
+        if not self.lines:
+            raise InvalidCatalog("a package needs at least one line")
+        codes = [line.item_code for line in self.lines]
+        if len(set(codes)) != len(codes):
+            raise InvalidCatalog("package lines must reference distinct items")
+        if not 0 <= self.discount_bps <= 10_000:
+            raise InvalidCatalog("discount_bps must be within 0..10000")
+
+    def base_unit_price(self, catalog: "Catalog") -> Money:
+        """Sum of member prices per rental day, before discount."""
+        return Money.sum(
+            catalog.item(line.item_code).unit_price * line.quantity for line in self.lines
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Catalog:
+    items: tuple[EquipmentItem, ...]
+    packages: tuple[ServicePackage, ...]
+    _items: dict[str, EquipmentItem] = field(init=False, repr=False, compare=False)
+    _packages: dict[str, ServicePackage] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        items = {item.code: item for item in self.items}
+        packages = {package.code: package for package in self.packages}
+        if len(items) != len(self.items):
+            raise InvalidCatalog("duplicate item codes")
+        if len(packages) != len(self.packages):
+            raise InvalidCatalog("duplicate package codes")
+        for package in self.packages:
+            for line in package.lines:
+                if line.item_code not in items:
+                    raise UnknownCatalogEntry(line.item_code)
+        object.__setattr__(self, "_items", items)
+        object.__setattr__(self, "_packages", packages)
+
+    def item(self, code: str) -> EquipmentItem:
+        try:
+            return self._items[code]
+        except KeyError:
+            raise UnknownCatalogEntry(code) from None
+
+    def package(self, code: str) -> ServicePackage:
+        try:
+            return self._packages[code]
+        except KeyError:
+            raise UnknownCatalogEntry(code) from None
