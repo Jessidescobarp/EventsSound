@@ -12,4 +12,26 @@ export default tseslint.config(
     files: ["**/*.{ts,tsx}"],
     languageOptions: { globals: globals.browser },
   },
+  {
+    // Safe rendering: model and API text must only reach the DOM as React text nodes.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "dangerouslySetInnerHTML is forbidden: render text nodes only.",
+        },
+        {
+          selector: "MemberExpression[property.name=/^(innerHTML|outerHTML)$/]",
+          message: "innerHTML/outerHTML are forbidden: render text nodes only.",
+        },
+        {
+          selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+          message: "insertAdjacentHTML is forbidden: render text nodes only.",
+        },
+      ],
+    },
+  },
 );

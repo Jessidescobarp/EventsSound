@@ -1,0 +1,47 @@
+/*
+ * Design tokens. Branding assets do not exist yet: every value here is a neutral
+ * placeholder. Swapping the brand is a one-file change (this file).
+ * Contrast (WCAG AA): ink on surface 16:1, ink-muted on surface 7.6:1,
+ * white on brand-600 7.1:1, white on brand-900 15:1.
+ */
+@theme {
+  /* Brand scale (placeholder violet). */
+  --color-brand-50: #f5f3ff;
+  --color-brand-100: #ede9fe;
+  --color-brand-200: #ddd6fe;
+  --color-brand-500: #8b5cf6;
+  --color-brand-600: #6d28d9;
+  --color-brand-700: #5b21b6;
+  --color-brand-900: #2e1065;
+
+  /* Accent used sparingly for highlights. */
+  --color-accent-400: #fbbf24;
+  --color-accent-600: #b45309;
+
+  /* Neutrals. */
+  --color-ink: #0f172a;
+  --color-ink-muted: #475569;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8fafc;
+  --color-line: #e2e8f0;
+
+  /* Status colours (text on their -soft background passes AA). */
+  --color-danger: #b42318;
+  --color-danger-soft: #fef3f2;
+  --color-warn: #92400e;
+  --color-warn-soft: #fffbeb;
+  --color-info: #1e40af;
+  --color-info-soft: #eff6ff;
+
+  /* Typography: system stack, no web fonts to load. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-sans);
+
+  /* Spacing and shape. gutter = horizontal page padding on phones. */
+  --spacing-gutter: 1rem;
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.06);
+
+  --breakpoint-xs: 30rem;
+}
