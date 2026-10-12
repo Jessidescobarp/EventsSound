@@ -111,7 +111,9 @@ def test_no_module_except_settings_reads_the_environment() -> None:
     scanned = []
     for path in python_files(PACKAGE_ROOT):
         relative = path.relative_to(PACKAGE_ROOT).as_posix()
-        if relative == "config.py":  # Settings is the only sanctioned reader
+        # Settings is the sanctioned reader. The seed CLI is the one documented exception: it reads
+        # the operator override ALLOW_REMOTE_SEED (an injectable `environ`), see its docstring.
+        if relative in {"config.py", "entrypoints/cli/seed_catalog.py"}:
             continue
         scanned.append(relative)
         if reads := env_reads(path.read_text("utf-8")):
