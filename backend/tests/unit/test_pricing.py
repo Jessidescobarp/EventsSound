@@ -1,6 +1,7 @@
 """calculate_price: equipment lines, rental days, rounding and input validation."""
 
 import dataclasses
+import functools
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -560,3 +561,131 @@ def test_non_wrapping_night_window_is_supported() -> None:
     assert flags(local(14, 12), local(14, 14), siesta)[1] == 1
     assert flags(local(14, 15), local(14, 18), siesta)[1] == 0
     assert flags(local(14, 22), local(15, 3), siesta)[1] == 0
+
+
+# --- invariants over a fixed grid (hand-written, no Hypothesis) ----------------------------
+
+EVENTS = {
+    "weekday-day": (local(14, 14), local(14, 18)),
+    "overnight-weekday": (local(14, 22), local(15, 3)),
+    "saturday-night": (local(10, 20), local(11, 1)),
+    "friday-to-monday": (local(9, 20), local(12, 8)),
+}
+QUANTITIES = (1, 2, 5, 40)
+DISTANCES = (0, 19, 20, 21, 60, 61, 200)
+GUESTS = (1, 100, 101, 300, 301, 601, 5_000)
+STEPS = (1, 500, 1_000)
+GridKey = tuple[str, int, int, int, int]
+
+
+def grid_request(event: str, quantity: int, km: int, guests: int) -> EventRequest:
+    start, end = EVENTS[event]
+    return make_request(
+        start=start,
+        end=end,
+        guest_count=guests,
+        distance_km=km,
+        items=(RequestedLine("speaker_active", quantity), RequestedLine("cable_xlr", 3)),
+        packages=(RequestedLine("pkg_party", 1),),
+    )
+
+
+@functools.cache
+def grid() -> dict[GridKey, Quote]:
+    catalog = make_catalog()
+    return {
+        (event, quantity, km, guests, step): calculate_price(
+            grid_request(event, quantity, km, guests),
+            catalog,
+            dataclasses.replace(default_pricing_rules(), rounding_step=step),
+        )
+        for event in EVENTS
+        for quantity in QUANTITIES
+        for km in DISTANCES
+        for guests in GUESTS
+        for step in STEPS
+    }
+
+
+def test_grid_is_not_vacuous() -> None:
+    quotes = grid()
+    assert len(quotes) == len(EVENTS) * len(QUANTITIES) * len(DISTANCES) * len(GUESTS) * len(STEPS)
+    assert {k for q in quotes.values() for k in (x.kind for x in q.lines)} == set(LineKind)
+
+
+def assert_line_is_reproducible(line: QuoteLine) -> None:
+    match line.kind:
+        case LineKind.ITEM | LineKind.PACKAGE:
+            assert line.unit_amount is not None
+            assert line.amount == line.unit_amount * (line.quantity * line.periods)
+        case LineKind.DISTANCE:
+            assert line.unit_amount is not None
+            assert line.amount == line.unit_amount * line.quantity
+        case LineKind.ROUNDING:
+            assert line.amount.amount != 0
+        case _:
+            assert line.basis is not None and line.rate_bps is not None
+            expected = line.basis.percent(line.rate_bps)
+            assert line.amount == (
+                -expected if line.kind is LineKind.PACKAGE_DISCOUNT else expected
+            )
+
+
+def test_totals_are_non_negative_rounded_integers_that_reconcile() -> None:
+    for (_, _, _, _, step), quote in grid().items():
+        assert quote.total.amount >= 0
+        assert quote.total.amount % step == 0
+        assert sum(line.amount.amount for line in quote.lines) == quote.total.amount
+        assert -step < 2 * (quote.total.amount - quote.subtotal.amount) <= step  # half-up
+        assert type(quote.total.amount) is int and type(quote.subtotal.amount) is int
+        assert all(type(line.amount.amount) is int for line in quote.lines)
+        assert len([x for x in quote.lines if x.kind is LineKind.ROUNDING]) <= 1
+
+
+def test_every_line_is_reproducible_from_its_own_fields() -> None:
+    for quote in grid().values():
+        for line in quote.lines:
+            assert_line_is_reproducible(line)
+
+
+def test_rounding_is_idempotent() -> None:
+    for (_, _, _, _, step), quote in grid().items():
+        assert quote.total.round_to(step) == quote.total
+
+
+@pytest.mark.parametrize(
+    "axis",
+    [
+        pytest.param((1, QUANTITIES), id="quantity"),
+        pytest.param((2, DISTANCES), id="distance"),
+        pytest.param((3, GUESTS), id="guests"),
+    ],
+)
+def test_total_never_decreases_when_quantity_distance_or_guests_grow(
+    axis: tuple[int, tuple[int, ...]],
+) -> None:
+    position, values = axis
+    quotes = grid()
+    checked = 0
+    for key in quotes:
+        if key[position] != values[0]:
+            continue
+        totals = [quotes[(*key[:position], value, *key[position + 1 :])].total for value in values]
+        assert totals == sorted(totals), key
+        checked += 1
+    assert checked > 0
+
+
+def test_to_dict_never_contains_floats() -> None:
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        else:
+            assert type(value) in (int, str, type(None))
+
+    for quote in grid().values():
+        walk(quote.to_dict())
