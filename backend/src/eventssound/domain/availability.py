@@ -184,6 +184,19 @@ def _check_rules(rules: object) -> AvailabilityRules:
     return rules
 
 
+def booking_search_window(
+    start: datetime, end: datetime, rules: AvailabilityRules
+) -> tuple[datetime, datetime]:
+    """UTC window `[start - buffer, end + buffer)` holding every booking that can affect a request.
+
+    Computed on absolute instants (never wall-clock arithmetic in the request's zone). Storage
+    adapters query this window; `available_units` selects bookings with the very same bounds.
+    """
+    utc_start, utc_end = _check_interval(start, end)
+    buffer = _check_rules(rules).buffer
+    return _shift(utc_start, -buffer), _shift(utc_end, buffer)
+
+
 def available_units(
     item: EquipmentItem,
     start: datetime,
@@ -203,7 +216,7 @@ def available_units(
     utc_start, utc_end = _check_interval(start, end)
     half = _check_rules(rules).buffer / 2
     held = _as_bookings(bookings)
-    near_lo, near_hi = _shift(utc_start, -rules.buffer), _shift(utc_end, rules.buffer)
+    near_lo, near_hi = booking_search_window(utc_start, utc_end, rules)
     blocking = BookingStatus.blocking()
     events: list[tuple[datetime, int]] = []
     for booking in held:

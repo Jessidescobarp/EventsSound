@@ -1,6 +1,7 @@
 """Catalog, pricing and availability use cases over in-memory fakes."""
 
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -22,6 +23,7 @@ from eventssound.domain.catalog import (
     PackageLine,
     ServicePackage,
 )
+from eventssound.domain.errors import InvalidAvailability
 from eventssound.domain.event_request import EventRequest, EventType, RequestedLine, VenueType
 from eventssound.domain.money import Money
 from eventssound.domain.pricing import calculate_price
@@ -94,7 +96,7 @@ def test_price_quote_prices_package_members() -> None:
 
 
 def test_availability_equals_the_pure_function_over_the_fake_bookings() -> None:
-    held = (booking("speaker", START - timedelta(days=1), START - timedelta(hours=20)),)
+    held = (booking("speaker", START - timedelta(hours=1), START + timedelta(hours=1)),)
     rules = default_availability_rules()
 
     report = check_event_availability(
@@ -102,6 +104,7 @@ def test_availability_equals_the_pure_function_over_the_fake_bookings() -> None:
     )
 
     assert report == check_request_availability(request(), CATALOG, held, rules)
+    assert not report.is_available
 
 
 def test_booking_inside_the_buffer_before_the_event_blocks_the_item() -> None:
@@ -179,3 +182,62 @@ def test_broken_bookings_propagate_repository_unavailable() -> None:
             BrokenBookingRepository(),
             default_availability_rules(),
         )
+
+
+BUFFER = timedelta(hours=2)
+
+
+def availability_with(held: tuple[Booking, ...], req: EventRequest | None = None):
+    return check_event_availability(
+        req or request(),
+        InMemoryCatalogRepository(CATALOG),
+        InMemoryBookingRepository(held),
+        AvailabilityRules(buffer=BUFFER),
+    )
+
+
+@pytest.mark.parametrize(
+    ("gap", "available"),
+    [(BUFFER, True), (BUFFER - timedelta(minutes=1), False)],
+    ids=["gap-equals-buffer", "one-minute-inside-buffer"],
+)
+def test_buffer_boundary_before_the_event(gap: timedelta, available: bool) -> None:
+    held = (booking("speaker", START - gap - timedelta(hours=3), START - gap),)
+
+    assert availability_with(held).items[0].is_available is available
+
+
+@pytest.mark.parametrize(
+    ("gap", "available"),
+    [(BUFFER, True), (BUFFER - timedelta(minutes=1), False)],
+    ids=["gap-equals-buffer", "one-minute-inside-buffer"],
+)
+def test_buffer_boundary_after_the_event(gap: timedelta, available: bool) -> None:
+    held = (booking("speaker", END + gap, END + gap + timedelta(hours=3)),)
+
+    assert availability_with(held).items[0].is_available is available
+
+
+def test_window_is_widened_in_absolute_time_across_a_dst_change() -> None:
+    new_york = ZoneInfo("America/New_York")
+    start = datetime(2026, 3, 8, 3, 30, tzinfo=new_york)  # 07:30Z; clocks jumped at 02:00 local
+    req = request(start=start, end=start + timedelta(hours=3))
+    # Ends 06:00Z: 1.5h before the event, inside the 2h buffer. Wall-clock subtraction would
+    # search from 06:30Z and never load it.
+    held = (
+        booking(
+            "speaker", datetime(2026, 3, 8, 2, tzinfo=UTC), datetime(2026, 3, 8, 6, tzinfo=UTC)
+        ),
+    )
+
+    report = availability_with(held, req)
+
+    assert report == check_request_availability(req, CATALOG, held, AvailabilityRules(BUFFER))
+    assert not report.is_available
+
+
+def test_window_out_of_the_datetime_range_is_a_domain_error() -> None:
+    req = request(start=datetime(1, 1, 1, tzinfo=UTC), end=datetime(1, 1, 2, tzinfo=UTC))
+
+    with pytest.raises(InvalidAvailability):
+        availability_with((), req)
