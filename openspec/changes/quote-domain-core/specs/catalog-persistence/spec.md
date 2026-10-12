@@ -5,12 +5,13 @@ Change: quote-domain-core. Builds on the `database-migrations` capability of wal
 ## ADDED Requirements
 
 ### Requirement: Schema
-The database MUST contain tables `equipment_items`, `service_packages`, `package_items` and `bookings`, with Postgres snake_case English names, `id` primary keys, `<entity>_id` foreign keys, and timezone-aware `*_at` timestamps.
+The database MUST contain tables `equipment_items`, `service_packages`, `package_items`, `bookings` and `booking_items` (five tables, design D10), with Postgres snake_case English names, `id` primary keys, `<entity>_id` foreign keys, and timezone-aware `*_at` timestamps.
 
-- `equipment_items`: `code` (unique, NOT NULL, stable English slug), `display_name`, `category`, `stock_quantity` (>= 0), `unit_price_cop` (BIGINT, >= 0).
-- `service_packages`: `code` (unique), `display_name`, `description`, `discount_bps` (0..10000).
-- `package_items`: `package_id` FK, `item_id` FK, `quantity` (> 0); unique on (`package_id`, `item_id`); deleting a package cascades to its rows, deleting an item referenced by a package is restricted.
-- `bookings`: `item_id` FK, `quantity` (> 0), `starts_at`, `ends_at` (timestamptz, `ends_at > starts_at`), `status` (constrained set including `pending`, `confirmed`, `cancelled`), `created_at`; index supporting lookup by (`item_id`, `starts_at`, `ends_at`).
+- `equipment_items`: `code` (unique, NOT NULL, stable English slug), `name`, `category` (VARCHAR + CHECK: sound, lighting, dj, stage, effects, video), `stock_quantity` (>= 0), `unit_price_cop` (BIGINT, >= 0).
+- `service_packages`: `code` (unique), `name`, `discount_bps` (0..10000).
+- `package_items`: `package_id` FK, `equipment_item_id` FK, `quantity` (> 0); unique on (`package_id`, `equipment_item_id`); deleting a package cascades to its rows, deleting an item referenced by a package is restricted.
+- `bookings`: header with `starts_at`, `ends_at` (timestamptz, `ends_at > starts_at`), `status` (constrained set including `pending`, `confirmed`, `cancelled`), `created_at`, `updated_at`; index on (`starts_at`, `ends_at`).
+- `booking_items`: `booking_id` FK (cascade), `equipment_item_id` FK (restrict), `quantity` (> 0); unique on (`booking_id`, `equipment_item_id`).
 
 Money columns MUST be integer whole pesos named `*_cop`; floats and `Numeric` MUST NOT be used for money. Monetary decimals MUST NOT be stored as cents. Check constraints MUST have explicit short `name=` values; constraint and index names MUST come from `NAMING_CONVENTION`. Models MUST subclass `Base` and live in `adapters/db/`, never in `domain/`.
 
@@ -30,12 +31,12 @@ Money columns MUST be integer whole pesos named `*_cop`; floats and `Numeric` MU
 - Then it is timezone-aware and represents the same instant
 
 ### Requirement: Reversible migrations
-Schema MUST be created by Alembic revisions numbered after `0001_baseline` (two revisions: catalog tables, then package and bookings tables). Each revision MUST have a working `downgrade()`. The history MUST keep exactly one head. Revisions MUST contain schema only; seed data MUST NOT be inserted by migrations.
+Schema MUST be created by Alembic revisions numbered after `0001_baseline` (`0002_catalog_tables`: equipment_items, service_packages, package_items; `0003_booking_tables`: bookings, booking_items). Each revision MUST have a working `downgrade()`. The history MUST keep exactly one head. Revisions MUST contain schema only; seed data MUST NOT be inserted by migrations.
 
 #### Scenario: Upgrade, repeat, downgrade
 - Given an empty database
 - When `upgrade head`, `upgrade head` again, and `downgrade base` are run
-- Then each step succeeds, the repeat is a no-op, and the four tables are absent after downgrade
+- Then each step succeeds, the repeat is a no-op, and the five tables are absent after downgrade
 
 #### Scenario: Single head
 - Given the migrations directory
@@ -45,10 +46,10 @@ Schema MUST be created by Alembic revisions numbered after `0001_baseline` (two 
 #### Scenario: No data in migrations
 - Given a freshly migrated database
 - When rows are counted
-- Then all four tables are empty
+- Then all five tables are empty
 
 ### Requirement: Repository ports in the application layer
-`application/` MUST define Protocol ports for reading the catalog (list items, list packages with members, get item/package by code) and for reading bookings by item and interval. Ports MUST use domain types, MUST NOT import SQLAlchemy, FastAPI or adapters, and use cases MUST depend only on ports. The architecture test (`test_architecture.py`) MUST keep passing.
+`application/` MUST define two Protocol ports: `CatalogRepository.get_catalog() -> Catalog` (whole catalog snapshot) and `BookingRepository.find_reservations(item_codes, window_start, window_end)` (reservations of blocking bookings only). Ports MUST use domain types, MUST NOT import SQLAlchemy, FastAPI or adapters, and use cases MUST depend only on ports. The architecture test (`test_architecture.py`) MUST keep passing.
 
 #### Scenario: Dependency rule
 - Given the new modules
@@ -65,8 +66,8 @@ Schema MUST be created by Alembic revisions numbered after `0001_baseline` (two 
 
 #### Scenario: Bookings by interval
 - Given bookings inside and outside a window
-- When the booking adapter is queried for an item and window
-- Then it returns every non-cancelled booking whose interval may influence the window after buffer expansion (the adapter takes the buffer or a widened window as input)
+- When the booking adapter is queried for item codes and a window
+- Then it returns one `Reservation` per booking item of every pending or confirmed booking intersecting the window (the use case passes the window widened by the buffer)
 
 ### Requirement: DB test policy
 Tests needing a database MUST skip cleanly when `DATABASE_URL_TEST` is unset and MUST fail (never skip) when it is set but unreachable. Tests MUST NOT target a production database.

@@ -23,7 +23,7 @@ The domain MUST expose `calculate_price(request, catalog, rules) -> Quote`. It M
 - Then a domain validation error is raised
 
 ### Requirement: Rule set is validated data
-`PricingRules` MUST be a frozen data object containing: guest tiers, weekend multiplier, night window (start/end local time) and night surcharge, distance bands with flat surcharge in COP, package discount policy, rounding step, availability buffer, and an IANA timezone (default `America/Bogota`). Multipliers and surcharges MUST be integers in basis points (1 bp = 0.01%) or whole COP. Construction MUST reject: overlapping or unordered guest tiers/distance bands, gaps in tier coverage from 1 guest / 0 km, negative values, multipliers below 10000 bps, rounding step <= 0, unknown timezone, and equal night start/end. Synthetic defaults MUST exist in code; replacing the data MUST NOT require changing `calculate_price`. A holiday calendar (set of dates) MUST be injectable; the default is empty (weekends only).
+`PricingRules` MUST be a frozen data object containing: guest tiers, weekend multiplier, night window (start/end local time) and night surcharge, distance bands with a marginal rate per km in COP, a package discount cap (`max_package_discount_bps`), rounding step, and an IANA timezone (the availability buffer lives in `AvailabilityRules`, not here) (default `America/Bogota`). Percentage surcharges MUST be integers in basis points (1 bp = 0.01%) and rates whole COP. Construction MUST reject: overlapping or unordered guest tiers/distance bands, a first tier not starting at 1 guest, decreasing tier surcharges, negative values, rounding step <= 0, unknown timezone, and equal night start/end. Synthetic defaults MUST exist in code; replacing the data MUST NOT require changing `calculate_price`. A holiday calendar (set of dates) MUST be injectable; the default is empty (weekends only).
 
 #### Scenario: Overlapping bands rejected
 - Given distance bands 0-20 km and 15-40 km
@@ -41,7 +41,7 @@ The domain MUST expose `calculate_price(request, catalog, rules) -> Quote`. It M
 - Then totals are rounded to the respective step
 
 ### Requirement: Base price and quantity
-Each requested item line MUST cost `unit_price * quantity`. Each requested package line MUST cost the sum of its member items (`unit_price * member_quantity`), times package quantity, minus the package discount. Duplicate lines for the same code MUST be merged by summing quantities.
+Each requested item line MUST cost `unit_price * quantity`. Each requested package line MUST cost the sum of its member items (`unit_price * member_quantity`), times package quantity, minus the package discount (`ServicePackage.discount_bps`, capped by `PricingRules.max_package_discount_bps`). Item and package amounts are multiplied by the rental days (`max(1, ceil((end - start) / 24h))`). Duplicate lines for the same code MUST be merged by summing quantities.
 
 #### Scenario: Item line
 - Given an item priced 100000 COP and quantity 3
@@ -54,12 +54,12 @@ Each requested item line MUST cost `unit_price * quantity`. Each requested packa
 - Then the package line is 900000 COP and the breakdown records the discount of 100000 COP
 
 ### Requirement: Order of application
-Adjustments MUST be applied in this fixed order, using exact arithmetic (`int`/`Fraction`) throughout: (1) line subtotals with package discounts, summed into the subtotal; (2) guest-tier multiplier on the subtotal; (3) weekend/holiday multiplier; (4) night-hours multiplier; (5) flat distance surcharge added after multipliers (it is not multiplied); (6) rounding, applied exactly once, to the final exact total. Multipliers compose multiplicatively.
+Adjustments MUST be applied in this fixed order, using integer arithmetic throughout (design section 5): (1) line subtotals with package discounts, summed into the equipment subtotal E; (2) guest-size, (3) weekend/holiday and (4) night percentages, each computed on E and ADDED (not compounded; each percentage line is rounded half-up to the peso); (5) marginal per-km distance lines, not multiplied; (6) rounding of the raw total to the step, applied exactly once and recorded as an explicit `ROUNDING` line.
 
 #### Scenario: Composition
-- Given subtotal 1000000, guest tier 11000 bps, weekend 12000 bps, night 10500 bps and distance surcharge 80000
+- Given default rules, 2 x speaker at 120000 and 1 x mixer at 79900, 150 guests, Saturday 20:00-23:30 Bogota, 45 km
 - When the quote is calculated
-- Then the exact total is `1000000 * 1.10 * 1.20 * 1.05 + 80000 = 1466000` and the final total is 1466000 after rounding to 1000
+- Then E is 319900, guest 10% is 31990, weekend 15% is 47985, night 20% is 63980, distance 25 km x 3000 is 75000, raw total 538855, total 539000 with a `ROUNDING` line of +145
 
 #### Scenario: Rounding applied once
 - Given any request
@@ -67,28 +67,28 @@ Adjustments MUST be applied in this fixed order, using exact arithmetic (`int`/`
 - Then none of them is rounded, and only the final total is
 
 ### Requirement: Guest tiers
-Guest count MUST select exactly one tier from the closed-open ranges in the rule set; the tier supplies a multiplier in bps. Counts beyond the last tier MUST use an open-ended last tier or be rejected, as defined by the rules.
+Guest count MUST select the last tier whose `min_guests` is <= the count; the tier supplies a surcharge in bps applied to E. The last tier is open-ended.
 
 #### Scenario: Tier boundaries
-- Given tiers `[1,100)`, `[100,300)`, `[300, inf)`
-- When guest counts 99, 100 and 300 are priced
-- Then they use tier 1, tier 2 and tier 3 respectively
+- Given default tiers starting at 1, 101, 301 and 601 guests
+- When guest counts 100, 101 and 300 are priced
+- Then they use the 0%, 10% and 10% tiers respectively
 
 ### Requirement: Weekend multiplier
-The weekend (or listed holiday) multiplier MUST apply when the event start date, converted to the rule-set timezone, is Saturday or Sunday or in the holiday calendar. Otherwise the factor is 10000 bps (neutral).
+One flat weekend/holiday surcharge (percentage of E) MUST apply when ANY local date (rule-set timezone) touched by `[start, end)` (end exclusive) is a weekend day or in the holiday calendar. Otherwise no line is emitted.
 
 #### Scenario: UTC instant on Saturday night in Bogota
 - Given a start of 2026-10-11T03:00Z (Saturday 2026-10-10 22:00 in Bogota, UTC-5)
 - When priced
-- Then the weekend multiplier applies because the local date is Saturday
+- Then the weekend surcharge applies because the local date is Saturday
 
 #### Scenario: Weekday
 - Given a start on a Wednesday local date
 - When priced
-- Then the weekend multiplier is neutral
+- Then no weekend line is emitted
 
 ### Requirement: Night-hours surcharge
-The night multiplier MUST apply once (not per hour) when any part of the event interval `[start, end)` overlaps the night window in the rule-set timezone, including windows crossing midnight and multi-day events. The window MUST be rule-set data.
+The night surcharge MUST apply once (not per hour) when any part of the event interval `[start, end)` overlaps the night window instance of any touched local date, or of the previous evening, in the rule-set timezone, including windows crossing midnight and multi-day events. The window MUST be rule-set data.
 
 #### Scenario: Event fully in daytime
 - Given an event 14:00-20:00 Bogota time
@@ -111,34 +111,34 @@ The night multiplier MUST apply once (not per hour) when any part of the event i
 - Then the night surcharge applies
 
 ### Requirement: Distance surcharge tiers
-Venue distance in km MUST select exactly one band from closed-open ranges in the rule set; each band carries a flat surcharge in whole COP (zero for the nearest band). Distances beyond the last band MUST use an open-ended band or be rejected, as defined by the rules.
+Venue distance in km MUST be charged marginally per band: each band carries a rate per km in whole COP (zero for the nearest band) applied only to the km inside that band, producing one `DISTANCE` line per non-free band. The last band is open-ended. There are no cliffs between bands.
 
 #### Scenario: Band boundaries
-- Given bands `[0,20)` surcharge 0 and `[20,60)` surcharge 80000
-- When distances 19 and 20 km are priced
-- Then surcharges are 0 and 80000
+- Given default bands (20 km free, up to 60 km at 3000/km, beyond at 4500/km)
+- When distances 19, 20 and 21 km are priced
+- Then distance charges are 0, 0 and 3000
 
 ### Requirement: Quote value object and explainable breakdown
-`Quote` MUST be a frozen value object with: ordered line items (code, kind item/package, quantity, unit price, line total, discount), an ordered breakdown of steps (rule key, human-readable English label, applied basis points or flat amount, resulting running amount in whole pesos), a `rounding_adjustment` (signed integer pesos), and `total` as `Money`. The sum of line totals, step deltas and rounding adjustment MUST equal `total`. Every adjustment that altered the price MUST appear in the breakdown; neutral steps MAY be omitted. Breakdown ordering MUST follow the order of application so that a downstream agent can explain the price without recomputing it.
+`Quote` MUST be a frozen value object with `schema_version`, `rules_version`, `currency`, `rental_days`, an ordered tuple of `QuoteLine` (kind, code, label, quantity, periods, unit_amount, rate_bps, basis, signed amount), `subtotal` (raw total) and `total` as `Money`, plus `to_dict()` emitting JSON primitives only. The sum of all line amounts, including the explicit `ROUNDING` line, MUST equal `total`. Every non-rounding line MUST be reproducible from its own fields. Neutral adjustments emit no line. Line order follows the order of application (items, packages with discount, guest, weekend, night, distance, rounding) so a downstream agent can explain the price without recomputing it.
 
 #### Scenario: Total reconciles
 - Given any valid request
 - When the quote is built
-- Then `total` equals the line subtotal plus every step delta plus `rounding_adjustment`
+- Then `total` equals the sum of all line amounts including the `ROUNDING` line
 
 #### Scenario: Explainability
 - Given a Saturday night event with a 25 km venue
 - When the quote is built
-- Then the breakdown contains the weekend, night and distance steps, in that relative order, each with its rule key and applied value
+- Then the lines contain the weekend, night and distance entries, in that relative order, each with its code and applied value
 
 ### Requirement: Pricing property-based invariants
 Property-based tests (Hypothesis, dev dependency) MUST verify, over generated valid inputs and valid rule sets:
 - Totals are non-negative and a multiple of the rounding step.
 - Monotonic in quantity: increasing any line's quantity never decreases the total.
 - Determinism: repeated evaluation yields equal quotes.
-- Reconciliation: line totals plus step deltas plus rounding adjustment equal the total.
+- Reconciliation: the sum of all line amounts equals the total.
 - Rounding idempotence: rounding the total again leaves it unchanged.
-- Neutral rules (all multipliers 10000 bps, zero surcharges, no discount, step 1) yield the sum of `unit_price * quantity`.
+- Neutral rules (all percentages 0 bps, zero rates, no discount, step 1) yield the sum of `unit_price * quantity`.
 - Permuting the order of requested lines does not change the total.
 
 #### Scenario: Properties hold

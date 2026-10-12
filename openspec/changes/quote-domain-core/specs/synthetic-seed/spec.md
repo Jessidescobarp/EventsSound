@@ -5,7 +5,7 @@ Change: quote-domain-core. A manual script (not a migration) that loads syntheti
 ## ADDED Requirements
 
 ### Requirement: Seed content
-The seed MUST define exactly 30 equipment items and 5 service packages. Item and package `code` values and category names MUST be English slugs (`^[a-z][a-z0-9_]*$`); `display_name` and `description` MUST be Spanish. Items MUST span at least sound, lighting, DJ/stage and accessory categories, with positive integer `unit_price_cop`, stock >= 1 (at least one item with stock > 1), and prices that are multiples of 1000. Every package MUST reference only seeded items with positive quantities and have `discount_bps` in 0..10000. Seed definitions MUST be plain data, validated by unit tests without a database.
+The seed MUST define exactly 30 equipment items and 5 service packages. Item and package `code` values and category names MUST be English slugs (`^[a-z][a-z0-9_]*$`); `name` MUST be Spanish. Items MUST cover all categories (sound, lighting, dj, stage, effects, video), with positive integer `unit_price_cop`, stock >= 1 (at least one item with stock > 1), and prices that are multiples of 1000. Every package MUST reference only seeded items with positive quantities and have `discount_bps` in 0..10000. Seed definitions MUST be plain data, validated by unit tests without a database.
 
 #### Scenario: Counts and shape
 - Given the seed definitions
@@ -39,7 +39,7 @@ The seed MUST do nothing and exit non-zero unless `--confirm` is passed, printin
 - Then no connection is opened and the exit code is non-zero
 
 ### Requirement: Remote host guard
-The seed MUST parse the target database host. If the host is not local (`localhost`, `127.0.0.1`, `::1`), it MUST refuse to run and exit non-zero unless the environment variable `ALLOW_REMOTE_SEED=1` is set. The check MUST happen before any connection. The seed MUST NOT read `.env*` files directly; it uses `Settings`/environment like the rest of the app.
+The seed MUST parse the target database host. If the host is not local (`localhost`, `127.0.0.1`, `::1`, `db`, or no host), or `APP_ENV` is `production`, it MUST refuse to run and exit non-zero unless the environment variable `ALLOW_REMOTE_SEED` equals exactly `1`. `ALLOW_REMOTE_SEED` is read only by the seed CLI via `os.environ` (injectable); it is NOT a `Settings` field and `.env.example` does not change (developer rule, supersedes design D14). The check MUST happen before any connection. The seed MUST NOT read `.env*` files directly; it uses `Settings` for `DATABASE_URL` like the rest of the app.
 
 #### Scenario: Local host
 - Given `DATABASE_URL` host is `127.0.0.1` and `--confirm` is passed
