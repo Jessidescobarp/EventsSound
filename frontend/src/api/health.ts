@@ -1,13 +1,16 @@
-import { getApiBaseUrl } from "../env";
+import { apiFetch } from "./client";
 
-/** Resolves when GET /health answers 200 {"status":"ok"}; rejects otherwise. */
+function parseHealth(json: unknown): true {
+  if (typeof json !== "object" || json === null || (json as { status?: unknown }).status !== "ok") {
+    throw new Error("unexpected health body");
+  }
+  return true;
+}
+
+/**
+ * Resolves when GET /health answers 200 {"status":"ok"}; rejects with an ApiError
+ * otherwise. Uses apiFetch, so credentials are omitted and the size cap applies.
+ */
 export async function checkHealth(signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/health`, { signal });
-  if (!response.ok) {
-    throw new Error(`Health check failed with status ${response.status}`);
-  }
-  const body = (await response.json()) as { status?: string };
-  if (body.status !== "ok") {
-    throw new Error("Health check returned an unexpected body");
-  }
+  await apiFetch("/health", { parse: parseHealth, signal });
 }

@@ -70,3 +70,5 @@ jobs:
       - run: npm run lint
       - run: npm run test -- --run
       - run: npm run build
+      # Demo (mock) data must never reach a production bundle.
+      - run: node build/check-no-mocks.mjs dist
