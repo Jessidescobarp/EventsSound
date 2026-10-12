@@ -8,6 +8,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import Session, sessionmaker
 
 from network_guard import install
@@ -45,14 +46,29 @@ def database_url() -> str:
     return url
 
 
+class UnsafeResetTarget(RuntimeError):
+    """The database a destructive test helper was pointed at is not a local one."""
+
+
 def reset_schema(url: str) -> None:
     """Drop every application table and the Alembic bookkeeping table.
 
     Table names come from the models metadata, so a new model is cleaned up without edits here.
-    This is deliberately not `DROP SCHEMA public CASCADE`: it never touches extensions.
+    This is deliberately not `DROP SCHEMA public CASCADE`: it never touches extensions. It refuses,
+    before any connection, a URL that is not local (same rule as the seed CLI, which also looks at
+    the libpq environment). The database name is NOT checked: the README points DATABASE_URL_TEST
+    at the local compose database, so a name rule would break the documented workflow.
     """
     import eventssound.adapters.db.models  # noqa: F401  (registers the tables on Base.metadata)
     from eventssound.adapters.db.session import Base
+    from eventssound.entrypoints.cli.seed_catalog import is_local_target
+
+    try:
+        local = is_local_target(url)
+    except (ArgumentError, ValueError):
+        local = False
+    if not local:
+        raise UnsafeResetTarget("refusing to reset the schema of a non-local database")
 
     engine = create_engine(url)
     try:
