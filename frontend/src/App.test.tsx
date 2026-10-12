@@ -1,41 +1,82 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { act, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App from "./App";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { es } from "./copy/es";
+import { renderApp } from "./test/renderApp";
 
-const reply = (body: unknown, status = 200) =>
-  Promise.resolve({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response);
+const ROUTES = [
+  ["/", es.home.heroTitle],
+  ["/quienes-somos", es.about.title],
+  ["/portafolio", es.portfolio.title],
+  ["/servicios", es.services.title],
+  ["/cotizar", es.chat.title],
+  ["/ruta-que-no-existe", es.notFound.title],
+] as const;
 
-// A fetch that never answers on its own and only settles when aborted.
-const hungFetch = (_input: RequestInfo | URL, init?: RequestInit) =>
-  new Promise<Response>((_resolve, reject) => {
-    init?.signal?.addEventListener("abort", () =>
-      reject(new DOMException("Aborted", "AbortError")),
-    );
+describe("routing", () => {
+  it.each(ROUTES)("route %s shows its h1", async (path, heading) => {
+    renderApp(path);
+    expect(await screen.findByRole("heading", { level: 1, name: heading })).toBeInTheDocument();
   });
 
-const LOADING = "Cargando estado del servicio...";
-
-describe("App", () => {
-  beforeEach(() => {
-    vi.stubEnv("VITE_API_BASE_URL", "https://api.example");
+  it.each(ROUTES)("route %s has exactly one h1", async (path) => {
+    renderApp(path);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
+  it("updates the document title per page", async () => {
+    renderApp("/quienes-somos");
+    await waitFor(() => expect(document.title).toBe(`${es.titles.about} · ${es.brand.name}`));
+  });
+});
+
+describe("layout", () => {
+  it("exposes the landmarks", () => {
+    renderApp("/");
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: es.a11y.mainNav })).toBeInTheDocument();
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(screen.getByRole("contentinfo")).toBeInTheDocument();
   });
 
-  it("renders the heading and a Spanish document", () => {
-    vi.stubGlobal("fetch", vi.fn(hungFetch));
-    render(<App />);
+  it("has a skip link as the first link, pointing at the focusable main", () => {
+    renderApp("/");
+    const [first] = screen.getAllByRole("link");
+    expect(first).toHaveAccessibleName(es.a11y.skipLink);
+    expect(first).toHaveAttribute("href", "#contenido");
+    expect(screen.getByRole("main")).toHaveAttribute("id", "contenido");
+    expect(screen.getByRole("main")).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("links every section from the main navigation", () => {
+    renderApp("/");
+    const nav = screen.getByRole("navigation", { name: es.a11y.mainNav });
+    const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["/", "/quienes-somos", "/portafolio", "/servicios", "/cotizar"]);
+  });
+
+  it("marks only the current page with aria-current", () => {
+    renderApp("/portafolio");
+    const nav = screen.getByRole("navigation", { name: es.a11y.mainNav });
+    const current = Array.from(nav.querySelectorAll("a[aria-current='page']"));
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveTextContent(es.nav.portfolio);
+  });
+
+  it("navigates on click, updates the heading and moves focus to main", async () => {
+    renderApp("/");
+    const nav = screen.getByRole("navigation", { name: es.a11y.mainNav });
+    expect(screen.getByRole("main")).not.toHaveFocus();
+    fireEvent.click(Array.from(nav.querySelectorAll("a"))[1]!);
     expect(
-      screen.getByRole("heading", { name: "EventSoundDR" }),
+      await screen.findByRole("heading", { level: 1, name: es.about.title }),
     ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("main")).toHaveFocus());
+  });
+
+  it("serves a Spanish document", () => {
     // jsdom does not load index.html, so assert the served document directly.
     const html = new DOMParser().parseFromString(
       readFileSync(resolve(import.meta.dirname, "../index.html"), "utf8"),
@@ -43,105 +84,70 @@ describe("App", () => {
     );
     expect(html.documentElement.lang).toBe("es");
     expect(html.title).toBe("EventSoundDR");
+    expect(html.querySelector("#root")).not.toBeNull();
   });
 
-  it("shows the loading message while the request is pending", () => {
-    vi.stubGlobal("fetch", vi.fn(hungFetch));
-    render(<App />);
-    expect(screen.getByText(LOADING)).toBeInTheDocument();
+  it("never renders raw HTML from copy or data (no script or inline handler nodes)", async () => {
+    const { container } = renderApp("/portafolio");
+    await screen.findByRole("heading", { level: 1 });
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.querySelector("[onerror], [onclick]")).toBeNull();
+  });
+});
+
+describe("images", () => {
+  it("every image has an accessible name", async () => {
+    renderApp("/portafolio");
+    await screen.findByRole("heading", { level: 1 });
+    const images = screen.getAllByRole("img");
+    expect(images.length).toBeGreaterThan(0);
+    for (const image of images) expect(image).toHaveAccessibleName();
+  });
+});
+
+describe("pages", () => {
+  it("home links to the catalog and to the chat", () => {
+    renderApp("/");
+    const main = screen.getByRole("main");
+    const links = Array.from(main.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(links).toContain("/servicios");
+    expect(links).toContain("/cotizar");
+    for (const link of screen.getAllByRole("link", { name: es.home.ctaServices })) {
+      expect(link).toHaveAttribute("href", "/servicios");
+    }
   });
 
-  it("requests health at the configured base URL and shows ok", async () => {
-    const fetchMock = vi.fn<typeof fetch>(() => reply({ status: "ok" }));
-    vi.stubGlobal("fetch", fetchMock);
-    render(<App />);
-    expect(await screen.findByText("Servicio operativo")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.example/health");
+  it("about lists the values", () => {
+    renderApp("/quienes-somos");
+    for (const value of es.about.values) {
+      expect(screen.getByRole("heading", { level: 3, name: value.title })).toBeInTheDocument();
+    }
   });
 
-  describe("with fake timers", () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    it.each([
-      ["rejects", () => Promise.reject(new TypeError("network"))],
-      ["returns 503", () => reply({ status: "down" }, 503)],
-    ])("shows unavailable after the retry window when fetch %s", async (_n, impl) => {
-      const fetchMock = vi.fn(impl);
-      vi.stubGlobal("fetch", fetchMock);
-      render(<App />);
-
-      await act(() => vi.advanceTimersByTimeAsync(30_000));
-      expect(screen.getByText(LOADING)).toBeInTheDocument();
-      expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
-
-      await act(() => vi.advanceTimersByTimeAsync(70_000));
-      expect(screen.getByText("Servicio no disponible")).toBeInTheDocument();
-    });
-
-    it("recovers when the backend wakes up within the window", async () => {
-      const fetchMock = vi
-        .fn()
-        .mockImplementationOnce(() => Promise.reject(new TypeError("cold")))
-        .mockImplementationOnce(() => reply({ status: "ok" }, 502))
-        .mockImplementation(() => reply({ status: "ok" }));
-      vi.stubGlobal("fetch", fetchMock);
-      render(<App />);
-
-      await act(() => vi.advanceTimersByTimeAsync(20_000));
-      expect(screen.getByText("Servicio operativo")).toBeInTheDocument();
-    });
-
-    it("aborts a hung request after about 10 s and retries", async () => {
-      const fetchMock = vi.fn(hungFetch);
-      vi.stubGlobal("fetch", fetchMock);
-      render(<App />);
-
-      await act(() => vi.advanceTimersByTimeAsync(9_000));
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      await act(() => vi.advanceTimersByTimeAsync(7_000));
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
-    });
-
-    it("stays bounded to about 90 s even if every request hangs", async () => {
-      vi.stubGlobal("fetch", vi.fn(hungFetch));
-      render(<App />);
-
-      await act(() => vi.advanceTimersByTimeAsync(80_000));
-      expect(screen.getByText(LOADING)).toBeInTheDocument();
-      await act(() => vi.advanceTimersByTimeAsync(10_000));
-      expect(screen.getByText("Servicio no disponible")).toBeInTheDocument();
-    });
-
-    it("aborts the in-flight request and stops retrying on unmount", async () => {
-      const fetchMock = vi.fn(hungFetch);
-      vi.stubGlobal("fetch", fetchMock);
-      const { unmount } = render(<App />);
-      const signal = fetchMock.mock.calls[0]?.[1]?.signal;
-      expect(signal?.aborted).toBe(false);
-
-      unmount();
-      expect(signal?.aborted).toBe(true);
-      await act(() => vi.advanceTimersByTimeAsync(60_000));
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it.each([
-      ["missing", ""],
-      ["without a scheme", "api.example"],
-    ])("shows unavailable immediately when the API URL is %s", async (_n, value) => {
-      vi.stubEnv("VITE_API_BASE_URL", value);
-      const fetchMock = vi.fn();
-      vi.stubGlobal("fetch", fetchMock);
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      render(<App />);
-      await act(() => vi.advanceTimersByTimeAsync(0));
-      expect(screen.getByText("Servicio no disponible")).toBeInTheDocument();
-      expect(errorSpy).toHaveBeenCalled();
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
+  it("portfolio shows every event with its image", () => {
+    renderApp("/portafolio");
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(es.portfolio.events.length);
+    for (const event of es.portfolio.events) {
+      expect(screen.getByRole("img", { name: es.portfolio.imageLabel(event.title) })).toBeInTheDocument();
+    }
   });
+
+  it("chat placeholder is clearly marked as coming soon and offers no input", () => {
+    renderApp("/cotizar");
+    expect(screen.getByText(es.chat.badge)).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /enviar/i })).toBeNull();
+    expect(screen.getByRole("link", { name: es.chat.cta })).toHaveAttribute("href", "/servicios");
+  });
+
+  it("not found offers a way home", () => {
+    renderApp("/no-existe");
+    expect(screen.getByRole("link", { name: es.notFound.cta })).toHaveAttribute("href", "/");
+  });
+});
+
+it("does not call a missing API during static pages when health is down", async () => {
+  const down = vi.fn(() => Promise.reject(new TypeError("down")));
+  renderApp("/quienes-somos", down as unknown as typeof fetch);
+  expect(await screen.findByRole("heading", { level: 1, name: es.about.title })).toBeInTheDocument();
 });

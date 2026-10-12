@@ -133,6 +133,7 @@ describe("useBackendStatus", () => {
     await advance(0);
     expect(result.current.status).toBe("unavailable");
     expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockClear();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
