@@ -17,7 +17,7 @@ class InvalidSearch(Exception):
 
 @dataclass(frozen=True, slots=True)
 class SearchHit:
-    """A catalog entry found for a query. `rank` is 1-based; names and prices live in the Catalog."""
+    """A catalog entry found for a query. `rank` is 1-based; names and prices stay in Catalog."""
 
     kind: Literal["item", "package"]
     code: str
