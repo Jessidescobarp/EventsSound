@@ -33,5 +33,9 @@ class InvalidQuote(DomainError):
     """A quote or quote line is inconsistent."""
 
 
+class InvalidAvailability(DomainError):
+    """A booking or an availability query is malformed."""
+
+
 class InvalidCatalog(DomainError):
     """A catalog entity or the catalog as a whole is inconsistent."""
