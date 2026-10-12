@@ -279,3 +279,57 @@ def test_core_forbidden_map_keeps_its_original_entries() -> None:
     assert f"{PROJECT}.adapters" in FORBIDDEN["application"]
     assert "pydantic" in FORBIDDEN["application"]
     assert f"{PROJECT}.entrypoints" in FORBIDDEN["adapters"]
+
+
+# --- calcular_precio is the only source of money (agent-tools spec, "Static guard") ---------
+
+MONEY_NAMES = {
+    "Money", "amount", "unit_price", "unit_price_cop", "base_price_cop", "total", "subtotal",
+    "unit_amount", "basis", "discount_bps", "rate_bps",
+}  # fmt: skip
+
+
+def money_arithmetic(source: str) -> list[str]:
+    """Arithmetic (binary or augmented) whose operands mention a money-like name."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.BinOp | ast.AugAssign):
+            names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+            names |= {n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute)}
+            if names & MONEY_NAMES:
+                found.append(f"line {node.lineno}: {sorted(names & MONEY_NAMES)}")
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            mentioned = {n.id for a in node.args for n in ast.walk(a) if isinstance(n, ast.Name)}
+            mentioned |= {
+                n.attr for a in node.args for n in ast.walk(a) if isinstance(n, ast.Attribute)
+            }
+            if node.func.id in {"sum", "round"} and mentioned & MONEY_NAMES:
+                found.append(f"line {node.lineno}: {node.func.id}() over money")
+    return found
+
+
+def test_agent_adapters_never_do_money_arithmetic() -> None:
+    offenders = {
+        path.name: money_arithmetic(path.read_text(encoding="utf-8"))
+        for path in python_files(PACKAGE_ROOT / "adapters" / "agent")
+    }
+
+    assert {name: found for name, found in offenders.items() if found} == {}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "x = item.unit_price.amount * 2",
+        "total = quote.total.amount\ntotal += 5",
+        "y = Money(5) + other",
+        "z = sum(line.amount for line in lines)",
+        "w = round(price.amount)",
+    ],
+)
+def test_money_arithmetic_scanner_detects_violations(source: str) -> None:
+    assert money_arithmetic(source) != []
+
+
+def test_money_scanner_accepts_plain_reads_and_unrelated_arithmetic() -> None:
+    assert money_arithmetic("a = item.unit_price.amount\nb = hit.rank + 1\n") == []
