@@ -46,10 +46,20 @@ function asObject(value: unknown, what: string): Obj {
   return value as Obj;
 }
 
+// C0/C1 controls (incl. newline, tab, NUL, DEL) and bidirectional overrides/isolates
+// (U+202A-202E, U+2066-2069) plus the implicit marks U+200E, U+200F and U+061C.
+// eslint-disable-next-line no-control-regex
+const FORBIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+
 function text(o: Obj, key: string): string {
   const v = o[key];
-  if (typeof v !== "string" || v.length === 0 || v.length > MAX_TEXT) {
-    throw new Error(`${key} must be a non-empty string`);
+  if (
+    typeof v !== "string" ||
+    v.trim().length === 0 ||
+    v.length > MAX_TEXT ||
+    FORBIDDEN_CHARS.test(v)
+  ) {
+    throw new Error(`${key} must be a non-empty, printable string`);
   }
   return v;
 }
@@ -89,6 +99,15 @@ export function parseItems(json: unknown): CatalogItem[] {
   return items;
 }
 
+function parseMembers(raw: unknown[]): PackageMember[] {
+  const members = raw.map((member): PackageMember => {
+    const m = asObject(member, "package member");
+    return { item_code: text(m, "item_code"), quantity: int(m, "quantity", 1) };
+  });
+  assertUnique(members.map((m) => m.item_code), "package member");
+  return members;
+}
+
 export function parsePackages(json: unknown): ServicePackage[] {
   const packages = list(asObject(json, "body"), "packages").map((raw): ServicePackage => {
     const o = asObject(raw, "package");
@@ -97,10 +116,7 @@ export function parsePackages(json: unknown): ServicePackage[] {
       name: text(o, "name"),
       discount_bps: int(o, "discount_bps", 0, 10_000),
       base_price_cop: int(o, "base_price_cop", 0),
-      items: list(o, "items").map((member): PackageMember => {
-        const m = asObject(member, "package member");
-        return { item_code: text(m, "item_code"), quantity: int(m, "quantity", 1) };
-      }),
+      items: parseMembers(list(o, "items")),
     };
   });
   assertUnique(packages.map((p) => p.code), "package");

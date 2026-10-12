@@ -143,3 +143,73 @@ describe("loadCatalog", () => {
     expect((error as ApiError).code).toBe("invalid_response");
   });
 });
+
+describe("text hardening", () => {
+  it.each([
+    ["whitespace only", "   "],
+    ["tab only", "\t"],
+    ["NUL", "Parlante\u0000"],
+    ["newline", "Parlante\nA"],
+    ["DEL", "Parlante\u007f"],
+    ["C1 control", "Parlante\u0085"],
+    ["LRE", "Parlante\u202aA"],
+    ["RLE", "Parlante\u202bA"],
+    ["PDF", "Parlante\u202cA"],
+    ["LRO", "Parlante\u202dA"],
+    ["RLO", "Parlante\u202eA"],
+    ["LRI", "Parlante\u2066A"],
+    ["RLI", "Parlante\u2067A"],
+    ["FSI", "Parlante\u2068A"],
+    ["PDI", "Parlante\u2069A"],
+  ])("rejects %s in an item name", (_n, name) => {
+    expect(() => parseItems({ items: [item({ name })] })).toThrow();
+  });
+
+  it("applies to codes, categories and package text too", () => {
+    expect(() => parseItems({ items: [item({ code: "a\u202eb" })] })).toThrow();
+    expect(() => parseItems({ items: [item({ category: " " })] })).toThrow();
+    expect(() => parsePackages({ packages: [pkg({ name: "\u2066x" })] })).toThrow();
+    expect(() =>
+      parsePackages({ packages: [pkg({ items: [{ item_code: "x\u0000", quantity: 1 }] })] }),
+    ).toThrow();
+  });
+
+  it("keeps ordinary Spanish text, accents and punctuation", () => {
+    const name = "Máquina de humo (1.5 kW) – ¡nueva! 3 × 2 m";
+    expect(parseItems({ items: [item({ name })] })[0]?.name).toBe(name);
+  });
+});
+
+describe("boundaries and duplicates", () => {
+  it("rejects a duplicate item_code inside a package", () => {
+    const items = [
+      { item_code: "a", quantity: 1 },
+      { item_code: "a", quantity: 2 },
+    ];
+    expect(() => parsePackages({ packages: [pkg({ items })] })).toThrow();
+  });
+
+  it("rejects duplicate package codes", () => {
+    expect(() => parsePackages({ packages: [pkg(), pkg()] })).toThrow();
+  });
+
+  it.each([0, 1, 9999, 10000])("accepts discount_bps %i", (discount_bps) => {
+    expect(parsePackages({ packages: [pkg({ discount_bps })] })[0]?.discount_bps).toBe(discount_bps);
+  });
+
+  it.each([-1, 10001])("rejects discount_bps %i", (discount_bps) => {
+    expect(() => parsePackages({ packages: [pkg({ discount_bps })] })).toThrow();
+  });
+
+  it("accepts a zero stock and a zero price", () => {
+    const [parsed] = parseItems({ items: [item({ stock_quantity: 0, unit_price_cop: 0 })] });
+    expect(parsed?.stock_quantity).toBe(0);
+    expect(parsed?.unit_price_cop).toBe(0);
+  });
+
+  it("accepts exactly the entry cap and the maximum text length", () => {
+    const many = Array.from({ length: MAX_CATALOG_ENTRIES }, (_, i) => item({ code: `c${i}` }));
+    expect(parseItems({ items: many })).toHaveLength(MAX_CATALOG_ENTRIES);
+    expect(parseItems({ items: [item({ name: "a".repeat(200) })] })).toHaveLength(1);
+  });
+});

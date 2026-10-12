@@ -84,7 +84,7 @@ function PackagesSection({ packages, names }: { packages: ServicePackage[]; name
         <ul aria-labelledby={headingId} className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {packages.map((p) => (
             <Card as="li" key={p.code} className="flex flex-col gap-3">
-              <h3 className="text-lg font-semibold text-brand-900">{p.name}</h3>
+              <h3 className="text-lg font-semibold break-words text-brand-900">{p.name}</h3>
               {p.discount_bps > 0 ? (
                 <div>
                   <Badge tone="accent">{t.discountBadge(formatPercentFromBps(p.discount_bps))}</Badge>
@@ -160,7 +160,7 @@ function ItemsSection({ items }: { items: CatalogItem[] }) {
               <div>
                 <Badge>{categoryLabel(categoryKey(i.category))}</Badge>
               </div>
-              <h3 className="text-lg font-semibold">{i.name}</h3>
+              <h3 className="text-lg font-semibold break-words">{i.name}</h3>
               <p>
                 <span className="text-xl font-bold">{formatCop(i.unit_price_cop)}</span>{" "}
                 <span className="text-sm text-ink-muted">{t.perDay}</span>

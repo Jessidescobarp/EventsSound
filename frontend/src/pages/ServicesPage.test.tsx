@@ -267,3 +267,49 @@ describe("catalog page: failures never crash the page", () => {
     expect(container.querySelector("[onerror]")).toBeNull();
   });
 });
+
+describe("catalog page: robustness of rendering", () => {
+  it("lets very long names wrap instead of overflowing", async () => {
+    const long = "Superlargo".repeat(20);
+    renderApp(
+      "/servicios",
+      server(serve({ items: [item({ name: long })] }, { packages: [pkg({ name: long })] })),
+    );
+    const headings = await screen.findAllByRole("heading", { level: 3, name: long });
+    expect(headings).toHaveLength(2);
+    for (const heading of headings) expect(heading.className).toContain("break-words");
+  });
+
+  it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])(
+    "treats the inherited-property category %j as 'Otros' without crashing",
+    async (category) => {
+      renderApp("/servicios", server(serve({ items: [item({ category })] }, { packages: [] })));
+      const list = await screen.findByRole("list", { name: es.services.itemsTitle });
+      expect(list).toHaveTextContent(es.services.categoryFallback);
+      const select = screen.getByRole("combobox", { name: es.services.categoryFilterLabel });
+      const options = within(select).getAllByRole("option").map((o) => o.textContent);
+      expect(options).toEqual([es.services.categoryAll, es.services.categoryFallback]);
+    },
+  );
+
+  it("shows the discount badge only when the discount is above zero", async () => {
+    renderApp(
+      "/servicios",
+      server(
+        serve(
+          { items: [item()] },
+          {
+            packages: [
+              pkg({ code: "p0", name: "Sin descuento", discount_bps: 0 }),
+              pkg({ code: "p1", name: "Con descuento", discount_bps: 1 }),
+            ],
+          },
+        ),
+      ),
+    );
+    const packages = await screen.findByRole("list", { name: es.services.packagesTitle });
+    const [none, some] = rows(packages);
+    expect(none).not.toHaveTextContent("de descuento");
+    expect(some).toHaveTextContent("0,01% de descuento");
+  });
+});
