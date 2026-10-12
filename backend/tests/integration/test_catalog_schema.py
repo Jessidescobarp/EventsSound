@@ -377,7 +377,10 @@ def test_booking_timestamps_keep_their_timezone_and_instant(engine: Engine) -> N
 
 def test_models_match_the_migrated_schema(engine: Engine) -> None:
     with engine.connect() as connection:
-        differences = compare_metadata(MigrationContext.configure(connection), Base.metadata)
+        context = MigrationContext.configure(
+            connection, opts={"compare_type": True, "compare_server_default": True}
+        )
+        differences = compare_metadata(context, Base.metadata)
 
     assert differences == []
 
