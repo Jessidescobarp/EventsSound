@@ -1,6 +1,6 @@
 /**
  * Demonstration-only fake of the backend, answering with the catalog-api contract.
- * It is loaded ONLY through a dynamic import guarded by VITE_USE_MOCKS === "true"
+ * It is loaded ONLY through a dynamic import guarded by isMockMode()
  * (see main.tsx), so default and production builds do not contain this module.
  * All data is synthetic.
  */

@@ -13,6 +13,10 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
+    files: ["build/**/*.mjs", "vite.config.ts"],
+    languageOptions: { globals: globals.node },
+  },
+  {
     // Safe rendering: model and API text must only reach the DOM as React text nodes.
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/**/*.test.{ts,tsx}"],
