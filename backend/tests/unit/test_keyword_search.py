@@ -6,7 +6,14 @@ from agent_fixtures import make_catalog
 from eventssound.adapters.db.seed_data import SEED_ITEMS, SEED_PACKAGES
 from eventssound.adapters.search.keyword import KeywordSearch
 from eventssound.application.search import EquipmentSearch, InvalidSearch, SearchHit, SearchResult
-from eventssound.domain.catalog import Catalog, EquipmentCategory
+from eventssound.domain.catalog import (
+    Catalog,
+    EquipmentCategory,
+    EquipmentItem,
+    PackageLine,
+    ServicePackage,
+)
+from eventssound.domain.money import Money
 
 CATALOG = make_catalog()
 SEARCH = KeywordSearch(CATALOG)
@@ -67,13 +74,19 @@ def test_hits_only_reference_real_codes() -> None:
         assert set(codes(query, limit=10)) <= real
 
 
-def test_ties_are_broken_by_ascending_code_every_time() -> None:
-    first = codes("de 4 canales dj 16 canales", limit=10)
+def test_ties_are_broken_by_item_first_then_ascending_code_whatever_the_catalog_order() -> None:
+    items = [
+        EquipmentItem(code, "Luz gemela", EquipmentCategory.LIGHTING, 1, Money(1000))
+        for code in ("light_zeta", "light_alpha", "light_mid")
+    ]
+    package = ServicePackage("pkg_aaa", "Paquete", (PackageLine("light_mid", 1),), 0)
+    for ordered in (items, items[::-1]):
+        search = KeywordSearch(Catalog(tuple(ordered), (package,)))
 
-    assert all(codes("de 4 canales dj 16 canales", limit=10) == first for _ in range(5))
-    result = SEARCH.search(["parlante"], None, 10)[0].hits
-    keys = [(-hit.keyword_score, hit.code) for hit in result]
-    assert keys == sorted(keys)
+        (result,) = search.search(["luz gemela"], None, 10)
+
+        assert [h.code for h in result.hits][:3] == ["light_alpha", "light_mid", "light_zeta"]
+        assert result.hits[-1].code == "pkg_aaa"  # items outrank packages on equal scores
 
 
 def test_a_rare_term_weighs_more_than_a_common_one() -> None:
@@ -181,3 +194,36 @@ def test_keyword_recall_at_5_on_the_seed_catalog() -> None:
 
     assert len(RETRIEVAL_CASES) >= 15
     assert 1 - len(misses) / len(RETRIEVAL_CASES) >= 0.8, misses
+
+
+def test_the_expected_item_ranks_first_for_most_queries() -> None:
+    """Recall@5 alone hides packages crowding out the item: also check the rank."""
+    seed = KeywordSearch(Catalog(SEED_ITEMS, SEED_PACKAGES))
+    ranks = []
+    for query, expected in RETRIEVAL_CASES:
+        codes_found = [h.code for h in seed.search([query], None, 10)[0].hits]
+        ranks.append(codes_found.index(expected) + 1 if expected in codes_found else 99)
+
+    assert sum(rank == 1 for rank in ranks) / len(ranks) >= 0.75, ranks
+    assert sum(1 / rank for rank in ranks) / len(ranks) >= 0.85, ranks
+
+
+@pytest.mark.parametrize("query", ["parlantes", "bafle", "mezcladores", "dos microfonos"])
+def test_an_item_outranks_the_packages_that_contain_it(query: str) -> None:
+    seed = KeywordSearch(Catalog(SEED_ITEMS, SEED_PACKAGES))
+
+    first = seed.search([query], None, 5)[0].hits[0]
+
+    assert first.kind == "item"
+
+
+@pytest.mark.parametrize("query", ["moviles", "controladores", "escalones", "cabezas moviles"])
+def test_consonant_plurals_reach_their_synonyms(query: str) -> None:
+    seed = KeywordSearch(Catalog(SEED_ITEMS, SEED_PACKAGES))
+
+    assert seed.search([query], None, 5)[0].hits
+
+
+def test_combining_and_variation_marks_do_not_split_a_word() -> None:
+    for sneaky in ("par\u034flante", "par\ufe0flante", "par\u180blante"):
+        assert codes(sneaky)[:1] == ["sound_speaker_15"], sneaky

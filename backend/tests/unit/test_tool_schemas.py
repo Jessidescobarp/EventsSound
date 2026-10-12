@@ -139,15 +139,30 @@ def test_malformed_event_requests_fail_validation(overrides: dict[str, Any]) -> 
         {"guest_count": 100_001},
         {"distance_km": -1},
         {"distance_km": 5_001},
-        {"end": "2026-11-14T18:00:00-05:00"},  # end == start
-        {"end": "2026-11-14T17:00:00-05:00"},  # end < start
-        {"end": "2026-12-20T18:00:00-05:00"},  # longer than 31 days
         {"items": [], "packages": []},  # no lines
     ],
 )
-def test_domain_bounds_are_enforced_when_building_the_request(overrides: dict[str, Any]) -> None:
-    with pytest.raises((ValidationError, DomainError)):
-        EventRequestArgs.model_validate(request_args(**overrides)).to_domain()
+def test_numeric_and_line_bounds_are_enforced_by_the_schema(overrides: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        EventRequestArgs.model_validate(request_args(**overrides))
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"end": "2026-11-14T18:00:00-05:00"},  # end == start
+        {"end": "2026-11-14T17:00:00-05:00"},  # end < start
+        {"end": "2026-12-20T18:00:00-05:00"},  # longer than 31 days
+    ],
+    ids=["end-equals-start", "end-before-start", "over-31-days"],
+)
+def test_ordering_and_duration_are_enforced_by_the_domain_request(
+    overrides: dict[str, Any],
+) -> None:
+    args = EventRequestArgs.model_validate(request_args(**overrides))  # the schema accepts them
+
+    with pytest.raises(DomainError):
+        args.to_domain()
 
 
 def test_one_hundred_lines_are_accepted() -> None:
@@ -156,12 +171,3 @@ def test_one_hundred_lines_are_accepted() -> None:
     args = EventRequestArgs.model_validate(request_args(items=lines, packages=[]))
 
     assert len(args.to_domain().items) == 100
-
-
-def test_validation_errors_do_not_need_to_be_echoed() -> None:
-    # The executor never forwards a ValidationError; this pins that the schema itself carries
-    # the user text only inside the exception, not in any module-level state.
-    with pytest.raises(ValidationError) as caught:
-        SearchArgs.model_validate({"query": "luces", "x": "<script>alert(1)</script>"})
-
-    assert caught.value.error_count() == 1

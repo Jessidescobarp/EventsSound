@@ -68,13 +68,17 @@ def normalize(text: str) -> str:
             continue
         kept.append(char)
     folded = unicodedata.normalize("NFD", "".join(kept).casefold())
-    return _SPACES.sub(" ", "".join(c for c in folded if not unicodedata.combining(c))).strip()
+    return _SPACES.sub(
+        " ", "".join(c for c in folded if not unicodedata.category(c).startswith("M"))
+    ).strip()
 
 
 def stem(word: str) -> str:
     """Light Spanish plural rule: `luces` -> `luz`, `parlantes` -> `parlante`."""
     if len(word) > 4 and word.endswith("ces"):
         return word[:-3] + "z"
+    if len(word) > 5 and word.endswith(("ores", "ones", "iles", "ales")):
+        return word[:-2]
     if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
         return word[:-1]
     return word

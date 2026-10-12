@@ -4,7 +4,7 @@
 coerced value (`"3"`, `true`) fails validation. There is deliberately no price field anywhere.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import (
@@ -31,6 +31,9 @@ from eventssound.domain.event_request import (
 )
 
 CODE_PATTERN = r"^[a-z0-9_]{3,64}$"
+# Strict ISO-8601 with a mandatory offset: `fromisoformat` alone also accepts week dates, compact
+# forms and, depending on the Python version, other shapes.
+ISO_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$"
 
 
 class _Strict(BaseModel):
@@ -65,8 +68,8 @@ class LineArgs(_Strict):
 
 class EventRequestArgs(_Strict):
     event_type: EventType
-    start: StrictStr
-    end: StrictStr
+    start: StrictStr = Field(pattern=ISO_PATTERN)
+    end: StrictStr = Field(pattern=ISO_PATTERN)
     guest_count: StrictInt = Field(ge=1, le=MAX_GUESTS)
     distance_km: StrictInt = Field(ge=0, le=MAX_DISTANCE_KM)
     venue: VenueType
@@ -86,8 +89,13 @@ class EventRequestArgs(_Strict):
     @field_validator("start", "end")
     @classmethod
     def _aware_iso(cls, value: str) -> str:
-        if _parse(value).utcoffset() is None:
-            raise ValueError("datetime must carry a UTC offset")
+        try:
+            parsed = _parse(value)
+            if parsed.utcoffset() is None:
+                raise ValueError("datetime must carry a UTC offset")
+            parsed.astimezone(UTC)  # offsets near the datetime limits overflow here
+        except OverflowError:
+            raise ValueError("datetime is out of the supported range") from None
         return value
 
     @model_validator(mode="after")

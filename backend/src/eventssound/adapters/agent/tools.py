@@ -17,10 +17,15 @@ from pydantic import ValidationError
 
 from eventssound.adapters.agent.tool_schemas import EventRequestArgs, SearchArgs
 from eventssound.application.errors import RepositoryUnavailable
-from eventssound.application.search import EquipmentSearch, InvalidSearch
+from eventssound.application.search import EquipmentSearch, InvalidSearch, SearchHit
 from eventssound.domain.availability import AvailabilityReport
 from eventssound.domain.catalog import Catalog
-from eventssound.domain.errors import DomainError, UnknownCatalogEntry
+from eventssound.domain.errors import (
+    InvalidAvailability,
+    InvalidEventRequest,
+    InvalidMoney,
+    UnknownCatalogEntry,
+)
 from eventssound.domain.event_request import EventRequest
 from eventssound.domain.pricing import Quote
 
@@ -64,11 +69,37 @@ def _failure(code: str, subject: str | None = None) -> ToolResult:
 
 def _log_name(name: object) -> str:
     """A bounded, identifier-only form of a possibly hostile tool name."""
-    return _NAME_CHARS.sub("?", str(name)[:40])
+    text = name if isinstance(name, str) else type(name).__name__
+    return _NAME_CHARS.sub("?", text[:40])
+
+
+def _describe(hit: SearchHit, catalog: Catalog) -> dict[str, Any]:
+    """Catalog facts of a hit. A package has no unit price: its undiscounted daily base price
+    and discount are listed for orientation only; the real price comes from `calcular_precio`."""
+    if hit.kind == "item":
+        item = catalog.item(hit.code)
+        return {
+            "kind": "item",
+            "code": item.code,
+            "name": item.name,
+            "category": item.category.value,
+            "unit_price_cop": item.unit_price.amount,
+            "rank": hit.rank,
+        }
+    package = catalog.package(hit.code)
+    return {
+        "kind": "package",
+        "code": package.code,
+        "name": package.name,
+        "category": None,
+        "base_price_cop": package.base_unit_price(catalog).amount,
+        "discount_bps": package.discount_bps,
+        "rank": hit.rank,
+    }
 
 
 class ToolExecutor:
-    """One instance per chat request: it owns that request's call budget."""
+    """One instance per chat request: it owns that request's call budget (not thread-safe)."""
 
     def __init__(
         self,
@@ -88,11 +119,15 @@ class ToolExecutor:
         self._max_calls = max_calls
         self._attempts = 0
         self._calls: list[str] = []
-        self.handlers: dict[str, Callable[[Any], dict[str, Any]]] = {
+        self._handlers: dict[str, Callable[[Any], dict[str, Any]]] = {
             "buscar_equipamiento": self._buscar_equipamiento,
             "consultar_disponibilidad": self._consultar_disponibilidad,
             "calcular_precio": self._calcular_precio,
         }
+
+    @property
+    def tool_names(self) -> frozenset[str]:
+        return frozenset(self._handlers)
 
     @property
     def calls(self) -> tuple[str, ...]:
@@ -107,7 +142,7 @@ class ToolExecutor:
         allowed = isinstance(name, str) and name in ALLOWED_TOOLS
         if allowed:
             self._calls.append(name)
-            result = self._run(self.handlers[name], arguments)
+            result = self._run(self._handlers[name], arguments)
         else:
             result = _failure("unknown_tool")
         logger.info(
@@ -125,7 +160,7 @@ class ToolExecutor:
             return _failure("invalid_arguments")
         except UnknownCatalogEntry as exc:
             return _failure("unknown_code", exc.code)
-        except DomainError:
+        except (InvalidEventRequest, InvalidAvailability, InvalidMoney):
             return _failure("invalid_arguments")
         except RepositoryUnavailable:
             return _failure("unavailable")
@@ -139,24 +174,10 @@ class ToolExecutor:
         catalog = self._load_catalog()
         hits: list[dict[str, Any]] = []
         for hit in found.hits:
-            if hit.kind == "item":
-                item = catalog.item(hit.code)
-                name, category = item.name, item.category.value
-                unit_price_cop = item.unit_price.amount
-            else:
-                package = catalog.package(hit.code)
-                name, category = package.name, None
-                unit_price_cop = package.base_unit_price(catalog).amount
-            hits.append(
-                {
-                    "code": hit.code,
-                    "name": name,
-                    "category": category,
-                    "unit_price_cop": unit_price_cop,
-                    "kind": hit.kind,
-                    "rank": hit.rank,
-                }
-            )
+            try:
+                hits.append(_describe(hit, catalog))
+            except UnknownCatalogEntry:
+                continue  # the catalog changed after the search index was built: skip, never echo
         return {"hits": hits}
 
     def _consultar_disponibilidad(self, arguments: Any) -> dict[str, Any]:

@@ -79,7 +79,7 @@ def reservation(item: str, quantity: int) -> Booking:
 
 def test_the_registry_is_exactly_the_three_tools() -> None:
     assert {"buscar_equipamiento", "consultar_disponibilidad", "calcular_precio"} == ALLOWED_TOOLS
-    assert set(build().handlers) == set(ALLOWED_TOOLS)
+    assert build().tool_names == ALLOWED_TOOLS
 
 
 @pytest.mark.parametrize(
@@ -126,7 +126,10 @@ def test_search_returns_catalog_data_for_each_hit() -> None:
     }
     package = hits["pkg_party"]
     assert package["kind"] == "package" and package["category"] is None
-    assert package["unit_price_cop"] == CATALOG.package("pkg_party").base_unit_price(CATALOG).amount
+    # A package has no unit price: only its undiscounted base and its discount, never a total.
+    assert "unit_price_cop" not in package
+    assert package["base_price_cop"] == CATALOG.package("pkg_party").base_unit_price(CATALOG).amount
+    assert package["discount_bps"] == 500
 
 
 def test_search_respects_category_and_limit() -> None:
@@ -252,10 +255,6 @@ def test_user_text_is_not_echoed_in_the_error() -> None:
 
 
 # --- safe errors ----------
-
-
-class _Secret(RepositoryUnavailable):
-    pass
 
 
 class _LeakyCatalog:
@@ -409,3 +408,75 @@ def _lines(code: str, quantity: int) -> tuple[Any, ...]:
     from eventssound.domain.event_request import RequestedLine
 
     return (RequestedLine(code, quantity),)
+
+
+# --- review hardening ----------
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        ("0001-01-01T00:00:00+14:00", "0001-01-01T05:00:00+14:00"),
+        ("9999-12-31T20:00:00-23:00", "9999-12-31T23:00:00-23:00"),
+    ],
+    ids=["min-year", "max-year"],
+)
+def test_extreme_years_are_invalid_arguments_not_internal(
+    start: str, end: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.ERROR, logger="eventssound.adapters.agent.tools"):
+        result = build().invoke("calcular_precio", {**ARGS, "start": start, "end": end})
+
+    assert result.error.code == "invalid_arguments"
+    assert caplog.text == ""
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["2026-W46-5T18:00:00-05:00", "20261114T180000-0500", "2026-11-14 18:00:00-05:00",
+     "2026-11-14", "2026-11-14T18:00:00.1234567Z", "2026-11-14T18:00:00-05:00:30"],
+)  # fmt: skip
+def test_only_strict_iso_8601_with_an_offset_is_accepted(value: str) -> None:
+    result = build().invoke("calcular_precio", {**ARGS, "start": value})
+
+    assert result.error.code == "invalid_arguments"
+
+
+class _BrokenCatalog:
+    def get_catalog(self) -> Any:
+        from eventssound.domain.errors import InvalidCatalog
+
+        raise InvalidCatalog("stored catalog is inconsistent")
+
+
+def test_system_side_domain_errors_are_internal_not_the_models_fault() -> None:
+    result = build(catalog_repository=_BrokenCatalog()).invoke("calcular_precio", ARGS)
+
+    assert result.error.code == "internal"
+
+
+def test_a_hit_missing_from_the_loaded_catalog_is_skipped() -> None:
+    from eventssound.domain.catalog import Catalog
+
+    executor = ToolExecutor(
+        search=KeywordSearch(CATALOG),
+        load_catalog=lambda: Catalog((), ()),  # the catalog changed after the index was built
+        check_availability=lambda r: None,  # type: ignore[arg-type, return-value]
+        price=lambda r: None,  # type: ignore[arg-type, return-value]
+    )
+
+    result = executor.invoke("buscar_equipamiento", {"query": "parlante"})
+
+    assert result.ok and result.data == {"hits": []}
+
+
+class _ExplodingName:
+    def __str__(self) -> str:
+        raise RuntimeError("boom")
+
+
+@pytest.mark.parametrize("name", [_ExplodingName(), object(), b"calcular_precio", ["x"] * 100_000])
+def test_hostile_tool_names_never_escape(name: object) -> None:
+    result = build().invoke(name, {})  # type: ignore[arg-type]
+
+    assert result.error.code == "unknown_tool"

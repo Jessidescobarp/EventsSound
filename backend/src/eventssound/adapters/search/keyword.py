@@ -6,40 +6,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from eventssound.adapters.search.synonyms import CATEGORY_ES
-from eventssound.adapters.search.text import normalize, tokens
-from eventssound.application.search import (
-    MAX_LIMIT,
-    MAX_QUERIES,
-    MAX_QUERY_CHARS,
-    MIN_LIMIT,
-    InvalidSearch,
-    SearchHit,
-    SearchResult,
-)
+from eventssound.adapters.search.text import tokens
+from eventssound.adapters.search.validation import check_search_args
+from eventssound.application.search import SearchHit, SearchResult
 from eventssound.domain.catalog import Catalog, EquipmentCategory
-
-_RAW_QUERY_CAP = 1_000  # bounds the work done before normalization
-
-
-def check_search_args(queries: object, category: object, limit: object) -> tuple[str, ...]:
-    """Validate the port arguments; returns the normalized queries."""
-    if isinstance(queries, str | bytes) or not isinstance(queries, Sequence):
-        raise InvalidSearch("queries must be a sequence of strings")
-    if not 1 <= len(queries) <= MAX_QUERIES:
-        raise InvalidSearch(f"queries must hold 1..{MAX_QUERIES} entries")
-    if type(limit) is not int or not MIN_LIMIT <= limit <= MAX_LIMIT:
-        raise InvalidSearch(f"limit must be an int within {MIN_LIMIT}..{MAX_LIMIT}")
-    if category is not None and not isinstance(category, EquipmentCategory):
-        raise InvalidSearch("category must be an EquipmentCategory or None")
-    normalized = []
-    for query in queries:
-        if not isinstance(query, str) or len(query) > _RAW_QUERY_CAP:
-            raise InvalidSearch("each query must be a short string")
-        folded = normalize(query)
-        if not 1 <= len(folded) <= MAX_QUERY_CHARS:
-            raise InvalidSearch(f"each query must have 1..{MAX_QUERY_CHARS} characters")
-        normalized.append(folded)
-    return tuple(normalized)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +70,7 @@ class KeywordSearch:
             matched = sum(weights[token] for token in wanted if token in doc.tokens)
             if matched > 0:
                 scored.append((round(matched / total, 9), doc.code, doc.kind))
-        scored.sort(key=lambda row: (-row[0], row[1]))
+        scored.sort(key=lambda row: (-row[0], row[2] != "item", row[1]))
         return SearchResult(
             tuple(
                 SearchHit(kind, code, rank, keyword_score=score)  # type: ignore[arg-type]

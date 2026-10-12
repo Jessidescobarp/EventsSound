@@ -24,6 +24,8 @@ def test_enye_folds_consistently() -> None:
         ("par\u0007lante", "parlante"),  # control character
         ("luces\n\n  de\tescenario", "luces de escenario"),  # whitespace collapsed
         ("\uff2c\uff25\uff24", "led"),  # NFKC: full-width letters
+        ("par\u034flante", "parlante"),  # combining grapheme joiner
+        ("par\ufe0flante", "parlante"),  # variation selector-16
     ],
 )
 def test_invisible_characters_are_removed_and_whitespace_collapsed(raw: str, expected: str) -> None:
@@ -33,7 +35,8 @@ def test_invisible_characters_are_removed_and_whitespace_collapsed(raw: str, exp
 @pytest.mark.parametrize(
     ("word", "stemmed"),
     [("parlantes", "parlante"), ("luces", "luz"), ("microfonos", "microfono"), ("gas", "gas"),
-     ("luz", "luz"), ("dj", "dj")],
+     ("luz", "luz"), ("dj", "dj"), ("moviles", "movil"), ("controladores", "controlador"),
+     ("escalones", "escalon"), ("canales", "canal"), ("cables", "cable")],
 )  # fmt: skip
 def test_light_plural_rule(word: str, stemmed: str) -> None:
     assert stem(word) == stemmed

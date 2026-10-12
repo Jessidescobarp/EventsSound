@@ -24,7 +24,7 @@ SYNONYM_GROUPS: tuple[tuple[str, ...], ...] = (
     ("escalera", "escalon", "stair"),
     ("pantalla", "screen"),
     ("reproductor", "player"),
-    ("canal", "canale", "channel"),
+    ("canal", "channel"),
     ("fiesta", "party"),
 )
 
