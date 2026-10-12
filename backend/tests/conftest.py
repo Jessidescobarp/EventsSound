@@ -10,9 +10,9 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-
 from network_guard import install
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(autouse=True)

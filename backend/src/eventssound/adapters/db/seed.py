@@ -14,12 +14,12 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from eventssound.application.errors import RepositoryUnavailable
 from eventssound.domain.availability import Booking
 from eventssound.domain.catalog import Catalog, EquipmentItem, ServicePackage
 from eventssound.domain.errors import InvalidCatalog
 
 from .models import BookingModel, EquipmentItemModel, PackageItemModel, ServicePackageModel
+from .storage import storage_error
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +161,6 @@ def seed_catalog(
             _upsert_items(session, item_values)
             _upsert_packages(session, package_values)
             _upsert_bookings(session, booking_values)
-    except SQLAlchemyError:
-        raise RepositoryUnavailable("seed storage unavailable") from None
+    except SQLAlchemyError as exc:
+        raise storage_error(exc) from None
     return SeedResult(len(item_values), len(package_values), len(booking_values))
