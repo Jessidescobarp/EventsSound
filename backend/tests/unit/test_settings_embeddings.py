@@ -70,6 +70,8 @@ def test_validation_errors_never_print_the_input_values(
         Settings(_env_file=None, DATABASE_URL=DB_URL)  # type: ignore[call-arg]
 
     rendered = str(caught.value)  # what logs and tracebacks print
+    # pydantic prints (and truncates) the raw input dict as `input_value=`: it must be absent.
+    assert "input_value" not in rendered
     assert KEY not in rendered and KEY[-12:] not in rendered
     assert "user:pass" not in rendered  # nor the database credentials
 
