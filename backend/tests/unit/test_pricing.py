@@ -313,6 +313,27 @@ def test_catalog_and_rules_currencies_must_match() -> None:
         calculate_price(make_request(), usd, neutral_rules())
 
 
+def usd_catalog() -> Catalog:
+    item = EquipmentItem("speaker_active", "x", EquipmentCategory.SOUND, 5, Money(100, "USD"))
+    package = ServicePackage("pkg_usd", "Usd", (PackageLine("speaker_active", 2),), 1000)
+    return Catalog((item,), (package,))
+
+
+def test_package_in_a_non_default_currency_is_priced_in_that_currency() -> None:
+    rules = neutral_rules(currency="USD", distance_bands=(DistanceBand(None, Money(0, "USD")),))
+    request = make_request(items=(), packages=(RequestedLine("pkg_usd", 1),))
+    quote = calculate_price(request, usd_catalog(), rules)
+    assert quote.currency == "USD"
+    assert [line.amount for line in quote.lines] == [Money(200, "USD"), Money(-20, "USD")]
+    assert quote.total == Money(180, "USD")
+
+
+def test_package_catalog_and_rules_currencies_must_match() -> None:
+    request = make_request(items=(), packages=(RequestedLine("pkg_usd", 1),))
+    with pytest.raises(CurrencyMismatch):
+        calculate_price(request, usd_catalog(), neutral_rules())  # COP rules
+
+
 @pytest.mark.parametrize(
     ("args", "error"),
     [
