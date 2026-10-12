@@ -4,7 +4,7 @@ Members are stored in normalized AND stemmed form (a test enforces it), so `luce
 land on the same token. All catalog names are invented; extend the groups when the catalog grows.
 """
 
-from eventssound.domain.catalog import EquipmentCategory
+from eventssound.application.search import CATEGORY_ES  # noqa: F401  (re-exported)
 
 SYNONYM_GROUPS: tuple[tuple[str, ...], ...] = (
     ("parlante", "altavoz", "bocina", "bafle", "speaker"),
@@ -29,12 +29,3 @@ SYNONYM_GROUPS: tuple[tuple[str, ...], ...] = (
 )
 
 CANONICAL: dict[str, str] = {word: group[0] for group in SYNONYM_GROUPS for word in group}
-
-CATEGORY_ES: dict[EquipmentCategory, str] = {
-    EquipmentCategory.SOUND: "sonido",
-    EquipmentCategory.LIGHTING: "iluminación",
-    EquipmentCategory.DJ: "dj",
-    EquipmentCategory.STAGE: "escenario",
-    EquipmentCategory.EFFECTS: "efectos",
-    EquipmentCategory.VIDEO: "video",
-}
