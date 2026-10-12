@@ -2,8 +2,9 @@
 
 import dataclasses
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -66,6 +67,18 @@ INVALID: dict[str, Callable[[], EventRequest]] = {
     "too-many-lines": lambda: make_request(
         items=tuple(RequestedLine(f"item_{i:03}", 1) for i in range(101))
     ),
+    "string-items": lambda: make_request(items="abc"),
+    "string-element": lambda: make_request(items=("sound_speaker",)),
+    "none-items": lambda: make_request(items=None),
+    "int-items": lambda: make_request(items=5),
+    "none-element": lambda: make_request(items=(None,)),
+    "package-wrong-element": lambda: make_request(packages=(5,)),
+    "packages-string": lambda: make_request(packages="abc"),
+    "uppercase-code": lambda: make_request(items=(RequestedLine("Sound_Speaker", 1),)),
+    "trailing-newline-code": lambda: make_request(items=(RequestedLine("sound_speaker\n", 1),)),
+    "blank-code": lambda: make_request(items=(RequestedLine("   ", 1),)),
+    "short-code": lambda: make_request(items=(RequestedLine("ab", 1),)),
+    "megabyte-code": lambda: make_request(items=(RequestedLine("a" * 1_000_000, 1),)),
     "bad-event-type": lambda: make_request(event_type="wedding"),
     "bad-venue": lambda: make_request(venue="indoor"),
 }
@@ -125,3 +138,26 @@ def test_merged_quantity_over_the_bound_is_rejected() -> None:
     request = make_request(items=(RequestedLine("sound_speaker", 6_000),) * 2)
     with pytest.raises(InvalidEventRequest):
         request.normalized()
+
+
+def test_span_is_measured_in_absolute_time_across_a_fold() -> None:
+    zone = ZoneInfo("America/New_York")
+    start = datetime(2026, 11, 1, 1, 30, tzinfo=zone, fold=0)  # EDT
+    end = datetime(2026, 11, 1, 1, 10, tzinfo=zone, fold=1)  # EST, 40 minutes later
+    assert make_request(start=start, end=end).end == end
+
+
+def test_span_limit_uses_absolute_time_across_dst() -> None:
+    zone = ZoneInfo("America/New_York")
+    start = datetime(2026, 10, 15, 12, 0, tzinfo=zone)
+    # 31 wall-clock days across the fall-back change is 31 days + 1 hour of absolute time.
+    with pytest.raises(InvalidEventRequest):
+        make_request(start=start, end=datetime(2026, 11, 15, 12, 0, tzinfo=zone))
+
+
+def test_instants_in_different_offsets_are_compared_correctly() -> None:
+    start = datetime(2026, 11, 7, 23, 0, tzinfo=UTC)  # 18:00 in Bogota
+    end = datetime(2026, 11, 7, 19, 0, tzinfo=BOGOTA)  # 00:00 UTC next day
+    assert make_request(start=start, end=end).end == end
+    with pytest.raises(InvalidEventRequest):
+        make_request(start=start, end=datetime(2026, 11, 7, 17, 0, tzinfo=BOGOTA))

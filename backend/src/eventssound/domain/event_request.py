@@ -4,12 +4,15 @@ The bounds are module constants, not rule data: the agent builds requests from u
 and the limits also cap every day-iteration loop in the domain.
 """
 
+import re
 from collections import Counter
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 from .errors import InvalidEventRequest
+
+_CODE = re.compile(r"[a-z0-9_]{3,64}")  # same format as catalog codes
 
 MAX_DURATION = timedelta(days=31)
 MAX_GUESTS = 100_000
@@ -52,10 +55,23 @@ class RequestedLine:
     quantity: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.code, str) or not self.code:
-            raise InvalidEventRequest("line code must not be empty")
+        if not isinstance(self.code, str) or not _CODE.fullmatch(self.code):
+            raise InvalidEventRequest("code must match ^[a-z0-9_]{3,64}$")
         if not 1 <= _require_int(self.quantity, "quantity") <= MAX_QUANTITY:
             raise InvalidEventRequest(f"quantity must be within 1..{MAX_QUANTITY}")
+
+
+def _as_lines(value: object, name: str) -> tuple["RequestedLine", ...]:
+    """Coerce to a tuple of RequestedLine; a string is never an iterable of lines."""
+    if isinstance(value, str | bytes):
+        raise InvalidEventRequest(f"{name} must be a collection of RequestedLine")
+    try:
+        lines = tuple(value)  # type: ignore[call-overload]
+    except TypeError:
+        raise InvalidEventRequest(f"{name} must be a collection of RequestedLine") from None
+    if not all(isinstance(line, RequestedLine) for line in lines):
+        raise InvalidEventRequest(f"{name} must contain only RequestedLine")
+    return lines
 
 
 def _merge(lines: tuple[RequestedLine, ...]) -> tuple[RequestedLine, ...]:
@@ -79,17 +95,19 @@ class EventRequest:
     packages: tuple[RequestedLine, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "items", tuple(self.items))
-        object.__setattr__(self, "packages", tuple(self.packages))
+        object.__setattr__(self, "items", _as_lines(self.items, "items"))
+        object.__setattr__(self, "packages", _as_lines(self.packages, "packages"))
         if not isinstance(self.event_type, EventType):
             raise InvalidEventRequest("event_type must be an EventType")
         if not isinstance(self.venue, VenueType):
             raise InvalidEventRequest("venue must be a VenueType")
         _require_aware(self.start, "start")
         _require_aware(self.end, "end")
-        if self.end <= self.start:
+        # Compare absolute instants: shared-tzinfo arithmetic is wall-clock and ignores folds/DST.
+        span = self.end.astimezone(UTC) - self.start.astimezone(UTC)
+        if span <= timedelta(0):
             raise InvalidEventRequest("end must be after start")
-        if self.end - self.start > MAX_DURATION:
+        if span > MAX_DURATION:
             raise InvalidEventRequest("event must last at most 31 days")
         if not 1 <= _require_int(self.guest_count, "guest_count") <= MAX_GUESTS:
             raise InvalidEventRequest(f"guest_count must be within 1..{MAX_GUESTS}")
