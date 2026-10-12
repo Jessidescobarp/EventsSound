@@ -119,7 +119,7 @@ Venue distance in km MUST be charged marginally per band: each band carries a ra
 - Then distance charges are 0, 0 and 3000
 
 ### Requirement: Quote value object and explainable breakdown
-`Quote` MUST be a frozen value object with `schema_version`, `rules_version`, `currency`, `rental_days`, an ordered tuple of `QuoteLine` (kind, code, label, quantity, periods, unit_amount, rate_bps, basis, signed amount), `subtotal` (raw total) and `total` as `Money`, plus `to_dict()` emitting JSON primitives only. The sum of all line amounts, including the explicit `ROUNDING` line, MUST equal `total`. Every non-rounding line MUST be reproducible from its own fields. Neutral adjustments emit no line. Line order follows the order of application (items, packages with discount, guest, weekend, night, distance, rounding) so a downstream agent can explain the price without recomputing it.
+`Quote` MUST be a frozen value object with `version` (int, 1), `rules_version`, `currency`, `rental_days`, an ordered tuple of `QuoteLine` (kind, code, label, quantity, periods, unit_amount, rate_bps, basis, signed amount), `subtotal` (raw total) and `total` as `Money`, plus `to_dict()` emitting JSON primitives only. The sum of all line amounts, including the explicit `ROUNDING` line, MUST equal `total`. Every non-rounding line MUST be reproducible from its own fields. Neutral adjustments emit no line. Line order follows the order of application (items, packages with discount, guest, weekend, night, distance, rounding) so a downstream agent can explain the price without recomputing it.
 
 #### Scenario: Total reconciles
 - Given any valid request
