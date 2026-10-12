@@ -143,6 +143,9 @@ class Quote:
         monies = (self.subtotal, self.total, *(m for line in self.lines for m in line.money()))
         if any(m.currency != self.currency for m in monies):
             raise CurrencyMismatch("every amount in a quote must use the quote currency")
+        rounding = [i for i, x in enumerate(self.lines) if x.kind is LineKind.ROUNDING]
+        if rounding and rounding != [len(self.lines) - 1]:
+            raise InvalidQuote("at most one rounding line is allowed and it must be last")
         raw = sum(x.amount.amount for x in self.lines if x.kind is not LineKind.ROUNDING)
         if self.subtotal.amount != raw:
             raise InvalidQuote("subtotal must equal the sum of the non-rounding lines")

@@ -115,6 +115,16 @@ INVALID_QUOTES: dict[str, Callable[[], Quote]] = {
     "int-subtotal": lambda: make_quote(subtotal=240_000),
     "total-differs-from-lines": lambda: make_quote(total=Money(240_001)),
     "subtotal-differs-from-lines": lambda: make_quote(subtotal=Money(1)),
+    "two-rounding-lines": lambda: make_quote(
+        lines=(make_line(amount=Money(240_500)), rounding_line(-300), rounding_line(-200)),
+        subtotal=Money(240_500),
+        total=Money(240_000),
+    ),
+    "rounding-line-not-last": lambda: make_quote(
+        lines=(rounding_line(-500), make_line(amount=Money(240_500))),
+        subtotal=Money(240_500),
+        total=Money(240_000),
+    ),
     "version-2": lambda: make_quote(version=2),
     "bool-version": lambda: make_quote(version=True),
     "zero-rental-days": lambda: make_quote(rental_days=0),
