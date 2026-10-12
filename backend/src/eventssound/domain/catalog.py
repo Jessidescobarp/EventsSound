@@ -92,9 +92,9 @@ class ServicePackage:
 
     def base_unit_price(self, catalog: "Catalog") -> Money:
         """Sum of member prices per rental day, before discount."""
-        return Money.sum(
-            catalog.item(line.item_code).unit_price * line.quantity for line in self.lines
-        )
+        prices = [(catalog.item(line.item_code).unit_price, line.quantity) for line in self.lines]
+        # Sum in the members' currency (lines are never empty); mixed currencies still raise.
+        return Money.sum((price * qty for price, qty in prices), prices[0][0].currency)
 
 
 @dataclass(frozen=True, slots=True)
