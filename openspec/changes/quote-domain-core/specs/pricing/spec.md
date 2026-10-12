@@ -51,7 +51,7 @@ Each requested item line MUST cost `unit_price * quantity`. Each requested packa
 #### Scenario: Package discount
 - Given a package of items worth 1000000 COP with a 10% discount (1000 bps)
 - When one package is requested with otherwise neutral rules
-- Then the package line is 900000 COP and the breakdown records the discount of 100000 COP
+- Then a `PACKAGE` line of 1000000 COP and a `PACKAGE_DISCOUNT` line of -100000 COP are emitted, and together they net to 900000 COP
 
 ### Requirement: Order of application
 Adjustments MUST be applied in this fixed order, using integer arithmetic throughout (design section 5): (1) line subtotals with package discounts, summed into the equipment subtotal E; (2) guest-size, (3) weekend/holiday and (4) night percentages, each computed on E and ADDED (not compounded; each percentage line is rounded half-up to the peso); (5) marginal per-km distance lines, not multiplied; (6) rounding of the raw total to the step, applied exactly once and recorded as an explicit `ROUNDING` line.
