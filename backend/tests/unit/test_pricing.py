@@ -223,6 +223,46 @@ def test_rental_days_use_absolute_time_not_wall_clock() -> None:
     )
 
 
+NEW_YORK = ZoneInfo("America/New_York")  # DST: 2026-03-08 spring forward, 2026-11-01 fall back
+
+
+def ny(month: int, day: int, hour: int, minute: int = 0, fold: int = 0) -> datetime:
+    return datetime(2026, month, day, hour, minute, fold=fold, tzinfo=NEW_YORK)
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "days"),
+    [
+        pytest.param(ny(3, 7, 12), ny(3, 9, 12), 2, id="spring-forward-47h"),
+        pytest.param(ny(3, 8, 0), ny(3, 9, 0, 1), 1, id="spring-forward-23h01-is-one-day"),
+        pytest.param(ny(10, 31, 12), ny(11, 1, 12), 2, id="fall-back-25h-is-two-days"),
+        pytest.param(ny(11, 1, 0), ny(11, 2, 0), 2, id="fall-back-day-25h"),
+    ],
+)
+def test_rental_days_count_elapsed_time_across_dst_changes(
+    start: datetime, end: datetime, days: int
+) -> None:
+    assert price(make_request(start=start, end=end)).rental_days == days
+
+
+def test_night_window_is_compared_in_absolute_time_inside_a_repeated_hour() -> None:
+    # Fall back: 01:00-02:00 happens twice. The window 22:00-01:30 ends at the FIRST 01:30 (EDT).
+    rules = dataclasses.replace(
+        default_pricing_rules(), timezone=NEW_YORK, night=NightWindow(time(22), time(1, 30), 2000)
+    )
+
+    def night_lines(fold: int) -> int:
+        request = make_request(
+            start=ny(11, 1, 1, 10, fold),
+            end=ny(11, 1, 1, 50, fold),
+            items=(RequestedLine("truss_big", 1),),
+        )
+        return len(lines_of(calculate_price(request, make_catalog(), rules), LineKind.NIGHT))
+
+    assert night_lines(fold=0) == 1  # 01:10 EDT is inside the window
+    assert night_lines(fold=1) == 0  # 01:10 EST is an hour after the window ended
+
+
 # --- rounding ------------------------------------------------------------------------------
 
 
