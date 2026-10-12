@@ -1,5 +1,7 @@
 # Design: quote-domain-core (P1 Domain core)
 
+> **Scope cuts (2026-10-12):** this design was written for the full 11-PR plan. Where it conflicts with `tasks.md` section "Scope cuts and decisions (2026-10-12)", `tasks.md` wins. Affected: Hypothesis/property tests (D19, D20) replaced by table-driven tests; `booking_items` table (D10) dropped for a flat `bookings` table; seed 20 items / 4 packages (D13); seed CLI keeps only `--confirm` and the remote guard (D14); `Quote` versioning is a single `version` field (D7); OpenAPI/Swagger is public in production (D15/D17); use cases ship inside the API PR. The design body below is intentionally not rewritten.
+
 Inputs: `proposal.md` (same folder, including its Decisions section), `openspec/config.yaml`, `AGENTS.md`, `documentacion/{architecture,decisions}.md`, the P0 backend and the five project skills.
 Scope: architecture only. No application code is written in this phase of SDD.
 

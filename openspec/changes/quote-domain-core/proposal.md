@@ -57,7 +57,10 @@ Additive only. Revert the PR chain in reverse order; `alembic downgrade` drops t
 5. `GET /catalog/availability` is NOT public in this change (the P2 agent calls availability internally).
 6. Accepted additions: Hypothesis as a dev dependency for property-based tests; a seed guard (requires `--confirm`; refuses non-local hosts unless `ALLOW_REMOTE_SEED=1`); pricing rules interpreted in the `America/Bogota` timezone.
 
-## Review Workload Forecast
+## Scope cuts (2026-10-12)
+After PR A1 measured 649 lines (estimate 330; tests were about 62% of the diff) the developer approved cuts to fit the 2026-10-25 deadline: no Hypothesis (table-driven tests plus a few hand-written invariants), no brute-force availability oracle, flat `bookings` table (no `booking_items`), seed of 20 items and 4 packages, seed CLI limited to `--confirm` and the remote guard, use cases merged into the API PR, simplified `Quote` versioning (single `version` field). This supersedes Decision 3 (counts), Decision 6 (Hypothesis) and the 25-40 / 4-6 success criterion. Also: Swagger/OpenAPI is public in production. The frontend (P4: chat page, proposal view, static pages, minimal JWT login and admin quotes list) stays fully in scope in its own change; the earlier "drop auth/admin" fallback is withdrawn. Details: `tasks.md`.
+
+## Review Workload Forecast (original, superseded by tasks.md)
 | Metric | Value |
 | ------ | ----- |
 | Estimated changed lines (excl. lockfiles) | ~1000-1150 total across 3 PRs |

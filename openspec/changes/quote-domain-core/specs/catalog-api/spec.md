@@ -61,15 +61,15 @@ The routes MUST obtain their data through application use cases and ports wired 
 - When `GET /catalog/items` is called
 - Then the response is 503 and the body contains no connection details
 
-### Requirement: OpenAPI exposure policy preserved
-OpenAPI and docs MUST remain disabled in production (`docs_url` and `openapi_url` are `None` when the app is in production) and available otherwise; the new routes MUST appear in the generated schema outside production with their response models.
+### Requirement: OpenAPI and Swagger UI are public in every environment
+(Changed 2026-10-12, developer decision: supersedes the earlier "disabled in production" policy.) The app MUST always serve Swagger UI at `/docs` and the schema at `/openapi.json`, including `APP_ENV=production`. ReDoc stays off. The schema MUST be presentable to a business owner: tags, summaries, descriptions, response models and examples for both catalog routes. The API is read-only with synthetic data, so exposing it adds no sensitive surface.
 
 #### Scenario: Production
 - Given `APP_ENV=production`
 - When `/openapi.json` and `/docs` are requested
-- Then both respond 404
+- Then both respond 200
 
-#### Scenario: Local
-- Given a non-production environment
+#### Scenario: Any environment
+- Given any environment
 - When `/openapi.json` is fetched
-- Then it lists `/catalog/items` and `/catalog/packages` and no write operations for them
+- Then it lists `/catalog/items` and `/catalog/packages` with tags, summaries, response models and examples, and no write operations for them
