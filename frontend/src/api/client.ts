@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "../env";
+import { notifyApiSuccess } from "./activity";
 
 export type ApiErrorCode =
   | "config" // base URL missing/invalid or bad path: a programming or deploy error
@@ -95,11 +96,14 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Pr
       throw classifyAbort(timedOut, signal) ?? new ApiError("network", "Network error.");
     }
 
+    let value: T;
     try {
-      return parse(JSON.parse(text));
+      value = parse(JSON.parse(text));
     } catch {
       throw new ApiError("invalid_response", "Response does not match the expected shape.");
     }
+    notifyApiSuccess();
+    return value;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", onCallerAbort);

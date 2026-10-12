@@ -4,6 +4,7 @@ import type { CatalogItem, ServicePackage } from "../api/catalog";
 import { es } from "../copy/es";
 import { MOCK_ITEMS, MOCK_PACKAGES } from "../mocks/fakeApi";
 import { renderApp } from "../test/renderApp";
+import { advanceInSteps } from "../test/timers";
 import { normalizeSpaces } from "../test/text";
 
 type Handler = (path: string) => Response | Promise<Response>;
@@ -191,13 +192,13 @@ describe("catalog page: failures never crash the page", () => {
     vi.useFakeTimers();
     const spy = vi.fn<Handler>(handler as Handler);
     renderApp("/servicios", server(spy));
-    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    await advanceInSteps(30_000);
     expect(screen.getByText(UNAVAILABLE)).toBeInTheDocument();
     pageStillWorks();
     const calls = spy.mock.calls.length;
     expect(calls).toBeGreaterThanOrEqual(3);
-    expect(calls).toBeLessThanOrEqual(6); // 1 + 2 retries, per endpoint
-    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    expect(calls).toBeLessThanOrEqual(18); // (1 + 2 retries) x (1 + 2 reloads) x 2 endpoints
+    await advanceInSteps(120_000, 5_000);
     expect(spy.mock.calls.length).toBe(calls);
   });
 
@@ -210,7 +211,7 @@ describe("catalog page: failures never crash the page", () => {
             init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))),
           ),
     );
-    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    await advanceInSteps(150_000, 1_000);
     expect(screen.getByText(UNAVAILABLE)).toBeInTheDocument();
   });
 

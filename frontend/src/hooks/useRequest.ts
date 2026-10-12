@@ -18,6 +18,11 @@ const DEFAULT_DELAYS_MS: readonly number[] = [1_000, 3_000];
 // A 404, a bad payload or a configuration error will not fix itself by retrying.
 const TRANSIENT: ReadonlySet<ApiErrorCode> = new Set(["network", "timeout", "server"]);
 
+/** True for failures that may disappear on their own (cold start, flaky network). */
+export function isTransient(error: ApiError): boolean {
+  return TRANSIENT.has(error.code);
+}
+
 function toApiError(error: unknown): ApiError {
   return error instanceof ApiError ? error : new ApiError("network", "Unexpected error.");
 }
@@ -50,7 +55,7 @@ export function useRequest<T>(
         if (cancelled) return;
         const error = toApiError(caught);
         if (error.code === "aborted") return;
-        if (TRANSIENT.has(error.code) && n < retries) {
+        if (isTransient(error) && n < retries) {
           const delay = delays[Math.min(n, delays.length - 1)] ?? 1_000;
           timer = setTimeout(() => void attempt(n + 1), delay);
         } else {

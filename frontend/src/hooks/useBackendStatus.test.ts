@@ -1,5 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { apiFetch } from "../api/client";
 import { useBackendStatus } from "./useBackendStatus";
 
 const reply = (body: unknown, status = 200) =>
@@ -147,5 +149,120 @@ describe("useBackendStatus", () => {
     expect(result.current.status).toBe("checking");
     await advance(0);
     expect(result.current.status).toBe("ok");
+  });
+});
+
+describe("useBackendStatus: shared with API calls, visibility, StrictMode, deadline", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example");
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(document, "hidden");
+  });
+
+  const setHidden = (hidden: boolean) => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+
+  it("clears a stale unavailable state when any API call succeeds", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.reject(new TypeError("down")));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useBackendStatus());
+    await advance(95_000);
+    expect(result.current.status).toBe("unavailable");
+
+    fetchMock.mockImplementation(() => reply({ ok: 1 }));
+    await act(() => apiFetch("/catalog/items", { parse: (j) => j }));
+    expect(result.current.status).toBe("ok");
+  });
+
+  it("stops polling health once another API call proved the backend is up", async () => {
+    const fetchMock = vi.fn<typeof fetch>((input) =>
+      String(input).endsWith("/health") ? Promise.reject(new TypeError("cold")) : reply({ ok: 1 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useBackendStatus());
+    await advance(100);
+    expect(result.current.status).toBe("waking");
+    await act(() => apiFetch("/catalog/items", { parse: (j) => j }));
+    expect(result.current.status).toBe("ok");
+    const calls = fetchMock.mock.calls.length;
+    await advance(60_000);
+    expect(fetchMock.mock.calls.length).toBe(calls);
+    expect(result.current.status).toBe("ok");
+  });
+
+  it("does not spin while the tab is hidden and resumes when it is visible again", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.reject(new TypeError("cold")));
+    vi.stubGlobal("fetch", fetchMock);
+    setHidden(true);
+    const { result } = renderHook(() => useBackendStatus());
+    await advance(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // the first probe only
+    expect(result.current.status).toBe("waking");
+
+    setHidden(false);
+    await advance(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await advance(10_000);
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("gives a fresh window when the tab comes back after the old one expired", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.reject(new TypeError("cold")));
+    vi.stubGlobal("fetch", fetchMock);
+    setHidden(true);
+    const { result } = renderHook(() => useBackendStatus());
+    await advance(200_000);
+    fetchMock.mockImplementation(() => reply({ status: "ok" }));
+    setHidden(false);
+    await advance(0);
+    expect(result.current.status).toBe("ok");
+  });
+
+  it("does not resume anything on visibility changes when it was never paused", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => reply({ status: "ok" }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderHook(() => useBackendStatus());
+    await advance(0);
+    setHidden(true);
+    setHidden(false);
+    await advance(10_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("survives StrictMode double effects: settles to ok and leaves nothing running", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => reply({ status: "ok" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result, unmount } = renderHook(() => useBackendStatus(), { wrapper: StrictMode });
+    await advance(0);
+    expect(result.current.status).toBe("ok");
+    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(2);
+    unmount();
+    const calls = fetchMock.mock.calls.length;
+    await advance(120_000);
+    expect(fetchMock.mock.calls.length).toBe(calls);
+  });
+
+  it("StrictMode with a failing backend still ends unavailable within the window", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("down"))));
+    const { result } = renderHook(() => useBackendStatus(), { wrapper: StrictMode });
+    await advance(100_000);
+    expect(result.current.status).toBe("unavailable");
+  });
+
+  it("decides unavailable exactly when the next probe would pass the deadline", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.reject(new TypeError("down")));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useBackendStatus());
+    await advance(84_999);
+    expect(result.current.status).toBe("waking");
+    await advance(1);
+    expect(result.current.status).toBe("unavailable");
+    expect(fetchMock).toHaveBeenCalledTimes(18); // probes at 0, 5 s ... 85 s
   });
 });

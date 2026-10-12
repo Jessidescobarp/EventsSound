@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { loadCatalog, type Catalog, type CatalogItem, type ServicePackage } from "../api/catalog";
 import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
@@ -9,10 +9,14 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { Spinner } from "../components/ui/Spinner";
 import { es } from "../copy/es";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { useRequest } from "../hooks/useRequest";
+import { useBackend } from "../hooks/backendStatusContext";
+import { isTransient, useRequest } from "../hooks/useRequest";
 import { formatCop, formatPercentFromBps } from "../lib/format";
 
 const OTHER = "__other__";
+/** Extra automatic reloads once the backend reports healthy but the catalog still failed. */
+const MAX_AUTO_RELOADS = 2;
+const AUTO_RELOAD_DELAY_MS = 1_500;
 const t = es.services;
 
 /** Known categories keep their label; anything else is grouped as "Otros". */
@@ -26,19 +30,37 @@ function categoryLabel(key: string): string {
 
 export default function ServicesPage() {
   useDocumentTitle(es.titles.services);
+  const { status: backend } = useBackend();
   const { state, reload } = useRequest(loadCatalog);
+  const [autoReloads, setAutoReloads] = useState(0);
+
+  // A transient failure while the server is waking is not an answer yet: keep waiting
+  // (the shared backend status owns the 90 s window) and reload when it comes up.
+  const transient = state.status === "error" && isTransient(state.error);
+  const waiting =
+    transient &&
+    (backend === "checking" || backend === "waking" || (backend === "ok" && autoReloads < MAX_AUTO_RELOADS));
+
+  useEffect(() => {
+    if (!transient || backend !== "ok" || autoReloads >= MAX_AUTO_RELOADS) return;
+    const timer = setTimeout(() => {
+      setAutoReloads((count) => count + 1);
+      reload();
+    }, AUTO_RELOAD_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [transient, backend, autoReloads, reload]);
 
   return (
     <>
       <PageHeader title={t.title} lead={t.lead} />
       <Container className="py-10">
-        {state.status === "loading" ? (
+        {state.status === "loading" || waiting ? (
           <div role="status" className="flex items-center gap-3 text-ink-muted">
             <Spinner />
-            <span>{t.loading}</span>
+            <span>{waiting ? t.waiting : t.loading}</span>
           </div>
         ) : null}
-        {state.status === "error" ? (
+        {state.status === "error" && !waiting ? (
           <div className="max-w-xl space-y-4">
             <Alert tone="info" title={t.unavailableTitle} role="status">
               {t.unavailableBody}

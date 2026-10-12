@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { onApiSuccess } from "../api/activity";
 import { checkHealth } from "../api/health";
 import { getApiBaseUrl } from "../env";
 
@@ -25,10 +26,33 @@ export function useBackendStatus() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
+    let paused = false; // a retry was due while the tab was hidden
     const deadline = Date.now() + RETRY_WINDOW_MS;
     const slowTimer = setTimeout(() => {
       setStatus((current) => (current === "checking" ? "waking" : current));
     }, SLOW_AFTER_MS);
+
+    // Any valid API response proves the server is up: stop probing and clear the banner.
+    const offSuccess = onApiSuccess(() => {
+      cancelled = true;
+      controller?.abort();
+      clearTimeout(timer);
+      clearTimeout(slowTimer);
+      setStatus("ok");
+    });
+
+    // Do not poll from a background tab; pick up again when it becomes visible.
+    const onVisibility = () => {
+      if (document.hidden || !paused) return;
+      paused = false;
+      if (Date.now() + RETRY_INTERVAL_MS >= deadline) {
+        setStatus("checking"); // the window elapsed while hidden: start a fresh one
+        setRun((value) => value + 1);
+      } else {
+        void attempt();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     const attempt = async () => {
       try {
@@ -54,7 +78,10 @@ export function useBackendStatus() {
           setStatus("unavailable");
         } else {
           setStatus("waking");
-          timer = setTimeout(attempt, RETRY_INTERVAL_MS);
+          timer = setTimeout(() => {
+            if (document.hidden) paused = true;
+            else void attempt();
+          }, RETRY_INTERVAL_MS);
         }
       } finally {
         clearTimeout(abortTimer);
@@ -67,6 +94,8 @@ export function useBackendStatus() {
       controller?.abort();
       clearTimeout(timer);
       clearTimeout(slowTimer);
+      offSuccess();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [run]);
 

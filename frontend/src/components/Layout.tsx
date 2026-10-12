@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { es } from "../copy/es";
+import { BackendStatusContext } from "../hooks/backendStatusContext";
 import { useBackendStatus } from "../hooks/useBackendStatus";
 import { DemoBanner } from "./DemoBanner";
 import { WarmupBanner } from "./WarmupBanner";
@@ -20,7 +21,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   }`;
 
 export function Layout() {
-  const { status, retry } = useBackendStatus();
+  const backend = useBackendStatus();
   const { pathname } = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   const firstRender = useRef(true);
@@ -43,7 +44,7 @@ export function Layout() {
         {es.a11y.skipLink}
       </a>
       <DemoBanner />
-      <WarmupBanner status={status} onRetry={retry} />
+      <WarmupBanner status={backend.status} onRetry={backend.retry} />
       <header className="border-b border-line bg-surface">
         <Container className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3">
           <NavLink
@@ -68,7 +69,9 @@ export function Layout() {
         </Container>
       </header>
       <main id="contenido" ref={mainRef} tabIndex={-1} className="flex-1 outline-none">
-        <Outlet />
+        <BackendStatusContext.Provider value={backend}>
+          <Outlet />
+        </BackendStatusContext.Provider>
       </main>
       <footer className="border-t border-line bg-surface-alt">
         <Container className="flex flex-col gap-1 py-6 text-sm text-ink-muted">

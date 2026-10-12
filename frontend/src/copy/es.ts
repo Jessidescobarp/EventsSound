@@ -168,6 +168,7 @@ export const es = {
     includesLabel: "Incluye",
     memberLine: (quantity: number, name: string) => `${quantity} × ${name}`,
     loading: "Cargando el catálogo...",
+    waiting: "Esperando al servidor, esto puede tardar hasta un minuto...",
     unavailableTitle: "El catálogo estará disponible pronto",
     unavailableBody: "Todavía no podemos mostrar los equipos y paquetes. Vuelve a intentarlo en unos minutos.",
     emptyItems: "Aún no hay equipos publicados.",
