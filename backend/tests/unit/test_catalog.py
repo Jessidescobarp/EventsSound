@@ -12,7 +12,7 @@ from eventssound.domain.catalog import (
     PackageLine,
     ServicePackage,
 )
-from eventssound.domain.errors import InvalidCatalog, UnknownCatalogEntry
+from eventssound.domain.errors import CurrencyMismatch, InvalidCatalog, UnknownCatalogEntry
 from eventssound.domain.money import Money
 
 
@@ -45,10 +45,19 @@ def test_categories_match_the_design() -> None:
     ]
 
 
-@pytest.mark.parametrize("code", ["ab", "Sound_x", "has space", "a" * 65, "dash-ed", ""])
+INVALID_CODES = ["ab", "Sound_x", "has space", "a" * 65, "dash-ed", "", "abc\n", "\nabc"]
+
+
+@pytest.mark.parametrize("code", INVALID_CODES)
 def test_invalid_item_code_is_rejected(code: str) -> None:
     with pytest.raises(InvalidCatalog):
         make_item(code)
+
+
+@pytest.mark.parametrize("code", INVALID_CODES)
+def test_invalid_package_code_is_rejected(code: str) -> None:
+    with pytest.raises(InvalidCatalog):
+        make_package(code)
 
 
 @pytest.mark.parametrize(
@@ -138,3 +147,55 @@ def test_package_base_unit_price_is_derived_from_members() -> None:
     )
 
     assert catalog.package("pkg_basic").base_unit_price(catalog) == Money(319900)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: EquipmentItem("abc", "Parlante", EquipmentCategory.SOUND, True, Money(1)),
+        lambda: EquipmentItem("abc", "Parlante", EquipmentCategory.SOUND, 2.5, Money(1)),
+        lambda: EquipmentItem("abc", "Parlante", EquipmentCategory.SOUND, 1, 120000),
+        lambda: EquipmentItem("abc", "Parlante", "sound", 1, Money(1)),
+        lambda: EquipmentItem("abc", "Parlante", "foo", 1, Money(1)),
+        lambda: PackageLine("sound_speaker", 1.5),
+        lambda: PackageLine("sound_speaker", True),
+        lambda: make_package(discount_bps=1500.5),
+        lambda: make_package(discount_bps=True),
+    ],
+    ids=[
+        "stock-bool",
+        "stock-float",
+        "price-plain-int",
+        "category-str",
+        "category-unknown",
+        "line-quantity-float",
+        "line-quantity-bool",
+        "discount-float",
+        "discount-bool",
+    ],
+)
+def test_wrongly_typed_fields_are_rejected(build: Callable[[], object]) -> None:
+    with pytest.raises(InvalidCatalog):
+        build()
+
+
+def test_lists_are_coerced_to_tuples_and_cannot_be_mutated_afterwards() -> None:
+    items = [make_item()]
+    lines = [PackageLine("sound_speaker", 2)]
+    packages = [ServicePackage("pkg_basic", "Basico", lines)]
+
+    catalog = Catalog(items, packages)  # type: ignore[arg-type]
+    items.append(make_item("sound_mixer"))
+    lines.clear()
+
+    assert isinstance(catalog.items, tuple)
+    assert [item.code for item in catalog.items] == ["sound_speaker"]
+    assert catalog.package("pkg_basic").lines == (PackageLine("sound_speaker", 2),)
+    assert hash(catalog) == hash(Catalog((make_item(),), tuple(catalog.packages)))
+
+
+def test_catalog_requires_a_single_currency() -> None:
+    usd_item = EquipmentItem("sound_mixer", "Mixer", EquipmentCategory.SOUND, 1, Money(5, "USD"))
+
+    with pytest.raises(CurrencyMismatch):
+        Catalog((make_item(), usd_item), ())

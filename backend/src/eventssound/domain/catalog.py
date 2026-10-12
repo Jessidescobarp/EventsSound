@@ -4,10 +4,10 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from .errors import InvalidCatalog, UnknownCatalogEntry
+from .errors import CurrencyMismatch, InvalidCatalog, UnknownCatalogEntry
 from .money import Money
 
-_CODE = re.compile(r"^[a-z0-9_]{3,64}$")
+_CODE = re.compile(r"[a-z0-9_]{3,64}")
 MAX_UNIT_PRICE = 1_000_000_000
 
 
@@ -21,8 +21,14 @@ class EquipmentCategory(StrEnum):
 
 
 def _check_code(code: str) -> None:
-    if not isinstance(code, str) or not _CODE.match(code):
+    if not isinstance(code, str) or not _CODE.fullmatch(code):
         raise InvalidCatalog("code must match ^[a-z0-9_]{3,64}$")
+
+
+def _require_int(value: object, name: str) -> int:
+    if type(value) is not int:
+        raise InvalidCatalog(f"{name} must be an int")
+    return value
 
 
 def _check_name(name: str) -> None:
@@ -43,8 +49,12 @@ class EquipmentItem:
     def __post_init__(self) -> None:
         _check_code(self.code)
         _check_name(self.name)
-        if self.stock_quantity < 0:
+        if not isinstance(self.category, EquipmentCategory):
+            raise InvalidCatalog("category must be an EquipmentCategory")
+        if _require_int(self.stock_quantity, "stock_quantity") < 0:
             raise InvalidCatalog("stock_quantity must be >= 0")
+        if not isinstance(self.unit_price, Money):
+            raise InvalidCatalog("unit_price must be Money")
         if not 0 <= self.unit_price.amount <= MAX_UNIT_PRICE:
             raise InvalidCatalog(f"unit_price must be within 0..{MAX_UNIT_PRICE}")
 
@@ -55,7 +65,7 @@ class PackageLine:
     quantity: int
 
     def __post_init__(self) -> None:
-        if self.quantity < 1:
+        if _require_int(self.quantity, "quantity") < 1:
             raise InvalidCatalog("package line quantity must be >= 1")
 
 
@@ -71,12 +81,13 @@ class ServicePackage:
     def __post_init__(self) -> None:
         _check_code(self.code)
         _check_name(self.name)
+        object.__setattr__(self, "lines", tuple(self.lines))
         if not self.lines:
             raise InvalidCatalog("a package needs at least one line")
         codes = [line.item_code for line in self.lines]
         if len(set(codes)) != len(codes):
             raise InvalidCatalog("package lines must reference distinct items")
-        if not 0 <= self.discount_bps <= 10_000:
+        if not 0 <= _require_int(self.discount_bps, "discount_bps") <= 10_000:
             raise InvalidCatalog("discount_bps must be within 0..10000")
 
     def base_unit_price(self, catalog: "Catalog") -> Money:
@@ -94,6 +105,11 @@ class Catalog:
     _packages: dict[str, ServicePackage] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "items", tuple(self.items))
+        object.__setattr__(self, "packages", tuple(self.packages))
+        currencies = {item.unit_price.currency for item in self.items}
+        if len(currencies) > 1:
+            raise CurrencyMismatch("all item prices must share one currency")
         items = {item.code: item for item in self.items}
         packages = {package.code: package for package in self.packages}
         if len(items) != len(self.items):
