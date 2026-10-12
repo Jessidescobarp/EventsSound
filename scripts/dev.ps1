@@ -114,12 +114,46 @@ function Get-DatabaseHost {
   return $null
 }
 
+# Demo data (VITE_USE_MOCKS) is opt-in per started frontend. The variable is set only for the
+# child process being started and the caller's value is restored afterwards, so it never
+# leaks into the caller's shell (a later npm run build there must not bake demo data in).
+function Invoke-WithMocksEnv([bool]$Enabled, [scriptblock]$Action) {
+  $previous = [Environment]::GetEnvironmentVariable('VITE_USE_MOCKS', 'Process')
+  try {
+    $value = $null; if ($Enabled) { $value = 'true' }
+    [Environment]::SetEnvironmentVariable('VITE_USE_MOCKS', $value, 'Process')
+    & $Action
+  } finally {
+    [Environment]::SetEnvironmentVariable('VITE_USE_MOCKS', $previous, 'Process')
+  }
+}
+
+# .dev/frontend.mocks records how the running frontend was started (it is not a setting file).
+function Get-FrontendMocks {
+  $file = Join-Path $DevDir 'frontend.mocks'
+  if (-not (Test-Path $file)) { return $false }
+  return ("$(Get-Content $file -TotalCount 1)".Trim() -eq 'true')
+}
+
+function Set-FrontendMocks([bool]$On) {
+  $value = 'false'; if ($On) { $value = 'true' }
+  Set-Content -Path (Join-Path $DevDir 'frontend.mocks') -Value $value
+}
+
+function Get-MocksMismatchWarning([bool]$Requested, [bool]$Running) {
+  if ($Requested -and -not $Running) { return 'The running frontend was started WITHOUT demo data: run -Down first for -Mocks to take effect.' }
+  if (-not $Requested -and $Running) { return 'The running frontend serves DEMO data (it was started with -Mocks): run -Down first to start it without.' }
+  return $null
+}
+
 $BackendPattern = 'uvicorn'
 $FrontendPattern = 'npm.*run dev'
 
 if ($Down -or $Reset) {
+  if ($Mocks) { Write-Warning '-Mocks has no effect with -Down/-Reset: nothing is started.' }
   New-Item -ItemType Directory -Force $DevDir | Out-Null
   Stop-Tracked 'frontend' $FrontendPattern; Stop-Tracked 'backend' $BackendPattern
+  Remove-Item (Join-Path $DevDir 'frontend.mocks') -Force -ErrorAction SilentlyContinue
   # --profile app so a backend container started with that profile is stopped/removed too.
   if ($Reset) { Invoke-Native { & docker compose --profile app down -v } } else { Invoke-Native { & docker compose --profile app stop } }
   exit $LASTEXITCODE
@@ -166,15 +200,16 @@ if ($backendUp) { Write-Host "backend already running (pid $($backendUp.Id))" } 
   Start-Tracked 'backend' 'uv' @('run', 'uvicorn', 'eventssound.entrypoints.api.app:create_app', '--factory',
     '--reload', '--host', '127.0.0.1', '--port', '8000') (Join-Path $Root 'backend')
 }
-# Demo data is opt-in. Only -Mocks sets the flag (process environment, inherited by vite; never
-# written to a file); a value inherited from the caller's shell is cleared so it cannot leak in.
-if ($Mocks) { $env:VITE_USE_MOCKS = 'true' } else { Remove-Item Env:VITE_USE_MOCKS -ErrorAction SilentlyContinue }
 if ($frontendUp) {
   Write-Host "frontend already running (pid $($frontendUp.Id))"
-  if ($Mocks) { Write-Warning 'The running frontend keeps its old settings: run -Down first for -Mocks to take effect.' }
+  $mismatch = Get-MocksMismatchWarning $Mocks.IsPresent (Get-FrontendMocks)
+  if ($mismatch) { Write-Warning $mismatch }
 } else {
   # npm is npm.cmd on Windows; cmd.exe resolves it regardless of PowerShell script policy.
-  Start-Tracked 'frontend' 'cmd.exe' @('/c', 'npm', 'run', 'dev', '--', '--host', 'localhost', '--port', '5173', '--strictPort') (Join-Path $Root 'frontend')
+  Invoke-WithMocksEnv $Mocks.IsPresent {
+    Start-Tracked 'frontend' 'cmd.exe' @('/c', 'npm', 'run', 'dev', '--', '--host', 'localhost', '--port', '5173', '--strictPort') (Join-Path $Root 'frontend')
+  }
+  Set-FrontendMocks $Mocks.IsPresent
 }
 
 Wait-Url 'backend' "$BackendUrl/health"
@@ -183,7 +218,7 @@ Wait-Url 'frontend' $FrontendUrl
 
 Write-Host ''
 Write-Host "Backend : $BackendUrl  (docs: $BackendUrl/docs)"
-Write-Host "Frontend: $FrontendUrl$(if ($Mocks) { '  (demo data: VITE_USE_MOCKS=true)' })"
+Write-Host "Frontend: $FrontendUrl$(if (Get-FrontendMocks) { '  (DEMO DATA: VITE_USE_MOCKS=true)' })"
 Write-Host 'Stop: scripts/dev.ps1 -Down   Reset db: scripts/dev.ps1 -Reset'
 
 if ($Smoke) {
