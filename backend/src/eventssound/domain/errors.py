@@ -29,5 +29,9 @@ class UnknownCatalogEntry(DomainError):
         self.code = code
 
 
+class InvalidQuote(DomainError):
+    """A quote or quote line is inconsistent."""
+
+
 class InvalidCatalog(DomainError):
     """A catalog entity or the catalog as a whole is inconsistent."""
