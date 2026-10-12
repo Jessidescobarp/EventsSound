@@ -1,6 +1,7 @@
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+import eventssound.adapters.db.models  # noqa: F401  (registers the models on Base.metadata)
 from eventssound.adapters.db.session import Base
 from eventssound.config import Settings
 
