@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
-import { useRequest } from "./useRequest";
+import { isTransient, useRequest } from "./useRequest";
 
 const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
@@ -105,5 +105,77 @@ describe("useRequest", () => {
     expect(received?.aborted).toBe(true);
     await advance(10_000);
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["invalid_response", "http", "config", "too_large", "not_found", "aborted"] as const)(
+    "never retries a %s error",
+    async (code) => {
+      const fn = vi.fn(async () => {
+        throw new ApiError(code, "x");
+      });
+      renderHook(() => useRequest(fn, { retries: 5, retryDelaysMs: [100] }));
+      await advance(60_000);
+      expect(fn).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("isTransient is true only for network, timeout and server", () => {
+    const codes = ["config", "network", "timeout", "aborted", "not_found", "server", "http", "invalid_response", "too_large"] as const;
+    const transient = codes.filter((code) => isTransient(new ApiError(code, "x")));
+    expect(transient).toEqual(["network", "timeout", "server"]);
+  });
+
+  describe("late results never overwrite newer state", () => {
+    const deferred = <T,>() => {
+      let resolve!: (value: T) => void;
+      let reject!: (reason: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    };
+
+    it("a request that resolves after reload() is ignored", async () => {
+      const first = deferred<string>();
+      const second = deferred<string>();
+      const fn = vi
+        .fn<(signal: AbortSignal) => Promise<string>>()
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      const { result } = renderHook(() => useRequest(fn));
+      act(() => result.current.reload());
+      second.resolve("new");
+      await advance(0);
+      expect(result.current.state).toEqual({ status: "success", data: "new" });
+      first.resolve("old");
+      await advance(0);
+      expect(result.current.state).toEqual({ status: "success", data: "new" });
+    });
+
+    it("a request that fails after reload() is ignored", async () => {
+      const first = deferred<string>();
+      const fn = vi
+        .fn<(signal: AbortSignal) => Promise<string>>()
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValue("new");
+      const { result } = renderHook(() => useRequest(fn));
+      act(() => result.current.reload());
+      await advance(0);
+      expect(result.current.state).toEqual({ status: "success", data: "new" });
+      first.reject(new ApiError("invalid_response", "late"));
+      await advance(0);
+      expect(result.current.state).toEqual({ status: "success", data: "new" });
+    });
+
+    it("a transient failure that lands after unmount schedules no retry", async () => {
+      const first = deferred<string>();
+      const fn = vi.fn<(signal: AbortSignal) => Promise<string>>().mockReturnValue(first.promise);
+      const { unmount } = renderHook(() => useRequest(fn, { retryDelaysMs: [100] }));
+      unmount();
+      first.reject(new ApiError("network", "late"));
+      await advance(10_000);
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
   });
 });

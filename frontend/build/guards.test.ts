@@ -65,3 +65,30 @@ describe("findMockMarkers and the CI check script", () => {
     expect(run(join(dir, "does-not-exist")).status).toBe(2);
   });
 });
+
+describe("vite.config.ts wiring (real vite build)", () => {
+  const vite = join(import.meta.dirname, "..", "node_modules", "vite", "bin", "vite.js");
+  const build = (args: string[], env: Record<string, string>) => {
+    const out = mkdtempSync(join(tmpdir(), "vite-out-"));
+    try {
+      return spawnSync(process.execPath, [vite, "build", "--outDir", out, "--emptyOutDir", ...args], {
+        cwd: join(import.meta.dirname, ".."),
+        encoding: "utf8",
+        env: { ...process.env, VITE_API_BASE_URL: "https://api.example", ...env },
+      });
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  };
+
+  it("fails a production build when VITE_USE_MOCKS=true", () => {
+    const result = build([], { VITE_USE_MOCKS: "true" });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("VITE_USE_MOCKS");
+  }, 60_000);
+
+  it("allows a development-mode (demo) build with VITE_USE_MOCKS=true", () => {
+    const result = build(["--mode", "development"], { VITE_USE_MOCKS: "true" });
+    expect(result.status).toBe(0);
+  }, 60_000);
+});
