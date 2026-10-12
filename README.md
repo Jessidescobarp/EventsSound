@@ -67,6 +67,17 @@ cd backend && uv run python -m eventssound.entrypoints.cli.seed_catalog --confir
 
 The CLI refuses non-local hosts and `APP_ENV=production` unless the environment variable `ALLOW_REMOTE_SEED` is exactly `1`. That variable is a one-off operator override of the CLI, not application configuration: never put it in `.env.example` or a deploy. On remote targets only the catalog is seeded, never the demo bookings.
 
+## Vector search (embeddings)
+
+Equipment search is keyword-only until embeddings are configured. Migration `0003` creates the `catalog_embeddings` table and runs `CREATE EXTENSION IF NOT EXISTS vector` (pgvector ships in the local `pgvector/pgvector:pg16` image and on Neon). To index the catalog into a LOCAL database for experiments (the `fake` provider is a deterministic hashing stand-in; a dry run without `--confirm` exits 2 and changes nothing):
+
+```bash
+cd backend
+EMBEDDING_PROVIDER=fake uv run python -m eventssound.entrypoints.cli.embed_catalog --confirm
+```
+
+The CLI uses the same guard as the seed CLI (non-local or production targets need `ALLOW_REMOTE_SEED=1`) and never writes `fake` embeddings to a remote database. With `EMBEDDING_PROVIDER=openrouter` it needs `EMBEDDING_MODEL` and `OPENROUTER_API_KEY` in your shell; it deletes rows of any other embedding model (one active model), so use the model the deployed app uses; rerunning is idempotent and only re-embeds entries whose name, category or members changed.
+
 ## Tests
 
 ```bash

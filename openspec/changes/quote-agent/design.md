@@ -62,7 +62,7 @@ backend/src/eventssound/
   entrypoints/
     api/routes/quote.py, api/schemas.py (+), api/client_ip.py, api/guards.py, api/container.py (+), api/app.py (+)
     cli/embed_catalog.py
-backend/migrations/versions/0003_llm_usage_daily.py, 0004_catalog_embeddings.py
+backend/migrations/versions/0004_llm_usage_daily.py, 0003_catalog_embeddings.py
 backend/tests/{unit,integration,evals}/  (section 15)
 ```
 
@@ -364,7 +364,7 @@ Model id (candidate `liquid/lfm-2.5-embedding-350m:free`, 1,024 dimensions) and 
 `adapters/db/vector.py`: `VectorType(dimensions)` with `get_col_spec() -> "vector(N)"`, a bind processor (`[v1,v2,...]` using `format(v, ".8g")`) and a result processor (parse back to a tuple), plus `postgresql.base.ischema_names["vector"] = VectorType` so reflection yields a real type and the B1 `compare_metadata` drift test stays empty (UNVERIFIED how Alembic compares it; if flaky, the drift test passes `compare_type=False` for this table and says so). Revisit the package only if HNSW or more operators are needed. Consistency: Docker image `pgvector/pgvector:pg16` (compose and CI) already ships the extension, so DB tests run with no image change.
 
 ### D20. Schema, migration, index
-Migration `0004_catalog_embeddings` (after `0003_llm_usage_daily`; ordering rule in section 18):
+Migration `0003_catalog_embeddings` (after `0004_llm_usage_daily`; ordering rule in section 18):
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE catalog_embeddings (
@@ -542,7 +542,7 @@ Choosing `h` without logging any IP (Q9 procedure): send `GET /health` with a fo
 
 ## 13. Daily token and cost budget
 
-### D34. Table `llm_usage_daily` (migration `0003_llm_usage_daily`, Q7)
+### D34. Table `llm_usage_daily` (migration `0004_llm_usage_daily`, Q7)
 ```
 day DATE PK (UTC)            tokens BIGINT NOT NULL DEFAULT 0       cost_micro_usd BIGINT NOT NULL DEFAULT 0
 requests INTEGER NOT NULL DEFAULT 0   token_cap BIGINT NOT NULL     cost_cap_micro_usd BIGINT NOT NULL
@@ -669,13 +669,13 @@ Real lines = `git diff --shortstat <base>...HEAD -- . ':!backend/uv.lock' ':!ope
 | Q5b | `feat/agent-draft` | draft/verify/finalize nodes and edges, draft prompt, demo replay scenarios, `{{canary}}` support | (in Q5) | ~330 | No |
 | Q6a | `feat/quote-chat-usecase` | `application/{quote_chat use case, usage}.py`; `adapters/{ratelimit,usage}/memory.py`; tests | 420 total Q6 | ~480 | Yes. Cut: global limiter + semaphore to Q6b |
 | Q6b | `feat/quote-chat-endpoint` | `routes/quote.py`, `schemas.py`, `guards.py`, `client_ip.py`, handlers, `config.py` (11 fields), `container.py` (`build_llm_provider`, `make_quote_agent`), `app.py`, log line; [M] `.env.example` | (in Q6) | ~520 | Yes. Cut: extra OpenAPI examples to Q9 (-90) |
-| Q7 | `feat/quote-cost-cap` | model + `0003_llm_usage_daily`; `usage_repository.py`; container swap; DB tests (concurrency) | 350 | ~400 | No |
+| Q7 | `feat/quote-cost-cap` | model + `0004_llm_usage_daily`; `usage_repository.py`; container swap; DB tests (concurrency) | 350 | ~400 | No |
 | Q8a | `feat/agent-evals-harness` | `harness.py`, `oracle.py`, `report.py`, 10 golden cases, `test_golden_replay.py` | 450 total Q8 | ~480 | Yes. Cut: golden 10 -> 8 |
 | Q8b | `feat/agent-evals-injection` | 5 more golden cases, injection matrix (14), `test_injection_matrix.py`, `retrieval_cases.json` | (in Q8) | ~330 | No |
 | Q8c | `feat/agent-evals-live` | `run_live.py`, `record.py`, `RecordingProvider`, LangSmith group | (in Q8) | ~200 | Optional (cut ladder 1) |
 | Q9 | `docs/agent-deploy` | `render.yaml` env, `deploy.md` (levers, hops procedure), README, architecture, ADRs, skill line fix, eval report | 170 | ~220 | No |
 | Q10a | `feat/agent-embeddings-provider` | `application/embeddings.py` (port, errors); `adapters/embeddings/{fake,openrouter,cached}.py`; 3 Settings; tests | 350 total Q10 | ~500 | Yes. Cut: breaker |
-| Q10b | `feat/agent-pgvector` | `adapters/db/vector.py`, models, `0004_catalog_embeddings`, `embedding_store.py`, `VectorSearch`, drift handling; DB tests | (in Q10) | ~480 | Yes. Cut: `VectorSearch` to Q10c |
+| Q10b | `feat/agent-pgvector` | `adapters/db/vector.py`, models, `0003_catalog_embeddings`, `embedding_store.py`, `VectorSearch`, drift handling; DB tests | (in Q10) | ~480 | Yes. Cut: `VectorSearch` to Q10c |
 | Q10c | `feat/agent-vector-retrieval` | `refresh_embeddings`, `embed_catalog` CLI, `HybridSearch`, container wiring, retrieval eval | (in Q10) | ~420 | No |
 Total ~7,800 calibrated lines in 19 PRs (proposal: ~3,500 in 10). Merge order is Q1...Q9 with Q10a-c inserted after Q7 (their migration `0004` follows `0003`; if the order flips, renumber by rebase, never merge heads) and BEFORE Q9, so Q9 documents what is deployed.
 
@@ -741,4 +741,15 @@ Delivered as one PR (`feat/agent-search-tools`) instead of Q3a + Q3b. Deviations
 - `buscar_equipamiento` describes a package with `base_price_cop` (undiscounted, per day) and `discount_bps`, NOT with `unit_price_cop`: a package has no unit price, and only `calcular_precio` may produce a price the model quotes. Hits missing from the freshly loaded catalog are skipped (the index is a snapshot).
 - Only `InvalidEventRequest`, `InvalidAvailability` and `InvalidMoney` mean "invalid arguments"; any other domain error comes from stored or system data and is `internal`. Datetimes must match a strict ISO-8601 pattern with an offset and must not overflow when converted to UTC.
 - The money-arithmetic scan is a heuristic (AST, names such as `amount`, `unit_price`, `total`), not a proof: it does not follow aliases. `ToolExecutor` is per request and not thread-safe.
+
+## 21. Implementation notes: G2b (pgvector retrieval)
+
+Delivered as one PR (`feat/agent-pgvector`) instead of Q10a-c (the provider port, fake and OpenRouter adapter already shipped in G1b). Deviations:
+- Migration numbering: this is `0003_catalog_embeddings`; the cost-cap table becomes `0004` when Q7 lands (the order flipped because retrieval was built first).
+- `SearchHit` keeps `keyword_score` and `vector_similarity`; the store port (`application/embedding_index.py`) is `existing_hashes / upsert / prune / nearest`. The embedding text covers name, category and package members only, so price or stock edits never re-embed.
+- `refresh_embeddings` stores each batch as it completes and prunes orphans LAST, so a failed run never leaves the store emptier than it found it; a rerun finishes the work.
+- `VectorSearch` filters category and stale codes in Python and applies a minimum similarity (default 0.25, UNVERIFIED for any real model; the retrieval eval tunes it). `HybridSearch` reads each leg 10 deep, fuses with RRF (k = 60) and breaks ties items first, then by code; `InvalidSearch` is validated before the fallback and is never swallowed.
+- Not built (YAGNI until the graph exists): `CachedEmbedder` (LRU and circuit breaker, ladder cut 2), `container.py` wiring and the retrieval eval. `Settings` gained `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` and `OPENROUTER_API_KEY` (the developer adds the four `.env.example` lines by hand).
+- `embed_catalog` is the second module allowed to read `ALLOW_REMOTE_SEED` from the environment (same guard as the seed CLI) and refuses the `fake` provider on any remote or production target.
+- The Alembic drift test passes with the custom type without `compare_type=False`: reflection resolves `vector` through `ischema_names`, and `VectorType` compares equal by dimension.
 

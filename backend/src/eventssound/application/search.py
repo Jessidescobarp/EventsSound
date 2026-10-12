@@ -6,6 +6,16 @@ from typing import Literal, Protocol, runtime_checkable
 
 from eventssound.domain.catalog import EquipmentCategory
 
+# Spanish category names, shared by keyword documents and embedding texts.
+CATEGORY_ES: dict[EquipmentCategory, str] = {
+    EquipmentCategory.SOUND: "sonido",
+    EquipmentCategory.LIGHTING: "iluminación",
+    EquipmentCategory.DJ: "dj",
+    EquipmentCategory.STAGE: "escenario",
+    EquipmentCategory.EFFECTS: "efectos",
+    EquipmentCategory.VIDEO: "video",
+}
+
 MAX_QUERIES = 16
 MAX_QUERY_CHARS = 200
 MIN_LIMIT, MAX_LIMIT = 1, 10

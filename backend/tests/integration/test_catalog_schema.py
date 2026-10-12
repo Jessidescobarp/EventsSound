@@ -18,6 +18,7 @@ from eventssound.adapters.db.session import Base
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 TABLES = {"equipment_items", "service_packages", "package_items", "bookings"}
+ALL_TABLES = TABLES | {"catalog_embeddings"}  # migration 0003 adds the embeddings table
 
 ITEM: dict[str, Any] = {
     "code": "sound_speaker",
@@ -84,9 +85,9 @@ def table_names(engine: Engine) -> set[str]:
     return set(inspect(engine).get_table_names()) - {"alembic_version"}
 
 
-def test_upgrade_creates_exactly_the_four_tables_and_they_are_empty(engine: Engine) -> None:
-    assert table_names(engine) == TABLES
-    assert [count(engine, table) for table in sorted(TABLES)] == [0, 0, 0, 0]
+def test_upgrade_creates_exactly_the_catalog_tables_and_they_are_empty(engine: Engine) -> None:
+    assert table_names(engine) == ALL_TABLES
+    assert [count(engine, table) for table in sorted(ALL_TABLES)] == [0] * 5
 
 
 def test_downgrade_to_the_baseline_and_to_base_removes_every_table(
@@ -105,13 +106,13 @@ def test_upgrade_downgrade_upgrade_round_trip_restores_the_schema(
     command.downgrade(alembic_config, "base")
     command.upgrade(alembic_config, "head")
 
-    assert table_names(engine) == TABLES
+    assert table_names(engine) == ALL_TABLES
 
 
 def test_repeat_upgrade_is_a_no_op(alembic_config: Config, engine: Engine) -> None:
     command.upgrade(alembic_config, "head")
 
-    assert table_names(engine) == TABLES
+    assert table_names(engine) == ALL_TABLES
 
 
 def constraint_and_index_names(engine: Engine) -> set[str]:
