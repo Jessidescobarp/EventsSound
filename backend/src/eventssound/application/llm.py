@@ -191,7 +191,11 @@ class LlmRequest:
             raise LlmValidationError("json_schema needs a JsonSchemaSpec and JSON response_format")
         _number(self.temperature, "temperature", 0, 2)
         _int(self.max_output_tokens, "max_output_tokens", 1, MAX_OUTPUT_TOKENS)
-        _number(self.timeout_s, "timeout_s", 0, MAX_TIMEOUT_S, open_low=True)
+        check_timeout(self.timeout_s)
+
+
+def check_timeout(value: object) -> float:
+    return _number(value, "timeout_s", 0, MAX_TIMEOUT_S, open_low=True)
 
 
 def check_node(value: object) -> str:
