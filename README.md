@@ -76,7 +76,7 @@ cd backend
 EMBEDDING_PROVIDER=fake uv run python -m eventssound.entrypoints.cli.embed_catalog --confirm
 ```
 
-The CLI uses the same guard as the seed CLI (non-local or production targets need `ALLOW_REMOTE_SEED=1`) and never writes `fake` embeddings to a remote database. With `EMBEDDING_PROVIDER=openrouter` it needs `EMBEDDING_MODEL` and `OPENROUTER_API_KEY` in your shell; rerunning is idempotent and only re-embeds entries whose name, category or members changed.
+The CLI uses the same guard as the seed CLI (non-local or production targets need `ALLOW_REMOTE_SEED=1`) and never writes `fake` embeddings to a remote database. With `EMBEDDING_PROVIDER=openrouter` it needs `EMBEDDING_MODEL` and `OPENROUTER_API_KEY` in your shell; it deletes rows of any other embedding model (one active model), so use the model the deployed app uses; rerunning is idempotent and only re-embeds entries whose name, category or members changed.
 
 ## Tests
 

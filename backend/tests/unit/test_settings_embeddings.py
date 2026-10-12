@@ -42,15 +42,36 @@ def test_unknown_providers_are_rejected(provider: str) -> None:
         make(embedding_provider=provider)
 
 
-@pytest.mark.parametrize("dimensions", [0, -5, 2001])
-def test_dimensions_are_bounded(dimensions: int) -> None:
+@pytest.mark.parametrize("dimensions", [0, -5, 512, 1023, 1025, 2001])
+def test_only_the_column_size_is_accepted(dimensions: int) -> None:
+    # The table is frozen at vector(1024) (migration 0003): another size would fail at the
+    # first write, after the first batch was already paid for.
     with pytest.raises(ValidationError):
         make(embedding_dimensions=dimensions)
 
 
-@pytest.mark.parametrize("dimensions", [1, 2000])
-def test_dimension_boundaries_are_accepted(dimensions: int) -> None:
-    assert make(embedding_dimensions=dimensions).embedding_dimensions == dimensions
+def test_the_column_size_is_accepted() -> None:
+    assert make(embedding_dimensions=1024).embedding_dimensions == 1024
+
+
+def test_fake_embeddings_are_refused_in_production() -> None:
+    with pytest.raises(ValidationError):
+        make(embedding_provider="fake", app_env="production")
+    assert make(embedding_provider="fake", app_env="local").embedding_provider == "fake"
+
+
+def test_validation_errors_never_print_the_input_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", KEY)
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "openrouter")  # model missing: validation fails
+
+    with pytest.raises(ValidationError) as caught:
+        Settings(_env_file=None, DATABASE_URL=DB_URL)  # type: ignore[call-arg]
+
+    rendered = str(caught.value)  # what logs and tracebacks print
+    assert KEY not in rendered and KEY[-12:] not in rendered
+    assert "user:pass" not in rendered  # nor the database credentials
 
 
 @pytest.mark.parametrize(

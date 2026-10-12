@@ -22,7 +22,11 @@ def root_env_file(module: Path | None = None) -> Path | None:
 
 class Settings(BaseSettings):
     # Environment variables always take precedence over the file.
-    model_config = SettingsConfigDict(env_file=root_env_file(), extra="ignore")
+    # hide_input_in_errors: a ValidationError would otherwise print the raw input values
+    # (the database URL, the API key) into logs and tracebacks.
+    model_config = SettingsConfigDict(
+        env_file=root_env_file(), extra="ignore", hide_input_in_errors=True
+    )
 
     app_env: str = "local"
     database_url: SecretStr = Field(validation_alias="DATABASE_URL")
@@ -32,7 +36,7 @@ class Settings(BaseSettings):
     # Embeddings (vector retrieval). `off` means keyword search only.
     embedding_provider: Literal["off", "fake", "openrouter"] = "off"
     embedding_model: str = ""
-    embedding_dimensions: int = Field(default=1024, ge=1, le=2000)
+    embedding_dimensions: int = 1024
     openrouter_api_key: SecretStr | None = None
 
     @field_validator("database_url", mode="before")
@@ -57,6 +61,20 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_model(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("embedding_dimensions")
+    @classmethod
+    def _dimensions_match_the_column(cls, value: int) -> int:
+        # vector(1024) is frozen in migration 0003; another size is a new revision plus a refresh.
+        if value != 1024:
+            raise ValueError("EMBEDDING_DIMENSIONS must be 1024 (the size of the table column)")
+        return value
+
+    @model_validator(mode="after")
+    def _fake_embeddings_never_run_in_production(self) -> "Settings":
+        if self.is_production and self.embedding_provider == "fake":
+            raise ValueError("EMBEDDING_PROVIDER=fake is not allowed in production")
+        return self
 
     @model_validator(mode="after")
     def _openrouter_embeddings_need_a_key_and_model(self) -> "Settings":

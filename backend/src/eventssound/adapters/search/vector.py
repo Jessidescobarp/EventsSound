@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from eventssound.adapters.search.validation import check_search_args
 from eventssound.application.embedding_index import EmbeddingStore
 from eventssound.application.embeddings import EmbeddingProvider
+from eventssound.application.llm import LlmBadResponse
 from eventssound.application.search import SearchHit, SearchResult
 from eventssound.domain.catalog import Catalog, EquipmentCategory
 
@@ -45,6 +46,8 @@ class VectorSearch:
     ) -> tuple[SearchResult, ...]:
         normalized = check_search_args(queries, category, limit)
         vectors = self._embedder.embed(list(normalized)).vectors
+        if len(vectors) != len(normalized):
+            raise LlmBadResponse()
         return tuple(self._one(vector, category, limit) for vector in vectors)
 
     def _one(

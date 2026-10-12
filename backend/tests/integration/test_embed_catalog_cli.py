@@ -75,7 +75,12 @@ def test_a_remote_target_is_refused_without_the_override(
 
 
 def test_production_is_refused_even_on_a_local_host(capsys: pytest.CaptureFixture[str]) -> None:
-    code, _ = run(capsys, ["--confirm"], settings=settings(LOCAL, app_env="production"), environ={})
+    production = settings(
+        LOCAL, app_env="production", embedding_provider="openrouter",
+        embedding_model="m", openrouter_api_key=KEY,
+    )  # fmt: skip
+
+    code, _ = run(capsys, ["--confirm"], settings=production, environ={})
 
     assert code == cli.EXIT_REFUSED
 
@@ -181,3 +186,28 @@ def test_a_database_without_the_migration_is_refused_with_exit_4(
     code, _ = run(capsys, ["--confirm"], settings=settings(database_url), environ={})
 
     assert code == cli.EXIT_SCHEMA
+
+
+def test_an_empty_catalog_is_refused_instead_of_wiping_the_embeddings(
+    migrated_database: str, real_engine: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from sqlalchemy import create_engine
+
+    if make_url(migrated_database).host not in cli.LOCAL_HOSTS:
+        pytest.skip("needs a local database host")
+    vector = "[" + ",".join(["1"] + ["0"] * 1023) + "]"
+    engine = create_engine(migrated_database)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO catalog_embeddings (kind, code, model, content_hash, embedding)"
+                " VALUES ('item', 'abc', 'm', :h, CAST(:v AS vector))"
+            ),
+            {"h": "a" * 64, "v": vector},
+        )
+    engine.dispose()
+
+    code, output = run(capsys, ["--confirm"], settings=settings(migrated_database), environ={})
+
+    assert code == cli.EXIT_FAILURE and "empty" in output
+    assert stored(migrated_database) == 1

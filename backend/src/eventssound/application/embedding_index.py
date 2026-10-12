@@ -44,7 +44,11 @@ class StoredEmbedding:
         if not isinstance(self.content_hash, str) or not _HASH.fullmatch(self.content_hash):
             raise ValueError("content_hash must be 64 lowercase hex characters")
         vector = tuple(self.vector)
-        if not vector or not all(type(x) in (int, float) and math.isfinite(x) for x in vector):
+        try:
+            finite = all(type(x) in (int, float) and math.isfinite(x) for x in vector)
+        except OverflowError:
+            finite = False
+        if not vector or not finite:
             raise ValueError("vector must be a non-empty tuple of finite numbers")
         object.__setattr__(self, "vector", tuple(float(x) for x in vector))
 

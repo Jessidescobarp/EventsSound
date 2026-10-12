@@ -17,13 +17,17 @@ from sqlalchemy.types import UserDefinedType
 
 MAX_DIMENSIONS = 2_000  # pgvector's limit for indexed vectors; also the provider-side bound
 _FLOAT32_MAX = struct.unpack("f", struct.pack("I", 0x7F7FFFFF))[0]
+# pgvector's float32 cosine math overflows or underflows outside this range (probed): the
+# largest component must lie within it, so zero and near-zero vectors are rejected too.
+_MIN_MAGNITUDE, _MAX_MAGNITUDE = 1e-18, 1e18
 _NUMBER = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 
 
 def format_vector(value: object, dimensions: int) -> str:
     """The pgvector text literal of `value`. Raises ValueError for anything the database would
     reject or mis-handle: wrong length, non-numbers, bools, NaN, infinities, float32 overflow and
-    the zero vector (its cosine distance is NaN)."""
+    vectors whose largest component is outside 1e-18..1e18 (pgvector's cosine
+    math breaks there, and the zero vector has a NaN distance)."""
     if isinstance(value, str | bytes) or not isinstance(value, Sequence):
         raise ValueError("a vector must be a sequence of numbers")
     if len(value) != dimensions:
@@ -32,12 +36,16 @@ def format_vector(value: object, dimensions: int) -> str:
     for component in value:
         if type(component) not in (int, float):
             raise ValueError("vector components must be int or float")
-        number = float(component)
+        try:
+            number = float(component)
+        except OverflowError:
+            raise ValueError("vector components must be finite float32 values") from None
         if not math.isfinite(number) or abs(number) > _FLOAT32_MAX:
             raise ValueError("vector components must be finite float32 values")
         parts.append(format(number, ".8g"))
-    if all(float(part) == 0.0 for part in parts):
-        raise ValueError("the zero vector is not allowed")
+    largest = max(abs(float(part)) for part in parts)
+    if not _MIN_MAGNITUDE <= largest <= _MAX_MAGNITUDE:
+        raise ValueError("the largest component must be within 1e-18..1e18 (no zero vectors)")
     return "[" + ",".join(parts) + "]"
 
 

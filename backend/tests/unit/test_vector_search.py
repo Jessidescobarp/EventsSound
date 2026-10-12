@@ -244,3 +244,18 @@ def test_a_batch_degrades_as_a_whole() -> None:
 
 def test_unrelated_queries_stay_empty_even_with_a_vector_leg() -> None:
     assert codes(hybrid(vector_search()), "submarino nuclear atomico") == []
+
+
+def test_a_provider_returning_the_wrong_number_of_vectors_is_a_bad_response() -> None:
+    from eventssound.application.llm import LlmBadResponse
+
+    class Short:
+        def embed(self, texts: Sequence[str], timeout_s: float = 10.0) -> EmbeddingResult:
+            return embedder().embed(["parlante"])
+
+    search = VectorSearch(Short(), indexed_store(), CATALOG, MODEL)
+
+    with pytest.raises(LlmBadResponse):
+        search.search(["luz", "humo"], None, 3)
+    # and the composite falls back instead of crashing
+    assert hybrid(search).search(["luz", "humo"], None, 3)[0].degraded is True

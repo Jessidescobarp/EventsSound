@@ -49,9 +49,13 @@ def test_format_is_a_bracketed_comma_list_with_full_precision() -> None:
         None,
         5,
         (1e39, 0.0, 0.0),  # float32 overflow
+        (1e30, 0.0, 0.0),  # float32 holds it, but pgvector's cosine math overflows
+        (1e19, 1.0, 0.0),
+        (1e-30, 1e-30, 1e-30),  # underflows to a zero norm
+        (10**400, 0.0, 0.0),  # int too large for a float
     ],
     ids=["short", "long", "empty", "nan", "inf", "-inf", "strings", "bool", "str", "bytes",
-         "none", "int", "float32-overflow"],
+         "none", "int", "float32-overflow", "huge", "above-1e18", "tiny", "huge-int"],
 )  # fmt: skip
 def test_invalid_vectors_are_rejected_before_reaching_the_database(value: object) -> None:
     with pytest.raises(ValueError):
@@ -93,3 +97,9 @@ def test_reflection_resolves_the_vector_type_name() -> None:
 def test_equal_dimensions_compare_equal_for_drift_detection() -> None:
     assert VectorType(4) == VectorType(4)
     assert VectorType(4) != VectorType(5)
+
+
+def test_the_safe_magnitude_range_is_accepted() -> None:
+    assert format_vector((1e18, 0.0, 0.0), 3) == "[1e+18,0,0]"
+    assert format_vector((1e-18, 0.0, 0.0), 3) == "[1e-18,0,0]"
+    assert format_vector((1.0, 1e-30, 0.0), 3) == "[1,1e-30,0]"  # tiny beside a big component

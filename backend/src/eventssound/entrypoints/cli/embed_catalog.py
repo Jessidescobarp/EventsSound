@@ -8,7 +8,9 @@ machine; the app never refreshes embeddings at runtime. The guard is the one of 
   variable `ALLOW_REMOTE_SEED` is exactly `1`;
 - the deterministic `fake` provider is NEVER written to a remote or production database, override
   or not: its vectors carry no meaning and would poison retrieval;
-- the migration head must be applied first (exit 4);
+- the migration head must be applied first (exit 4) and the catalog must not be empty;
+- rows of any OTHER embedding model are deleted (one active model): run it with the model
+  the deployed app uses, or retrieval silently falls back to keywords;
 - output has counts only, never the URL, host, user, password, key or driver text.
 
 `ALLOW_REMOTE_SEED` is read here via `os.environ` (injectable as `environ`) for the same reason
@@ -149,6 +151,10 @@ def main(
         if provider is None:
             provider, model = _build_embedder(settings)
         catalog = list_catalog(SqlAlchemyCatalogRepository(session_factory))
+        if not catalog.items:
+            # Refreshing an empty catalog would delete every stored embedding.
+            print("embed failed: the catalog is empty (seed it first)", file=sys.stderr)
+            return EXIT_FAILURE
         result = refresh_embeddings(
             catalog, provider, SqlAlchemyEmbeddingStore(session_factory), model
         )
