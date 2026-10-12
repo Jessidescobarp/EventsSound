@@ -55,6 +55,18 @@ scripts/smoke.ps1 -BackendUrl https://<api> -FrontendUrl https://<app> -Origin h
 
 Verified on Windows PowerShell 5.1; PowerShell 7 and Vite HMR in a browser are unverified. Production-like check with everything in containers: `docker compose --profile app up --build`.
 
+## API docs
+
+The backend serves Swagger UI at `/docs` and the OpenAPI schema at `/openapi.json`, in every environment including production (live: `https://eventsounddr-api.onrender.com/docs`). It is public on purpose: the API is read-only and its data is synthetic. ReDoc is off. Catalog endpoints: `GET /catalog/items` and `GET /catalog/packages`.
+
+Load the synthetic catalog into a LOCAL database (a dry run without `--confirm` exits 2 and changes nothing):
+
+```bash
+cd backend && uv run python -m eventssound.entrypoints.cli.seed_catalog --confirm
+```
+
+The CLI refuses non-local hosts and `APP_ENV=production` unless the environment variable `ALLOW_REMOTE_SEED` is exactly `1`. That variable is a one-off operator override of the CLI, not application configuration: never put it in `.env.example` or a deploy. On remote targets only the catalog is seeded, never the demo bookings.
+
 ## Tests
 
 ```bash
