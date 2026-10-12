@@ -1,3 +1,11 @@
+"""Alembic environment: URL from Settings, metadata from the registered models.
+
+Concurrency note: no advisory lock is taken around the upgrade (deliberately, see the
+quote-domain-core design). If two instances start at once on an empty database, the loser can fail
+on `CREATE TABLE` ("already exists"); `start.sh` retries `alembic upgrade head` a bounded number of
+times, and the retry then finds the new revision in `alembic_version` and succeeds as a no-op.
+"""
+
 from alembic import context
 from sqlalchemy import create_engine, pool
 

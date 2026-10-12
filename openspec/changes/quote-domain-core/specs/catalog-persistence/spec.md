@@ -12,7 +12,7 @@ The database MUST contain exactly four tables, `equipment_items`, `service_packa
 - `package_items`: `package_id` FK, `equipment_item_id` FK, `quantity` (> 0); unique on (`package_id`, `equipment_item_id`); deleting a package cascades to its rows, deleting an item referenced by a package is restricted.
 - `bookings`: one row per equipment item per booking: `booking_code` (the domain `Booking.code`), `item_code` (FK to `equipment_items.code`, RESTRICT), `quantity` (> 0), `starts_at`, `ends_at` (timestamptz, `ends_at > starts_at`), `status` (CHECK in `pending`, `confirmed`, `cancelled`), `created_at`, `updated_at`; unique on (`booking_code`, `item_code`); index on (`item_code`, `starts_at`, `ends_at`). There is no `booking_items` table.
 
-Money columns MUST be integer whole pesos named `*_cop`; floats and `Numeric` MUST NOT be used for money. Monetary decimals MUST NOT be stored as cents. Check constraints MUST have explicit short `name=` values; constraint and index names MUST follow `NAMING_CONVENTION` (the migration writes them literally). Models MUST subclass `Base` and live in `adapters/db/`, never in `domain/`. `migrations/env.py` MUST import the models module so autogenerate sees the metadata.
+Money columns MUST be integer whole pesos named `*_cop`; floats and `Numeric` MUST NOT be used for money. Monetary decimals MUST NOT be stored as cents. Check constraints MUST have explicit short `name=` values; constraint and index names MUST follow `NAMING_CONVENTION` (the migration writes them literally). Domain bounds MUST match the columns so that a valid domain value always fits: names at most 120 characters (`VARCHAR(120)`), integer quantities and stock at most `2**31 - 1` (`INTEGER`), codes at most 64 characters. The CHECK value lists MUST equal the `EquipmentCategory` and `BookingStatus` enums and the numeric CHECK bounds MUST agree with the domain boundaries (tests read `pg_get_constraintdef`). Models MUST subclass `Base` and live in `adapters/db/`, never in `domain/`. `migrations/env.py` MUST import the models module so autogenerate sees the metadata.
 
 #### Scenario: Constraints enforced
 - Given a migrated database
@@ -76,7 +76,7 @@ Schema MUST be created by one Alembic revision after `0001_baseline` (`0002_cata
 #### Scenario: Untrusted stored rows
 - Given a stored row whose booking code, item code, quantity, instants or status violate the domain contract (or a catalog row with an unknown category, a malformed code or an absurd price)
 - When an adapter maps it
-- Then `InvalidStoredData` is raised (never `TypeError`, `KeyError` or a bare `ValueError`) and the row is not skipped silently
+- Then `InvalidStoredData` is raised (never `TypeError`, `KeyError` or a bare `ValueError`) and the row is not skipped silently; values the driver cannot decode (for example an `infinity` timestamp, a SQLAlchemy `DataError`) are `InvalidStoredData` too, not an outage
 
 #### Scenario: Storage failure
 - Given an unreachable database whose URL contains a user, password, host and database name

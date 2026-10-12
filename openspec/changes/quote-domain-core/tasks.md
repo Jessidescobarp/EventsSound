@@ -102,7 +102,26 @@ Deviations recorded here (also reflected in the specs and design in the same PR)
 - `InvalidStoredData` and `ReservationQuery` are new (typed errors for untrusted rows; one validated query value shared by the real adapter and the fake).
 - `ALLOW_REMOTE_SEED` and `APP_ENV=production` handling: production is matched case-insensitively and trimmed; `?host=`, `?hostaddr=` and `?service=` URL overrides are classified (a URL with no host but `?host=remote` would otherwise have looked local).
 - The catalog repository reads inside one `REPEATABLE READ` snapshot (design D12 promised a consistent snapshot).
-- ADR 12 not written (B1.5 open); `documentacion/` untouched.
+- ADR 12 was written in the review follow-up (see below).
+
+### Review follow-up (independent review: FIX FIRST, all items applied on the same branch)
+
+The branch was rebased onto `origin/main` (24fd2d8, the merged LLM and embedding PRs) before the fixes. Both behaviours were kept: main's autouse network guard and the persistence fixtures. One test needed an edit: `test_no_module_except_settings_reads_the_environment` now allow-lists `entrypoints/cli/seed_catalog.py` next to `config.py` (the documented `ALLOW_REMOTE_SEED` exception). No test needed a guard escape (the guard allows loopback; psycopg/libpq is not covered by it anyway).
+
+| # | Fix | Where |
+| - | --- | ----- |
+| 1 | Host-less URL is local only if `PGHOST`, `PGHOSTADDR`, `PGSERVICE`, `PGSERVICEFILE` are unset; `PGHOSTADDR`/`PGSERVICE`/`PGSERVICEFILE` make any target non-local | CLI `is_local_target(url, environ)` |
+| 2 | `make_url` `ValueError` (multi-host, bad port/IPv6) caught with `ArgumentError`; generic message, exit 1, no fragment | CLI `main` |
+| 3 | `alembic_version` compared with the script head before seeding (exit 4); connection, credentials, schema and other failures have distinct generic messages | `adapters/db/storage.py`, CLI |
+| 4 | `--no-bookings`; demo bookings refused automatically on remote or production targets; safe summary | CLI, seed spec |
+| 5 | `reset_schema` refuses non-local URLs before connecting (`UnsafeResetTarget`) | `tests/conftest.py` |
+| 6 | Drift test with `compare_type` and `compare_server_default`; CHECK value lists and numeric bounds compared with the domain | `test_catalog_schema.py`, `test_schema_contract.py` |
+| 7 | `DataError` on read is `InvalidStoredData`; domain bounds equal the columns (name 120, integers `2**31-1`) | repositories, `domain/catalog.py`, `domain/availability.py` |
+| 8 | Start-race note (no advisory lock) | `migrations/env.py`, `start.sh` |
+| 9 | ADR 12 written, skill note cites it, B1.5 ticked | `documentacion/decisions.md` |
+| 10 | Rebase onto `origin/main`, full suite with and without a throwaway pgvector container | see the final report |
+
+Test-only additions pin the behaviours a mutation would otherwise leave alive: snapshot isolation of `get_catalog` (a commit between the two selects is not seen), `updated_at` moving on every upsert, `BIGINT` money and ids, server defaults (`status`, `discount_bps`, audit columns), unique-constraint column order, hosts never trimmed, and `engine.dispose()` in every CLI outcome. README still points `DATABASE_URL_TEST` at the local compose database (`eventssound`), which `reset_schema` will wipe: a separate throwaway database is safer (not changed here, `README.md` is outside this PR's scope).
 
 ## Merge order and MERGE PROCEDURE (avoids the earlier mistake)
 
@@ -126,7 +145,7 @@ Earlier incident: a stacked PR was merged into its parent branch instead of `mai
 2. **tzdata (A2)**: runtime dependency (not dev). On Windows there is no system tzdata, so `ZoneInfo("America/Bogota")` fails without it.
 3. **Stdlib-only domain (all PRs touching `domain/`)**: the allowlist test from A1 must stay green; no third-party import in `domain/`.
 4. **conftest reset and models import (B1)**: schema reset lives in `tests/conftest.py` (`reset_schema(url)`: import models, `Base.metadata.drop_all`, `DROP TABLE IF EXISTS alembic_version`; NOT `DROP SCHEMA public CASCADE`); `migrations/env.py` imports `eventssound.adapters.db.models  # noqa: F401`.
-5. **COP vs cents note (B1)**: ONE line in `.claude/skills/database-conventions/SKILL.md` under "Naming": "Money: `*_cents` is the generic example; COP has no practical minor unit, so this project stores whole pesos in `*_cop` BIGINT columns (ADR 12). Never float." Plus ADR 12 in `documentacion/decisions.md` (OPEN: the skill line was delivered, ADR 12 was not; see B1.5).
+5. **COP vs cents note (B1)**: ONE line in `.claude/skills/database-conventions/SKILL.md` under "Naming": "Money: `*_cents` is the generic example; COP has no practical minor unit, so this project stores whole pesos in `*_cop` BIGINT columns (ADR 12). Never float." Plus ADR 12 in `documentacion/decisions.md` (both delivered, see B1.5).
 
 ## Commit boundaries
 
@@ -193,7 +212,7 @@ Real size: **649 changed lines** (estimate was 330; tests ~62%). Accepted by the
 - [x] **B1.2 [A]** Tests first, `tests/integration/test_catalog_schema.py` (DB, 36 tests): upgrade head creates exactly four tables and they are empty; downgrade to `0001` and to base; round trip; repeat upgrade is a no-op; expected constraint and index names exist and follow the prefixes; every CHECK, UNIQUE and FK (RESTRICT and CASCADE) is hit with an invalid row, asserting the constraint name in the error; tz-aware round trip of a UTC-5 booking; `compare_metadata` drift test; DB-free test that `env.py` imports the models module. Fixtures in `conftest.py`: `alembic_config`, `migrated_database`, `session_factory`, all function scoped (a fresh migration per test, about 0.3 s; replaces the planned `TRUNCATE` fixture because migration tests reset the schema).
 - [x] **B1.3 [A]** `adapters/db/models.py`: four models on `Base` (BIGINT `*_cop`, `*_bps`, `DateTime(timezone=True)`, named `CheckConstraint`s, `category`/`status` as VARCHAR + CHECK, indexes). Flat `bookings`: `booking_code`, `item_code` (FK to `equipment_items.code`, RESTRICT), `quantity`, `starts_at`, `ends_at`, `status`; UNIQUE (`booking_code`, `item_code`) (mirrors the domain's `(code, item_code)` uniqueness); index `ix_bookings_item_code` on (`item_code`, `starts_at`, `ends_at`). No `booking_items`.
 - [x] **B1.4 [A]** ONE migration `migrations/versions/0002_catalog_and_bookings.py` (hand-written; every name literal via `op.f`, literal value lists, `downgrade()` in FK order, schema only, no seed) and `migrations/env.py` models import (special rule 4). Commit `feat(db): add catalog and flat bookings schema with reversible migration`.
-- [ ] **B1.5 [A]** Docs (special rule 5). DONE: the one-line skill note (commit `docs(skills): note whole-peso money columns in database conventions`; it points at the quote-domain-core design instead of ADR 12). OPEN: ADR 12 in `documentacion/decisions.md` was NOT written because this PR's allowed file scope excluded `documentacion/`; add it (or fold it into PR C's docs commit) and then change the skill note to cite "ADR 12".
+- [x] **B1.5 [A]** Docs (special rule 5): the one-line skill note and ADR 12 in `documentacion/decisions.md` (whole COP pesos, `*_cop` BIGINT vs `*_cents`, flat bookings, seed guard). The note first cited the design (ADR 12 was out of scope for the first persistence commit); the review follow-up wrote ADR 12 and the note now cites it.
 - [x] **B1.6 [A]** Verification against a throwaway `pgvector/pgvector:pg16` container: upgrade, repeat, downgrade to `0001` and `base`, upgrade again, `alembic heads` single, drift test empty, migration has no `INSERT`, exactly four tables.
 - [ ] **B1.7 [M]** Acknowledge before merging B1: on the next deploy `start.sh` runs `alembic upgrade head` and creates EMPTY tables in Neon (schema only, harmless).
 
