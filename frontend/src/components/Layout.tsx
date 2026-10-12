@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigationType } from "react-router";
 import { es } from "../copy/es";
 import { BackendStatusContext } from "../hooks/backendStatusContext";
 import { useBackendStatus } from "../hooks/useBackendStatus";
@@ -23,17 +23,20 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 export function Layout() {
   const backend = useBackendStatus();
   const { pathname } = useLocation();
+  const navigationType = useNavigationType();
   const mainRef = useRef<HTMLElement>(null);
-  const firstRender = useRef(true);
+  // Comparing with the last handled path (instead of a "first render" flag) keeps the
+  // initial load, and StrictMode's repeated effects, from moving focus.
+  const handledPath = useRef(pathname);
 
-  // After client-side navigation move focus to the content (not on the first load).
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
-    mainRef.current?.focus(); // focusing also scrolls the content into view
-  }, [pathname]);
+    if (handledPath.current === pathname) return;
+    handledPath.current = pathname;
+    // Back/Forward (POP): leave focus and the browser's scroll restoration alone.
+    if (navigationType === "POP") return;
+    mainRef.current?.focus({ preventScroll: true });
+    window.scrollTo(0, 0);
+  }, [pathname, navigationType]);
 
   return (
     <div className="flex min-h-screen flex-col">

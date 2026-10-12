@@ -2,9 +2,11 @@ import { ButtonLink } from "../components/ui/Button";
 import { Container } from "../components/ui/Container";
 import { es } from "../copy/es";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useNoIndex } from "../hooks/useNoIndex";
 
 export default function NotFoundPage() {
   useDocumentTitle(es.titles.notFound);
+  useNoIndex();
   return (
     <Container className="py-16">
       <h1 className="text-3xl font-bold text-brand-900">{es.notFound.title}</h1>

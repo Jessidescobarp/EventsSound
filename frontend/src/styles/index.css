@@ -15,10 +15,15 @@
     -webkit-text-size-adjust: 100%;
   }
 
-  /* Visible keyboard focus everywhere. */
+  /*
+   * Visible keyboard focus on ANY background (WCAG 2.2 non-text contrast >= 3:1): a
+   * surface-coloured gap (box-shadow) sits between the element and an ink outline, so
+   * on the dark hero gradient the white gap contrasts, and on light areas the ink does.
+   */
   :focus-visible {
-    outline: 3px solid var(--color-brand-500);
+    outline: 3px solid var(--color-ink);
     outline-offset: 2px;
+    box-shadow: 0 0 0 5px var(--color-surface);
   }
 
   @media (prefers-reduced-motion: reduce) {

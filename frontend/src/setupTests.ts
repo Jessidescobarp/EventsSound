@@ -8,6 +8,8 @@ let consoleSpies: MockInstance[] = [];
 
 beforeEach(() => {
   consoleSpies = [vi.spyOn(console, "error"), vi.spyOn(console, "warn")];
+  // jsdom logs "not implemented" for scrollTo; tests assert on this stub instead.
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 
 afterEach(() => {
