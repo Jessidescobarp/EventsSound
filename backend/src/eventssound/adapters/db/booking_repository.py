@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DataError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from eventssound.application.booking_query import ReservationQuery
@@ -65,6 +65,8 @@ class SqlAlchemyBookingRepository:
         try:
             with self._session_factory() as session:
                 rows = session.execute(statement).all()
+        except DataError:
+            raise InvalidStoredData("stored booking row cannot be read") from None
         except SQLAlchemyError:
             raise RepositoryUnavailable("booking storage unavailable") from None
         return tuple(booking_from_row(row) for row in rows)

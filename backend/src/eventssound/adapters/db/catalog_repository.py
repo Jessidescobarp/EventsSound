@@ -1,7 +1,7 @@
 """Read-only SQLAlchemy implementation of the `CatalogRepository` port."""
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DataError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from eventssound.application.errors import InvalidStoredData, RepositoryUnavailable
@@ -57,6 +57,8 @@ class SqlAlchemyCatalogRepository:
                 ).all()
                 # Mapping stays inside the session: it reads the loaded relationships.
                 return self._to_domain(items, packages)
+        except DataError:
+            raise InvalidStoredData("stored catalog row cannot be read") from None
         except SQLAlchemyError:
             raise RepositoryUnavailable("catalog storage unavailable") from None
 
