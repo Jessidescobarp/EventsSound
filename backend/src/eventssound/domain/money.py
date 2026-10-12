@@ -7,7 +7,7 @@ from functools import total_ordering
 
 from .errors import CurrencyMismatch, InvalidMoney
 
-_CURRENCY = re.compile(r"^[A-Z]{3}$")
+_CURRENCY = re.compile(r"[A-Z]{3}")
 
 
 def _require_int(value: object, name: str) -> int:
@@ -26,7 +26,7 @@ class Money:
 
     def __post_init__(self) -> None:
         _require_int(self.amount, "amount")
-        if type(self.currency) is not str or not _CURRENCY.match(self.currency):
+        if type(self.currency) is not str or not _CURRENCY.fullmatch(self.currency):
             raise InvalidMoney("currency must be a 3-letter uppercase code")
 
     @classmethod

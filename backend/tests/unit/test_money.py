@@ -26,7 +26,9 @@ def test_non_int_amount_is_rejected(amount: object) -> None:
 
 
 @pytest.mark.parametrize(
-    "currency", ["cop", "COPP", "", "C0P"], ids=["lower", "long", "empty", "digit"]
+    "currency",
+    ["cop", "COPP", "", "C0P", "COP\n", "\nCOP"],
+    ids=["lower", "long", "empty", "digit", "trailing-newline", "leading-newline"],
 )
 def test_invalid_currency_is_rejected(currency: str) -> None:
     with pytest.raises(InvalidMoney):
@@ -165,3 +167,28 @@ def test_operations_with_non_money_operands_raise_type_error() -> None:
         Money(1) - 1  # type: ignore[operator]
     with pytest.raises(TypeError):
         assert Money(1) < 1  # type: ignore[operator]
+
+
+def test_sum_of_values_requires_matching_default_currency() -> None:
+    with pytest.raises(CurrencyMismatch):
+        Money.sum([Money(1, "USD")])
+
+
+def test_equal_money_hashes_equal() -> None:
+    assert Money(5) == Money(5)
+    assert hash(Money(5)) == hash(Money(5))
+    assert len({Money(5), Money(5), Money(5, "USD")}) == 2
+
+
+@pytest.mark.parametrize(
+    ("amount", "step", "expected"),
+    [(7, 1, 7), (124, 5, 125), (122, 5, 120), (125, 50, 150), (-125, 50, -100)],
+    ids=["step-1", "step-5-up", "step-5-down", "step-50-tie", "step-50-negative-tie"],
+)
+def test_round_to_other_steps(amount: int, step: int, expected: int) -> None:
+    assert Money(amount).round_to(step) == Money(expected)
+
+
+def test_percent_negative_tie_rounds_toward_positive_infinity() -> None:
+    assert Money(-1).percent(5000) == Money(0)
+    assert Money(-3).percent(5000) == Money(-1)
