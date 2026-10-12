@@ -742,3 +742,14 @@ Delivered as one PR (`feat/agent-search-tools`) instead of Q3a + Q3b. Deviations
 - Only `InvalidEventRequest`, `InvalidAvailability` and `InvalidMoney` mean "invalid arguments"; any other domain error comes from stored or system data and is `internal`. Datetimes must match a strict ISO-8601 pattern with an offset and must not overflow when converted to UTC.
 - The money-arithmetic scan is a heuristic (AST, names such as `amount`, `unit_price`, `total`), not a proof: it does not follow aliases. `ToolExecutor` is per request and not thread-safe.
 
+## 21. Implementation notes: G2b (pgvector retrieval)
+
+Delivered as one PR (`feat/agent-pgvector`) instead of Q10a-c (the provider port, fake and OpenRouter adapter already shipped in G1b). Deviations:
+- Migration numbering: this is `0003_catalog_embeddings`; the cost-cap table becomes `0004` when Q7 lands (the order flipped because retrieval was built first).
+- `SearchHit` keeps `keyword_score` and `vector_similarity`; the store port (`application/embedding_index.py`) is `existing_hashes / upsert / prune / nearest`. The embedding text covers name, category and package members only, so price or stock edits never re-embed.
+- `refresh_embeddings` stores each batch as it completes and prunes orphans LAST, so a failed run never leaves the store emptier than it found it; a rerun finishes the work.
+- `VectorSearch` filters category and stale codes in Python and applies a minimum similarity (default 0.25, UNVERIFIED for any real model; the retrieval eval tunes it). `HybridSearch` reads each leg 10 deep, fuses with RRF (k = 60) and breaks ties items first, then by code; `InvalidSearch` is validated before the fallback and is never swallowed.
+- Not built (YAGNI until the graph exists): `CachedEmbedder` (LRU and circuit breaker, ladder cut 2), `container.py` wiring and the retrieval eval. `Settings` gained `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` and `OPENROUTER_API_KEY` (the developer adds the four `.env.example` lines by hand).
+- `embed_catalog` is the second module allowed to read `ALLOW_REMOTE_SEED` from the environment (same guard as the seed CLI) and refuses the `fake` provider on any remote or production target.
+- The Alembic drift test passes with the custom type without `compare_type=False`: reflection resolves `vector` through `ischema_names`, and `VectorType` compares equal by dimension.
+
