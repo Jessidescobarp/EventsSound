@@ -277,13 +277,19 @@ def test_remaining_never_goes_negative_when_existing_data_overbooks() -> None:
     assert available_units(make_item(stock=4), at(6, 10), at(6, 14), bookings, TWO_HOURS) == 0
 
 
+def in_both_orders(bookings: tuple[Booking, ...]) -> list[tuple[Booking, ...]]:
+    """The same bookings as given and reversed: the sweep must not rely on input order."""
+    return [bookings, bookings[::-1]]
+
+
 def test_sequential_bookings_inside_one_request_count_as_peak_not_sum() -> None:
     bookings = (
         book(at(6, 8), at(6, 10), code="bk_1"),
         book(at(6, 10), at(6, 12), code="bk_2"),
         book(at(6, 12), at(6, 14), code="bk_3"),
     )
-    assert available_units(make_item(stock=2), at(6, 8), at(6, 14), bookings, NO_BUFFER) == 1
+    for ordered in in_both_orders(bookings):
+        assert available_units(make_item(stock=2), at(6, 8), at(6, 14), ordered, NO_BUFFER) == 1
 
 
 def test_bookings_that_individually_fit_but_together_exceed_stock() -> None:
@@ -305,17 +311,62 @@ def test_peak_counts_only_what_is_concurrent() -> None:
         book(at(6, 10), at(6, 14), quantity=2, code="bk_b"),
         book(at(6, 13), at(6, 16), quantity=3, code="bk_c"),
     )
-    assert available_units(make_item(stock=9), at(6, 8), at(6, 16), bookings, NO_BUFFER) == 4
+    for ordered in in_both_orders(bookings):
+        assert available_units(make_item(stock=9), at(6, 8), at(6, 16), ordered, NO_BUFFER) == 4
     # A releases at 12:00, before C acquires at 13:00, so A+C are never concurrent.
-    assert available_units(make_item(stock=9), at(6, 8), at(6, 16), bookings[::2], NO_BUFFER) == 6
+    for ordered in in_both_orders(bookings[::2]):
+        assert available_units(make_item(stock=9), at(6, 8), at(6, 16), ordered, NO_BUFFER) == 6
 
 
-def test_release_precedes_acquisition_at_the_same_instant() -> None:
+def test_release_precedes_acquisition_at_the_same_instant_in_any_input_order() -> None:
+    # A ends exactly when B starts. Listing B first must not make them look concurrent.
     bookings = (
         book(at(6, 8), at(6, 12), 1, code="bk_a"),
         book(at(6, 12), at(6, 16), 1, code="bk_b"),
     )
-    assert available_units(make_item(stock=2), at(6, 8), at(6, 16), bookings, NO_BUFFER) == 1
+    for ordered in in_both_orders(bookings):
+        assert available_units(make_item(stock=2), at(6, 8), at(6, 16), ordered, NO_BUFFER) == 1
+
+
+def test_long_booking_over_two_short_ones_peaks_with_the_buffer() -> None:
+    # L spans the day; S1 and S2 are 1h apart. Without a buffer S1 and S2 never overlap (peak 2);
+    # with a 2h buffer they cannot share a unit, so all three are concurrent (peak 3).
+    bookings = (
+        book(at(6, 8), at(6, 20), code="bk_l"),
+        book(at(6, 10), at(6, 11), code="bk_s1"),
+        book(at(6, 12), at(6, 13), code="bk_s2"),
+    )
+    for ordered in in_both_orders(bookings):
+        assert available_units(make_item(stock=4), at(6, 9), at(6, 14), ordered, NO_BUFFER) == 2
+        assert available_units(make_item(stock=4), at(6, 9), at(6, 14), ordered, TWO_HOURS) == 1
+
+
+def test_duplicate_booking_rows_each_count() -> None:
+    # (code, item_code) is expected to be unique per booking; a duplicate errs toward unavailable.
+    row = book(at(6, 10), at(6, 14))
+    assert available_units(make_item(stock=2), at(6, 10), at(6, 14), (row, row), TWO_HOURS) == 0
+
+
+def test_far_future_booking_does_not_poison_unrelated_windows() -> None:
+    far = book(at(6, 10), datetime.max.replace(tzinfo=UTC), code="bk_far")
+    unrelated = (at(6, 10), at(6, 14))
+    # far overlaps [10:00, 14:00) on 6 Nov, so this window is rejected (fail closed)...
+    with pytest.raises(InvalidAvailability):
+        available_units(make_item(stock=2), *unrelated, (far,), TWO_HOURS)
+    # ...but a window that ends before the booking starts is answered normally.
+    assert available_units(make_item(stock=2), at(1, 10), at(1, 14), (far,), TWO_HOURS) == 2
+    near_max = book(
+        datetime.max.replace(tzinfo=UTC) - timedelta(hours=1), datetime.max.replace(tzinfo=UTC)
+    )
+    assert available_units(make_item(stock=2), *unrelated, (near_max,), TWO_HOURS) == 2
+
+
+def test_buffer_of_exactly_seven_days_is_valid_and_applied() -> None:
+    rules = AvailabilityRules(buffer=timedelta(days=7))
+    booking = book(at(6, 10), at(6, 14))
+    # Gap of exactly 7 days is allowed, one second less is not.
+    assert available_units(make_item(), at(13, 14), at(13, 18), (booking,), rules) == 1
+    assert available_units(make_item(), at(13, 13, 59, 59), at(13, 18), (booking,), rules) == 0
 
 
 def test_buffer_makes_near_bookings_concurrent() -> None:
@@ -533,3 +584,82 @@ def test_request_availability_respects_cancelled_and_buffer() -> None:
         request, make_catalog(), back_to_back, TWO_HOURS
     ).is_available
     assert check_request_availability(request, make_catalog(), back_to_back, NO_BUFFER).is_available
+
+
+def test_three_member_package_with_one_short_member_reports_only_that_member() -> None:
+    catalog = Catalog(
+        (make_item("sound_speaker", 3), make_item("sound_mixer", 2), make_item("light_par", 4)),
+        (
+            ServicePackage(
+                "pkg_full",
+                "Full",
+                (
+                    PackageLine("sound_speaker", 2),
+                    PackageLine("sound_mixer", 1),
+                    PackageLine("light_par", 4),
+                ),
+            ),
+        ),
+    )
+    bookings = (book(at(6, 20), at(7, 1), quantity=1, item_code="light_par"),)
+    request = make_request(packages=(RequestedLine("pkg_full", 1),))
+    report = check_request_availability(request, catalog, bookings, TWO_HOURS)
+    assert not report.is_available
+    assert [(a.item_code, a.is_available) for a in report.items] == [
+        ("light_par", False),
+        ("sound_mixer", True),
+        ("sound_speaker", True),
+    ]
+    assert [(s.item_code, s.requested, s.remaining) for s in report.shortages] == [
+        ("light_par", 4, 3)
+    ]
+
+
+# --- result validation ------------------------------------------------------------------------
+
+GOOD = Availability("sound_speaker", requested=2, stock=3, remaining=1)
+
+INVALID_AVAILABILITY: dict[str, Callable[[], Availability]] = {
+    "bad-code": lambda: Availability("Bad Code", 1, 3, 1),
+    "newline-code": lambda: Availability("abc\n", 1, 3, 1),
+    "non-string-code": lambda: Availability(None, 1, 3, 1),  # type: ignore[arg-type]
+    "zero-requested": lambda: Availability("sound_speaker", 0, 3, 1),
+    "bool-requested": lambda: Availability("sound_speaker", True, 3, 1),
+    "float-stock": lambda: Availability("sound_speaker", 1, 3.0, 1),  # type: ignore[arg-type]
+    "negative-stock": lambda: Availability("sound_speaker", 1, -1, 0),
+    "negative-remaining": lambda: Availability("sound_speaker", 1, 3, -1),
+    "bool-remaining": lambda: Availability("sound_speaker", 1, 3, False),
+    "remaining-above-stock": lambda: Availability("sound_speaker", 1, 3, 4),
+}
+
+
+@pytest.mark.parametrize("build", INVALID_AVAILABILITY.values(), ids=INVALID_AVAILABILITY.keys())
+def test_inconsistent_availability_is_rejected(build: Callable[[], Availability]) -> None:
+    with pytest.raises(InvalidAvailability):
+        build()
+
+
+OTHER = Availability("sound_mixer", requested=1, stock=2, remaining=2)
+
+INVALID_REPORTS: dict[str, Callable[[], AvailabilityReport]] = {
+    "empty": lambda: AvailabilityReport(()),
+    "string": lambda: AvailabilityReport("abc"),  # type: ignore[arg-type]
+    "bytes": lambda: AvailabilityReport(b"abc"),  # type: ignore[arg-type]
+    "non-iterable": lambda: AvailabilityReport(5),  # type: ignore[arg-type]
+    "wrong-element": lambda: AvailabilityReport((GOOD, "x")),  # type: ignore[arg-type]
+    "duplicate-code": lambda: AvailabilityReport((GOOD, GOOD)),
+    "unsorted": lambda: AvailabilityReport((GOOD, OTHER)),
+}
+
+
+@pytest.mark.parametrize("build", INVALID_REPORTS.values(), ids=INVALID_REPORTS.keys())
+def test_inconsistent_report_is_rejected(build: Callable[[], AvailabilityReport]) -> None:
+    with pytest.raises(InvalidAvailability):
+        build()
+
+
+def test_report_accepts_sorted_distinct_items_from_any_iterable() -> None:
+    report = AvailabilityReport(iter((OTHER, GOOD)))
+    assert report.items == (OTHER, GOOD)
+    assert report.shortages == (GOOD,)
+    assert hash(report) == hash(AvailabilityReport((OTHER, GOOD)))

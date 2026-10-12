@@ -115,6 +115,15 @@ class Availability:
     stock: int
     remaining: int
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.item_code, str) or not _ITEM_CODE.fullmatch(self.item_code):
+            raise InvalidAvailability("item_code must match [a-z0-9_]{3,64}")
+        _require_quantity(self.requested, "requested")
+        if type(self.stock) is not int or self.stock < 0:
+            raise InvalidAvailability("stock must be an int >= 0")
+        if type(self.remaining) is not int or not 0 <= self.remaining <= self.stock:
+            raise InvalidAvailability("remaining must be an int within 0..stock")
+
     @property
     def is_available(self) -> bool:
         return self.remaining >= self.requested
@@ -132,7 +141,18 @@ class AvailabilityReport:
     items: tuple[Availability, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "items", tuple(self.items))
+        if isinstance(self.items, str | bytes):
+            raise InvalidAvailability("items must be a collection of Availability")
+        try:
+            items = tuple(self.items)
+        except TypeError:
+            raise InvalidAvailability("items must be a collection of Availability") from None
+        object.__setattr__(self, "items", items)
+        if not items or not all(isinstance(item, Availability) for item in items):
+            raise InvalidAvailability("items must be a non-empty collection of Availability")
+        codes = [item.item_code for item in items]
+        if codes != sorted(set(codes)):
+            raise InvalidAvailability("items must be sorted by code with no duplicates")
 
     @property
     def is_available(self) -> bool:
@@ -170,21 +190,29 @@ def available_units(
     bookings: Iterable[Booking],
     rules: AvailabilityRules,
 ) -> int:
-    """Units of `item` free for the whole of `[start, end)`: stock minus peak concurrent use."""
+    """Units of `item` free for the whole of `[start, end)`: stock minus peak concurrent use.
+
+    `(code, item_code)` is expected to be unique per booking: a duplicated row counts twice,
+    which errs toward unavailable. Bookings are first selected on their raw UTC bounds, so a
+    booking far from the window never raises; one that does overlap the window but cannot be
+    expanded by the buffer without leaving the datetime range fails closed with a domain error.
+    """
     if not isinstance(item, EquipmentItem):
         raise InvalidAvailability("item must be an EquipmentItem")
     utc_start, utc_end = _check_interval(start, end)
     half = _check_rules(rules).buffer / 2
     held = _as_bookings(bookings)
-    window_lo, window_hi = _shift(utc_start, -half), _shift(utc_end, half)
+    near_lo, near_hi = _shift(utc_start, -rules.buffer), _shift(utc_end, rules.buffer)
+    blocking = BookingStatus.blocking()
     events: list[tuple[datetime, int]] = []
     for booking in held:
-        if booking.item_code != item.code or booking.status not in BookingStatus.blocking():
+        if booking.item_code != item.code or booking.status not in blocking:
             continue
-        lo, hi = _shift(_utc(booking.start, "start"), -half), _shift(_utc(booking.end, "end"), half)
-        if lo < window_hi and hi > window_lo:
-            events.append((lo, booking.quantity))
-            events.append((hi, -booking.quantity))
+        b_start, b_end = _utc(booking.start, "start"), _utc(booking.end, "end")
+        # Expanded overlap `b_start - half < end + half` is `b_start < end + buffer`.
+        if b_start < near_hi and b_end > near_lo:
+            events.append((_shift(b_start, -half), booking.quantity))
+            events.append((_shift(b_end, half), -booking.quantity))
     # Sorting by (time, delta) puts releases before acquisitions at the same instant.
     events.sort()
     in_use = peak = 0
