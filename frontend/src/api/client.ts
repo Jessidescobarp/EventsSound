@@ -48,6 +48,13 @@ export function hasForbiddenChars(value: string): boolean {
   return FORBIDDEN_CHARS.test(value);
 }
 
+const FORBIDDEN_CHARS_GLOBAL = new RegExp(FORBIDDEN_CHARS.source, "g");
+
+/** Replaces control and bidirectional characters with a space (for free text that is shown, not parsed). */
+export function replaceForbiddenChars(value: string): string {
+  return value.replace(FORBIDDEN_CHARS_GLOBAL, " ");
+}
+
 /** Upper bound for a response body in bytes. The catalog is about 10 KB. */
 export const MAX_RESPONSE_BYTES = 1_000_000;
 export const DEFAULT_TIMEOUT_MS = 10_000;

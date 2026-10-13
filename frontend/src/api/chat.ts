@@ -1,4 +1,4 @@
-import { ApiError, apiFetch, hasForbiddenChars } from "./client";
+import { ApiError, apiFetch, hasForbiddenChars, replaceForbiddenChars } from "./client";
 
 /**
  * Contract of POST /quote/chat (openspec quote-agent / chat-endpoint). The server keeps no
@@ -9,8 +9,11 @@ export const MAX_MESSAGES = 8;
 export const MAX_MESSAGE_CHARS = 1000;
 export const MAX_TOTAL_CHARS = 4000;
 export const MAX_BODY_BYTES = 16 * 1024;
-/** Chat answers can wait for an LLM, so they get more time than catalog reads. */
-export const CHAT_TIMEOUT_MS = 40_000;
+/**
+ * Chat answers wait for an LLM. Keep this ABOVE the backend deadline (40 s): aborting first
+ * would drop an answer whose tokens are already spent, and a retry would pay twice.
+ */
+export const CHAT_TIMEOUT_MS = 60_000;
 
 export type ChatRole = "user" | "assistant";
 export interface ChatTurn {
@@ -37,7 +40,10 @@ const bodyBytes = (turns: ChatTurn[]) => encoder.encode(JSON.stringify({ message
  * the total characters and the UTF-8 body fit. The newest turn is always kept.
  */
 export function buildHistory(turns: ChatTurn[]): ChatTurn[] {
-  let history = turns.slice(-MAX_MESSAGES).map((t) => ({ role: t.role, content: clip(t.content, MAX_MESSAGE_CHARS) }));
+  let history = turns
+    .slice(-MAX_MESSAGES)
+    .map((t) => ({ role: t.role, content: clip(cleanText(t.content), MAX_MESSAGE_CHARS) }))
+    .filter((t) => t.content.length > 0); // the server rejects a turn that is empty once cleaned
   const total = (h: ChatTurn[]) => h.reduce((sum, t) => sum + countChars(t.content), 0);
   while (history.length > 1 && (total(history) > MAX_TOTAL_CHARS || bodyBytes(history) > MAX_BODY_BYTES)) {
     history = history.slice(1);
@@ -47,11 +53,22 @@ export function buildHistory(turns: ChatTurn[]): ChatTurn[] {
 
 export type DraftProblem = "empty" | "too_long";
 
-/** Checks what the user typed before it is sent. */
+// Mirrors _clean in backend application/chat_input.py: controls, zero-width and bidi marks
+// become spaces, angle brackets go, whitespace collapses. Limits apply AFTER this.
+// eslint-disable-next-line no-control-regex
+const INPUT_NOISE = /[\x00-\x1f\x7f\x80-\x9f​-‏‪-‮⁠-⁩᠎﻿]/g;
+
+/** The text the server will see for a message. */
+export function cleanText(raw: string): string {
+  return raw.normalize("NFKC").replace(INPUT_NOISE, " ").replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** Checks what the user typed, as the server will see it, before it is sent. */
 export function checkDraft(raw: string): DraftProblem | null {
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return "empty";
-  return countChars(trimmed) > MAX_MESSAGE_CHARS ? "too_long" : null;
+  const cleaned = cleanText(raw);
+  if (cleaned.length === 0) return "empty";
+  const tooBig = countChars(cleaned) > MAX_MESSAGE_CHARS || bodyBytes([{ role: "user", content: cleaned }]) > MAX_BODY_BYTES;
+  return tooBig ? "too_long" : null;
 }
 
 // ---- response types ----
@@ -105,16 +122,21 @@ export interface ChatResponse {
 
 const MAX_REPLY_CHARS = 6000;
 const MAX_TEXT = 120;
-const MAX_LINES = 60;
-const MAX_LIST = 40;
+const MAX_LINES = 250;
+const MAX_LIST = 250;
 const MAX_PESOS = 1_000_000_000_000;
 const STATUSES: readonly string[] = ["clarification", "quote", "refused"];
 const SOURCES: readonly string[] = ["llm", "template", "static"];
 /** Only these lines may be negative: discounts and the signed rounding adjustment. */
 const SIGNED_KINDS: readonly string[] = ["package_discount", "rounding"];
 
-/** Line breaks and tabs: allowed in the reply, forbidden everywhere else. */
-const LAYOUT_CHARS = /[\n\r\t]/g;
+/** The closed set of backend LineKind values (domain/pricing.py). */
+const KINDS: readonly string[] = [
+  "item", "package", "package_discount", "guest_size", "weekend_holiday", "night", "distance", "rounding",
+];
+
+/** Splits on line breaks and tabs, which the reply may keep (captured, so odd indexes). */
+const LAYOUT_SPLIT = /([\n\r\t])/;
 
 type Obj = Record<string, unknown>;
 
@@ -123,12 +145,17 @@ function obj(value: unknown): Obj {
   return value as Obj;
 }
 
-/** Text field. `multiline` lets line breaks and tabs through (the reply); other controls never. */
+/**
+ * Text field. Short fields with control or bidi characters are rejected. With `multiline`
+ * (the free-text reply) line breaks and tabs stay and the other forbidden characters become
+ * spaces instead: the backend lets them through and the reply is shown as plain text anyway.
+ */
 function str(o: Obj, key: string, max = MAX_TEXT, multiline = false): string {
   const v = o[key];
-  if (typeof v !== "string" || v.trim().length === 0 || v.length > max) throw new Error(key + ": invalid text");
-  if (hasForbiddenChars(multiline ? v.replace(LAYOUT_CHARS, " ") : v)) throw new Error(key + ": invalid text");
-  return v;
+  if (typeof v !== "string" || v.length > max) throw new Error(key + ": invalid text");
+  const text = multiline ? v.split(LAYOUT_SPLIT).map((p, i) => (i % 2 ? p : replaceForbiddenChars(p))).join("") : v;
+  if (text.trim().length === 0 || (!multiline && hasForbiddenChars(text))) throw new Error(key + ": invalid text");
+  return text;
 }
 
 function int(o: Obj, key: string, min: number, max: number): number {
@@ -149,6 +176,7 @@ function list<T>(value: unknown, max: number, read: (v: unknown) => T): T[] {
 function parseLine(value: unknown): QuoteLine {
   const o = obj(value);
   const kind = str(o, "kind", 32);
+  if (!KINDS.includes(kind)) throw new Error("kind: unknown line kind");
   const optional = (key: string, min: number) => nullable(o[key], () => int(o, key, min, MAX_PESOS));
   const min = SIGNED_KINDS.includes(kind) ? -MAX_PESOS : 0;
   return {

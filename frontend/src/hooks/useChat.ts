@@ -3,6 +3,7 @@ import { ApiError } from "../api/client";
 import {
   buildHistory,
   checkDraft,
+  cleanText,
   classifyChatError,
   sendChat,
   type ChatFailure,
@@ -29,8 +30,10 @@ const DEFAULT_COOLDOWN_SECONDS = 10;
 /**
  * In-memory chat state (never persisted). One request at a time: a second send is ignored while
  * one is in flight, and answers that arrive after a reset or unmount are dropped.
+ * A turn the server rejects as invalid (413/422) is taken out of the thread and handed back
+ * through `onRestore`, so it cannot poison every later request.
  */
-export function useChat() {
+export function useChat({ onRestore }: { onRestore?: (text: string) => void } = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
@@ -68,12 +71,16 @@ export function useChat() {
         if (kind === "aborted") return;
         const api = caught instanceof ApiError ? caught : undefined;
         if (kind === "rate_limited") setCooldown(api?.retryAfterSeconds ?? DEFAULT_COOLDOWN_SECONDS);
+        if (kind === "invalid") {
+          setMessages(thread.slice(0, -1));
+          onRestore?.(thread.at(-1)?.content ?? "");
+        }
         setError({ kind, serverMessage: api?.serverMessage });
       }
       inFlight.current = null;
       setSending(false);
     },
-    [],
+    [onRestore],
   );
 
   /** Returns true when the text was accepted (the caller can clear its input). */
@@ -85,7 +92,7 @@ export function useChat() {
         setError({ kind: problem });
         return false;
       }
-      const user: ChatMessage = { id: nextId.current++, role: "user", content: raw.trim() };
+      const user: ChatMessage = { id: nextId.current++, role: "user", content: cleanText(raw) };
       const thread = [...messages, user];
       setMessages(thread);
       void run(thread);

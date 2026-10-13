@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildHistory,
+  CHAT_TIMEOUT_MS,
   checkDraft,
   classifyChatError,
   MAX_BODY_BYTES,
@@ -47,7 +48,9 @@ describe("parseChatResponse", () => {
     ["quote with a clarification status", response({ status: "clarification" })],
     ["oversized reply", response({ reply: "x".repeat(6001) })],
     ["line break inside a label", response({ quote: quoteBody({ lines: [line({ label: "a\nb", amount: 2000 })], subtotal: 2000, total: 2000 }) })],
-    ["control characters in reply", response({ reply: "a\u0007b" })],
+    ["negative surcharge", response({ quote: quoteBody({ lines: [line({}), line({ kind: "night", code: "night", label: null, unit_amount: null, amount: -100 })], subtotal: 1900, total: 1900 }) })],
+    ["unknown line kind", response({ quote: quoteBody({ lines: [line({ kind: "constructor" })], subtotal: 2000, total: 2000 }) })],
+    ["more than 250 lines", response({ quote: quoteBody({ lines: Array.from({ length: 251 }, (_, i) => line({ code: `c${i}`, amount: 0 })), subtotal: 0, total: 0 }) })],
     ["total as string", response({ quote: quoteBody({ total: "2100" }) })],
     ["float pesos", response({ quote: quoteBody({ total: 2100.5 }) })],
     ["huge number", response({ quote: quoteBody({ total: 1e300 }) })],
@@ -62,6 +65,17 @@ describe("parseChatResponse", () => {
   ])("rejects %s", (_name, body) => {
     expect(() => parseChatResponse(body)).toThrow();
   });
+
+  it("accepts 250 lines and 250 shortages", () => {
+    const lines = Array.from({ length: 250 }, (_, i) => line({ code: `c${i}`, amount: 0 }));
+    const shortages = Array.from({ length: 250 }, (_, i) => ({ item_code: `c${i}`, requested: 1, available: 0 }));
+    const parsed = parseChatResponse(response({ quote: quoteBody({ lines, subtotal: 0, total: 0 }), availability: { is_available: false, shortages } }));
+    expect(parsed.quote?.lines).toHaveLength(250);
+  });
+
+  it("keeps the reply but turns C1 controls and bidi marks into spaces", () => {
+    expect(parseChatResponse(response({ reply: "a\u0085b‮c\nd" })).reply).toBe("a b c\nd");
+  });
 });
 
 describe("request building", () => {
@@ -74,8 +88,8 @@ describe("request building", () => {
     ["keeps the last 8 turns", Array.from({ length: 12 }, (_, i) => user(`m${i}`)), 8],
     ["clips each message to the limit", [user("x".repeat(MAX_MESSAGE_CHARS + 50))], 1],
     ["drops the oldest to fit the total characters", Array.from({ length: 6 }, () => user("y".repeat(900))), 4],
-    // JSON-escaped control characters take 6 bytes each: 4000 characters would be 24 KB.
-    ["drops the oldest to fit the UTF-8 body", Array.from({ length: 4 }, () => user("\u0001".repeat(MAX_MESSAGE_CHARS))), 2],
+    ["keeps exactly 4000 characters", [...Array.from({ length: 4 }, () => user("y".repeat(800))), user("y".repeat(800))], 5],
+    ["drops one turn at 4001 characters", [...Array.from({ length: 4 }, () => user("y".repeat(800))), user("y".repeat(801))], 4],
   ])("%s", (_name, turns, expectedLength) => {
     const history = buildHistory(turns);
     expect(history).toHaveLength(expectedLength);
@@ -94,15 +108,37 @@ describe("request building", () => {
     ["x".repeat(MAX_MESSAGE_CHARS), null],
     ["😀".repeat(MAX_MESSAGE_CHARS), null],
     ["x".repeat(MAX_MESSAGE_CHARS + 1), "too_long"],
+    ["​‍⁠﻿ \u0001", "empty"], // only zero-width and control characters
+    ["<>", "empty"],
+    ["…".repeat(400), "too_long"], // NFKC turns each ellipsis into 3 characters: 1200
+    ["…".repeat(333) + "x" + " ".repeat(500), null], // 1000 characters once cleaned
+    ["a \n\t  b", null],
   ])("checkDraft(%#) is %s", (raw, expected) => {
     expect(checkDraft(raw)).toBe(expected);
   });
 
-  it("refuses to send a body over 16 KiB without touching the network", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    await expect(sendChat([user("\u0001".repeat(MAX_MESSAGE_CHARS)), user("\u0001".repeat(MAX_MESSAGE_CHARS)), user("\u0001".repeat(MAX_MESSAGE_CHARS))])).rejects.toMatchObject({ status: 413 });
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("sends the cleaned text of every turn and drops turns that clean to nothing", () => {
+    const history = buildHistory([user("​"), assistant("a\u0000 <b>  c"), user("ﬁ")]);
+    expect(history).toEqual([assistant("a b c"), user("fi")]);
+  });
+
+  describe("body size", () => {
+    const empty = new TextEncoder().encode(JSON.stringify({ messages: [{ role: "user", content: "" }] })).length;
+    it.each([
+      [MAX_BODY_BYTES, 1, 0],
+      [MAX_BODY_BYTES + 1, 0, 1],
+    ])("a body of %i bytes calls fetch %i time(s) and refuses %i", async (size, calls, refused) => {
+      const fetchMock = vi.fn(() => Promise.reject(new TypeError("offline")));
+      vi.stubGlobal("fetch", fetchMock);
+      vi.stubEnv("VITE_API_BASE_URL", "https://api.example");
+      const outcome = await sendChat([user("x".repeat(size - empty))]).catch((e: ApiError) => e);
+      expect(fetchMock).toHaveBeenCalledTimes(calls);
+      expect(outcome instanceof ApiError && outcome.status === 413 ? 1 : 0).toBe(refused);
+    });
+  });
+
+  it("waits longer than the 40 s backend deadline", () => {
+    expect(CHAT_TIMEOUT_MS).toBeGreaterThan(40_000);
   });
 });
 

@@ -265,6 +265,7 @@ describe("apiFetch POST and error bodies", () => {
 
   it.each([
     [{ detail: "rate_limited", message: "Espera." }, { "Retry-After": "37" }, "rate_limited", "Espera.", 37],
+    [{ detail: "rate_limited", message: "x".repeat(200) }, { "Retry-After": "300" }, "rate_limited", "x".repeat(200), 300],
     [{ detail: "rate_limited", message: "x".repeat(201) }, { "Retry-After": "99999" }, "rate_limited", undefined, 300],
     [{ detail: "Bad<Code>", message: "a\nb" }, { "Retry-After": "soon" }, undefined, undefined, undefined],
     [{ detail: 5, message: { html: "<b>" } }, { "Retry-After": "0" }, undefined, undefined, undefined],
