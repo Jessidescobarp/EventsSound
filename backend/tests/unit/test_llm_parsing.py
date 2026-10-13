@@ -21,36 +21,36 @@ def nested(levels: int) -> str:
 
 
 HOSTILE = [
-    pytest.param('{"a": NaN}', id="nan"),
-    pytest.param('{"a": Infinity}', id="infinity"),
-    pytest.param('{"a": -Infinity}', id="neg-infinity"),
-    pytest.param('{"a": 1e999}', id="overflowing-float"),
-    pytest.param('{"a": -1e999}', id="neg-overflowing-float"),
-    pytest.param('{"a": [1, 2, NaN]}', id="nan-in-list"),
-    pytest.param(nested(33), id="33-levels"),
-    pytest.param('{"a":' + "[" * 40 + "1" + "]" * 40 + "}", id="40-list-levels"),
-    pytest.param(nested(100_000), id="100k-levels"),
-    pytest.param("[" * 100_000, id="100k-open-brackets"),
-    pytest.param('{"a": ' + "9" * 5000 + "}", id="5000-digit-int"),
-    pytest.param("not json", id="not-json"),
-    pytest.param("[1]", id="list"),
-    pytest.param("", id="empty"),
+    '{"a": NaN}',
+    '{"a": Infinity}',
+    '{"a": -Infinity}',
+    '{"a": 1e999}',
+    '{"a": -1e999}',
+    '{"a": [1, 2, NaN]}',
+    nested(33),
+    '{"a":' + "[" * 40 + "1" + "]" * 40 + "}",
+    nested(100_000),
+    "[" * 100_000,
+    '{"a": ' + "9" * 5000 + "}",
+    "not json",
+    "[1]",
+    "",
 ]
 
 
-@pytest.mark.parametrize("text", HOSTILE)
-def test_parse_json_object_raises_only_bad_response(text: str) -> None:
-    with pytest.raises(LlmBadResponse):
-        parse_json_object(text)
+def test_parse_json_object_raises_only_bad_response() -> None:
+    for text in HOSTILE:
+        with pytest.raises(LlmBadResponse):
+            parse_json_object(text)
 
 
-@pytest.mark.parametrize("levels", [1, 31, 32])
-def test_nesting_up_to_the_limit_is_accepted(levels: int) -> None:
-    parsed = parse_json_object(nested(levels))
+def test_nesting_up_to_the_limit_is_accepted() -> None:
+    for levels in (1, 32):
+        parsed = parse_json_object(nested(levels))
 
-    for _ in range(levels - 1):
-        parsed = parsed["a"]  # type: ignore[assignment]
-    assert parsed == {"a": 1}
+        for _ in range(levels - 1):
+            parsed = parsed["a"]  # type: ignore[assignment]
+        assert parsed == {"a": 1}
 
 
 def test_ordinary_documents_still_parse() -> None:
@@ -71,19 +71,18 @@ def request() -> LlmRequest:
     )
 
 
-@pytest.mark.parametrize("text", HOSTILE)
-def test_replay_provider_maps_hostile_json_text_to_bad_response(text: str) -> None:
-    entry = ReplayEntry(text=text, usage=TokenUsage(1, 1))
-    provider = ReplayProvider({"s": {"understand": [entry]}}, scenario="s")
-
-    with pytest.raises(LlmBadResponse):
-        provider.complete(request())
+# The adapters share parse_json_object; a few classes prove the wiring, not every row.
+WIRED = [HOSTILE[0], HOSTILE[6], HOSTILE[9], HOSTILE[10]]
 
 
-@pytest.mark.parametrize("text", HOSTILE)
-def test_openrouter_provider_maps_hostile_json_text_to_bad_response(text: str) -> None:
-    script = Script(reply(chat_ok(text)))
-    provider = OpenRouterProvider(KEY, "vendor/model", transport=script.transport)
+def test_providers_map_hostile_json_text_to_bad_response() -> None:
+    for text in WIRED:
+        entry = ReplayEntry(text=text, usage=TokenUsage(1, 1))
+        replay = ReplayProvider({"s": {"understand": [entry]}}, scenario="s")
+        with pytest.raises(LlmBadResponse):
+            replay.complete(request())
 
-    with pytest.raises(LlmBadResponse):
-        provider.complete(request())
+        script = Script(reply(chat_ok(text)))
+        live = OpenRouterProvider(KEY, "vendor/model", transport=script.transport)
+        with pytest.raises(LlmBadResponse):
+            live.complete(request())

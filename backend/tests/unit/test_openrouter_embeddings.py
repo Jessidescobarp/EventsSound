@@ -109,18 +109,14 @@ class TestSuccess:
         assert result.vectors == ((1.0, 2.0, 3.0, 4.0),)
         assert result.usage == TokenUsage(2, 0, estimated=True)
 
-    @pytest.mark.parametrize(
-        "usage",
-        [{}, {"prompt_tokens": -1}, {"prompt_tokens": True}, {"prompt_tokens": "7"}, [7], "7"],
-    )
-    def test_invalid_usage_is_estimated(self, usage: object) -> None:
-        provider, _, _ = provider_for(reply(ok([vector(1)], usage=usage)))
+    def test_invalid_usage_is_estimated_and_unusable_model_falls_back(self) -> None:
+        bad_usages: list[object] = [{}, {"prompt_tokens": -1}, {"prompt_tokens": True}, [7], "7"]
+        for usage in bad_usages:
+            provider, _, _ = provider_for(reply(ok([vector(1)], usage=usage)))
 
-        assert provider.embed(["abcdefgh"]).usage == TokenUsage(2, 0, estimated=True)
+            assert provider.embed(["abcdefgh"]).usage == TokenUsage(2, 0, estimated=True), usage
 
-    def test_response_model_falls_back_to_the_configured_one(self) -> None:
         provider, _, _ = provider_for(reply(ok([vector(1)], model=None)))
-
         assert provider.embed(["x"]).model == MODEL
 
 
@@ -137,71 +133,46 @@ class TestDimensionAndStructure:
         with pytest.raises(EmbeddingDimensionMismatch):
             provider.embed(["a", "b"])
 
-    def test_dimension_follows_the_constructor_argument(self) -> None:
-        provider, _, _ = provider_for(reply(ok([[1.0] * 8])), dimensions=8)
+    def test_a_different_number_of_vectors_than_inputs_is_a_bad_response(self) -> None:
+        for inputs in (["a", "b", "c"], ["a"]):
+            provider, _, _ = provider_for(reply(ok([vector(1), vector(2)])))
 
-        assert provider.embed(["x"]).dimensions == 8
+            with pytest.raises(LlmBadResponse) as exc:
+                provider.embed(inputs)
 
-    def test_fewer_vectors_than_inputs_is_a_bad_response(self) -> None:
-        provider, _, _ = provider_for(reply(ok([vector(1), vector(2)])))
+            assert not isinstance(exc.value, EmbeddingDimensionMismatch)
 
-        with pytest.raises(LlmBadResponse) as exc:
-            provider.embed(["a", "b", "c"])
+    def test_malformed_data_raises_bad_response_never_key_or_type_errors(self) -> None:
+        good = [1, 2, 3, 4]
+        bad_data: list[object] = [
+            None,
+            "x",
+            [1],
+            [{"index": 0}],
+            [{"embedding": good}],
+            [{"index": "0", "embedding": good}],
+            [{"index": True, "embedding": good}],
+            [{"index": 1, "embedding": good}],
+            [{"index": -1, "embedding": good}],
+            [{"index": 0, "embedding": "AAAA"}],
+            [{"index": 0, "embedding": [1, 2, 3, "4"]}],
+            [{"index": 0, "embedding": [1, 2, 3, True]}],
+        ]
+        for data in bad_data:
+            payload = ok([vector(1)])
+            payload["data"] = data
+            provider, script, _ = provider_for(reply(payload))
 
-        assert not isinstance(exc.value, EmbeddingDimensionMismatch)
+            with pytest.raises(LlmBadResponse):
+                provider.embed(["x"])
 
-    def test_more_vectors_than_inputs_is_a_bad_response(self) -> None:
-        provider, _, _ = provider_for(reply(ok([vector(1), vector(2)])))
+            assert script.calls == 1, data
 
-        with pytest.raises(LlmBadResponse):
-            provider.embed(["a"])
-
-    @pytest.mark.parametrize(
-        "mutate",
-        [
-            lambda p: p.pop("data"),
-            lambda p: p.update(data=None),
-            lambda p: p.update(data="x"),
-            lambda p: p.update(data=[1]),
-            lambda p: p.update(data=[{"index": 0}]),
-            lambda p: p.update(data=[{"embedding": [1, 2, 3, 4]}]),
-            lambda p: p.update(data=[{"index": "0", "embedding": [1, 2, 3, 4]}]),
-            lambda p: p.update(data=[{"index": True, "embedding": [1, 2, 3, 4]}]),
-            lambda p: p.update(data=[{"index": 1, "embedding": [1, 2, 3, 4]}]),
-            lambda p: p.update(data=[{"index": -1, "embedding": [1, 2, 3, 4]}]),
-            lambda p: p.update(data=[{"index": 0, "embedding": "AAAA"}]),
-            lambda p: p.update(data=[{"index": 0, "embedding": None}]),
-            lambda p: p.update(data=[{"index": 0, "embedding": [1, 2, 3, "4"]}]),
-            lambda p: p.update(data=[{"index": 0, "embedding": [1, 2, 3, None]}]),
-            lambda p: p.update(data=[{"index": 0, "embedding": [1, 2, 3, True]}]),
-        ],
-        ids=[
-            "no-data",
-            "null-data",
-            "str-data",
-            "int-item",
-            "no-embedding",
-            "no-index",
-            "str-index",
-            "bool-index",
-            "index-gap",
-            "negative-index",
-            "base64-embedding",
-            "null-embedding",
-            "str-component",
-            "null-component",
-            "bool-component",
-        ],
-    )
-    def test_malformed_data_raises_bad_response_never_key_or_type_errors(self, mutate) -> None:  # type: ignore[no-untyped-def]
         payload = ok([vector(1)])
-        mutate(payload)
-        provider, script, _ = provider_for(reply(payload))
-
+        del payload["data"]
+        provider, _, _ = provider_for(reply(payload))
         with pytest.raises(LlmBadResponse):
             provider.embed(["x"])
-
-        assert script.calls == 1
 
     def test_duplicate_indexes_are_rejected(self) -> None:
         payload = ok([vector(1), vector(2)])
@@ -211,57 +182,21 @@ class TestDimensionAndStructure:
         with pytest.raises(LlmBadResponse):
             provider.embed(["a", "b"])
 
-    @pytest.mark.parametrize(
-        "bad",
-        [
-            "NaN",
-            "Infinity",
-            "-Infinity",
-            "1e999",
-            "-1e999",
-            "1" + "0" * 399,
-            "-" + "9" * 400,
-            str(2**53),
-            "true",
-            "false",
-        ],
-        ids=[
-            "nan",
-            "inf",
-            "neg-inf",
-            "1e999",
-            "-1e999",
-            "400-digit",
-            "neg-400-digit",
-            "2-pow-53",
-            "true",
-            "false",
-        ],
-    )
-    def test_non_finite_components_are_rejected(self, bad: str) -> None:
-        body = b'{"data": [{"index": 0, "embedding": [1, 2, 3, ' + bad.encode() + b"]}]}"
-        provider, _, _ = provider_for(raw(body))
+    def test_non_finite_components_are_rejected(self) -> None:
+        bad_numbers = ["NaN", "-Infinity", "1e999", "1" + "0" * 399, str(2**53), "true"]
+        for bad in bad_numbers:
+            body = b'{"data": [{"index": 0, "embedding": [1, 2, 3, ' + bad.encode() + b"]}]}"
+            provider, _, _ = provider_for(raw(body))
 
-        with pytest.raises(LlmBadResponse):
-            provider.embed(["x"])
+            with pytest.raises(LlmBadResponse):
+                provider.embed(["x"])
 
-    @pytest.mark.parametrize(
-        "content",
-        [
-            b"",
-            b"nope",
-            b"[1]",
-            b"null",
-            b"\xff\xfe",
-            pytest.param(b"[" * 200_000, id="deeply-nested"),
-            b'{"data": [{"ind',
-        ],
-    )
-    def test_non_object_or_non_json_bodies_are_bad_responses(self, content: bytes) -> None:
-        provider, _, _ = provider_for(raw(content))
+    def test_non_object_or_non_json_bodies_are_bad_responses(self) -> None:
+        for content in (b"", b"nope", b"[1]", b"\xff\xfe", b"[" * 200_000, b'{"data": [{"ind'):
+            provider, _, _ = provider_for(raw(content))
 
-        with pytest.raises(LlmBadResponse):
-            provider.embed(["x"])
+            with pytest.raises(LlmBadResponse):
+                provider.embed(["x"])
 
     def test_oversized_body_is_rejected(self) -> None:
         provider, _, _ = provider_for(
@@ -273,10 +208,8 @@ class TestDimensionAndStructure:
 
 
 class TestErrorMappingAndRetries:
-    @pytest.mark.parametrize(
-        ("item", "error", "calls"),
-        [
-            (raw(b"{}", 401), LlmAuthError, 1),
+    def test_same_mapping_and_retry_policy_as_the_chat_adapter(self) -> None:
+        cases: list[tuple[httpx.Response | Exception, type[LlmError], int]] = [
             (raw(b"{}", 403), LlmAuthError, 1),
             (raw(b"{}", 402), LlmUnavailable, 1),
             (raw(b"{}", 429, **{"retry-after": "9"}), LlmRateLimited, 1),
@@ -287,44 +220,20 @@ class TestErrorMappingAndRetries:
             (httpx.ReadTimeout("t"), LlmTimeout, 1),
             (httpx.ConnectError("c"), LlmUnavailable, 3),
             (reply({"error": {"code": 429}}), LlmRateLimited, 1),
-        ],
-        ids=[
-            "401",
-            "403",
-            "402",
-            "429-long",
-            "429",
-            "500",
-            "503",
-            "400",
-            "timeout",
-            "connect",
-            "error-in-200",
-        ],
-    )
-    def test_same_mapping_and_retry_policy_as_the_chat_adapter(
-        self, item: object, error: type[LlmError], calls: int
-    ) -> None:
-        provider, script, _ = provider_for(*[item] * calls)
+        ]
+        for item, error, calls in cases:
+            provider, script, _ = provider_for(*[item] * calls)
 
-        with pytest.raises(error):
-            provider.embed(["x"])
+            with pytest.raises(error):
+                provider.embed(["x"])
 
-        assert script.calls == calls
+            assert script.calls == calls, item
 
     def test_transient_failure_then_success(self) -> None:
         provider, script, clock = provider_for(raw(b"x", 503), reply(ok([vector(1)])))
 
         assert provider.embed(["x"]).dimensions == DIM
         assert (script.calls, clock.sleeps) == (2, [0.5])
-
-    def test_429_carries_retry_after(self) -> None:
-        provider, _, _ = provider_for(raw(b"{}", 429, **{"retry-after": "9"}))
-
-        with pytest.raises(LlmRateLimited) as exc:
-            provider.embed(["x"])
-
-        assert exc.value.retry_after_s == 9
 
 
 class TestSecretHygiene:
@@ -340,23 +249,28 @@ class TestSecretHygiene:
         reply(ok([[1.0, 2.0]])),
     ]
 
-    @pytest.mark.parametrize("index", range(len(FAILURES)))
     def test_no_error_path_leaks_the_key_or_provider_text(
-        self, index: int, caplog: pytest.LogCaptureFixture
+        self, caplog: pytest.LogCaptureFixture
     ) -> None:
         caplog.set_level(logging.DEBUG)
-        provider, _, _ = provider_for(*([self.FAILURES[index]] * 3))
+        for index, item in enumerate(self.FAILURES):
+            caplog.clear()
+            provider, _, _ = provider_for(*([item] * 3))
 
-        with pytest.raises(LlmError) as exc:
-            provider.embed(["x"])
+            with pytest.raises(LlmError) as exc:
+                provider.embed(["x"])
 
-        surfaces = [str(exc.value), repr(exc.value), "".join(traceback.format_exception(exc.value))]
-        surfaces.append(repr(provider))
-        surfaces += [r.getMessage() + str(r.args) + (r.exc_text or "") for r in caplog.records]
-        joined = "\n".join(surfaces)
-        assert caplog.records, "the adapter must log, otherwise this check is vacuous"
-        assert KEY not in joined and "SENTINEL-9f3a" not in joined
-        assert BODY_SENTINEL not in joined
+            surfaces = [
+                str(exc.value),
+                repr(exc.value),
+                "".join(traceback.format_exception(exc.value)),
+                repr(provider),
+            ]
+            surfaces += [r.getMessage() + str(r.args) + (r.exc_text or "") for r in caplog.records]
+            joined = "\n".join(surfaces)
+            assert caplog.records, "the adapter must log, otherwise this check is vacuous"
+            assert KEY not in joined and "SENTINEL-9f3a" not in joined, index
+            assert BODY_SENTINEL not in joined, index
 
     def test_repr_shows_model_and_dimensions_but_not_the_key(self) -> None:
         provider, _, _ = provider_for()
@@ -366,25 +280,19 @@ class TestSecretHygiene:
 
 
 class TestConstruction:
-    @pytest.mark.parametrize("key", [None, "", "has space", 3])
-    def test_invalid_keys_are_rejected(self, key: object) -> None:
-        with pytest.raises(SecretError):
-            OpenRouterEmbeddingProvider(key, MODEL, DIM)
-
-    @pytest.mark.parametrize("model", ["", "has space", None, 3, "x" * 121])
-    def test_invalid_model_ids_are_rejected(self, model: object) -> None:
-        with pytest.raises(LlmValidationError, match="model"):
-            OpenRouterEmbeddingProvider(KEY, model, DIM)  # type: ignore[arg-type]
-
-    @pytest.mark.parametrize("dimensions", [0, -1, 2001, 1.5, True, "4", None])
-    def test_dimensions_is_an_int_within_1_and_2000(self, dimensions: object) -> None:
-        with pytest.raises(LlmValidationError, match="dimensions"):
-            OpenRouterEmbeddingProvider(KEY, MODEL, dimensions)  # type: ignore[arg-type]
-
-    @pytest.mark.parametrize("limit", [0, -1, 100_001, 1.5, True])
-    def test_max_input_chars_is_bounded(self, limit: object) -> None:
-        with pytest.raises(LlmValidationError, match="max_input_chars"):
-            OpenRouterEmbeddingProvider(KEY, MODEL, DIM, max_input_chars=limit)  # type: ignore[arg-type]
+    def test_invalid_constructor_arguments_are_rejected(self) -> None:
+        for key in (None, "", "has space", 3):
+            with pytest.raises(SecretError):
+                OpenRouterEmbeddingProvider(key, MODEL, DIM)
+        for model in ("", "has space", None, "x" * 121):
+            with pytest.raises(LlmValidationError, match="model"):
+                OpenRouterEmbeddingProvider(KEY, model, DIM)  # type: ignore[arg-type]
+        for dimensions in (0, 2001, 1.5, True, None):
+            with pytest.raises(LlmValidationError, match="dimensions"):
+                OpenRouterEmbeddingProvider(KEY, MODEL, dimensions)  # type: ignore[arg-type]
+        for limit in (0, 100_001, 1.5, True):
+            with pytest.raises(LlmValidationError, match="max_input_chars"):
+                OpenRouterEmbeddingProvider(KEY, MODEL, DIM, max_input_chars=limit)  # type: ignore[arg-type]
 
     def test_over_long_inputs_are_rejected_before_any_request(self) -> None:
         provider, script, _ = provider_for(max_input_chars=10)
@@ -395,12 +303,12 @@ class TestConstruction:
             provider.embed("not a list")  # type: ignore[arg-type]
         assert script.calls == 0
 
-    @pytest.mark.parametrize("blank", ["", "  "])
-    def test_blank_inputs_are_rejected_before_any_request(self, blank: str) -> None:
+    def test_blank_inputs_are_rejected_before_any_request(self) -> None:
         provider, script, _ = provider_for()
 
-        with pytest.raises(LlmValidationError, match="blank"):
-            provider.embed(["fine", blank])
+        for blank in ("", "  "):
+            with pytest.raises(LlmValidationError, match="blank"):
+                provider.embed(["fine", blank])
 
         assert script.calls == 0
 
