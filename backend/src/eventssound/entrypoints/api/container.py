@@ -25,6 +25,7 @@ from eventssound.adapters.search.hybrid import HybridSearch
 from eventssound.adapters.search.keyword import KeywordSearch
 from eventssound.adapters.search.vector import VectorSearch
 from eventssound.adapters.usage.memory import InMemoryUsageBudget
+from eventssound.adapters.usage.postgres import PostgresUsageBudget
 from eventssound.adapters.usage.rate_limit import InMemoryRateLimiter
 from eventssound.application.availability import check_event_availability
 from eventssound.application.llm import LlmProvider
@@ -75,9 +76,13 @@ def make_rate_limiter(settings: Settings) -> RateLimiter:
     return InMemoryRateLimiter(settings.chat_rate_limit_per_minute)
 
 
-def make_usage_budget(settings: Settings) -> UsageBudget:
-    if settings.is_production:
-        logger.warning("chat uses the in-memory daily budget: it resets on every restart")
+def make_usage_budget(settings: Settings, factory: sessionmaker[Session]) -> UsageBudget:
+    """Postgres whenever the chat can spend money outside a local run; in-memory otherwise.
+
+    Explicit rule: `APP_ENV=local` (or a chat that is not active) keeps the in-memory budget,
+    which resets on restart; every other environment uses the persistent one. The engine behind
+    `factory` is lazy, so no connection is opened here.
+    """
     if (
         settings.llm_provider == "openrouter"
         and settings.llm_daily_cost_cap_micro_usd > 0
@@ -88,6 +93,14 @@ def make_usage_budget(settings: Settings) -> UsageBudget:
     ):
         # Fine for a free model; for a paid one the cost cap never binds (only the token cap).
         logger.warning("LLM prices are 0: the daily cost cap cannot bind, only the token cap")
+    if settings.chat_active and settings.app_env != "local":
+        logger.info("daily LLM budget: postgres (persistent)")
+        return PostgresUsageBudget(
+            factory,
+            token_cap=settings.llm_daily_token_cap,
+            cost_cap_micro_usd=settings.llm_daily_cost_cap_micro_usd,
+        )
+    logger.info("daily LLM budget: in-memory (resets on restart; local use only)")
     return InMemoryUsageBudget(
         token_cap=settings.llm_daily_token_cap,
         cost_cap_micro_usd=settings.llm_daily_cost_cap_micro_usd,

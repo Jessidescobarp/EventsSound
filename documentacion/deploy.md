@@ -36,6 +36,10 @@ Quote chat (`POST /quote/chat`): `CHAT_ENABLED=false` is the kill switch (redepl
 
 Swagger UI (`/docs`) and the schema (`/openapi.json`) stay enabled when `APP_ENV=production`: the API is read-only with synthetic data, so they add no sensitive surface. `scripts/smoke.ps1` checks `/docs`. Deploying migration `0002` creates the four catalog and booking tables in Neon, empty; the catalog endpoints return empty lists until the guarded seed CLI is run deliberately (see the README).
 
+## Migration 0004 (daily LLM budget)
+
+Deploying migration `0004` creates the empty `llm_usage_daily` table in Neon automatically (a plain `CREATE TABLE`, no lock on existing data; downgrade drops it). The chat uses it as its persistent daily cap whenever `APP_ENV` is not `local` and the chat is active.
+
 ## Migration 0003 (pgvector)
 
 Deploying `0003` runs `CREATE EXTENSION IF NOT EXISTS vector` and creates the empty `catalog_embeddings` table. The extension was confirmed on a throwaway Neon branch first; a failure there would block the deploy (the start script exits) without corrupting data. Embeddings stay empty (search is keyword-only) until the developer runs `embed_catalog` with `ALLOW_REMOTE_SEED=1` against Neon from their machine. `EMBEDDING_PROVIDER` defaults to `off`, so nothing changes at runtime until a later PR wires the search into the agent.

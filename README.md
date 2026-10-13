@@ -8,11 +8,11 @@ Web app for a sound, lighting and DJ events company. Its core is an AI quote ass
 |---|---|
 | Health checks (`/health`, `/health/db`) | Working, deployed |
 | Catalog and packages API (`GET /catalog/items`, `/catalog/packages`) with public Swagger at `/docs` | Working, deployed. The deployed database has the tables but is empty until the guarded seed is run on purpose |
-| Persistence (Postgres tables `equipment_items`, `service_packages`, `package_items`, `bookings`, `catalog_embeddings`; migrations 0001-0003) | Working |
+| Persistence (Postgres tables `equipment_items`, `service_packages`, `package_items`, `bookings`, `catalog_embeddings`, `llm_usage_daily`; migrations 0001-0004) | Working |
 | Pure domain: money, pricing oracle (`calculate_price`), availability | Working, covered by tests |
 | Vector search over the catalog (pgvector, embedding CLI) | Working locally; needs an embedding provider key to be used for real |
 | Quote agent (LangGraph pipeline, Spanish proposal text verified against the computed quote) | Built and tested with replayed LLM responses |
-| Quote chat endpoint (`POST /quote/chat`) with per-IP rate limit, in-memory daily budget and kill switch | Built and tested offline; disabled in production until an OpenRouter model and key are configured. The budget resets on restart |
+| Quote chat endpoint (`POST /quote/chat`) with per-IP rate limit, persistent daily budget (Postgres `llm_usage_daily`; in-memory only when `APP_ENV=local`) and kill switch | Built and tested offline; disabled in production until an OpenRouter model and key are configured. The budget survives restarts |
 | Persistent usage cap (`llm_usage_daily`), evaluations | Not built yet |
 | Frontend: home, about, portfolio, service catalog | Working (an empty catalog shows "Aún no hay equipos publicados"; if the API is unreachable it shows a graceful "available soon" message; a demo-data mode exists for local use only) |
 | Frontend quote page (`/cotizar`) | Working chat against `POST /quote/chat`: plain-text replies, quote breakdown from the structured response, Spanish error messages. While the endpoint is disabled in production it shows "asistente no disponible por ahora". Demo scenarios exist for local use only (`scripts/dev.ps1 -Mocks`) |
