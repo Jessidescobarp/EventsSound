@@ -89,7 +89,7 @@ Checks MUST run in this order, each short-circuiting without an LLM call: payloa
 #### Scenario: Order
 - Given the switch off and a well-formed but invalid body
 - When posting
-- Then 503 `chat_disabled` (the switch is a route dependency and runs before body validation, design D30; a body that is not valid JSON is still rejected with 422 first)
+- Then 503 `chat_disabled` (the switch is answered by a middleware before the body is read; a body over 16 KiB gets 413 `payload_too_large` as it streams in)
 
 #### Scenario: Budget exhausted
 - Given a budget with zero remaining
