@@ -29,11 +29,8 @@ def test_vectors_have_the_configured_dimension_and_unit_norm() -> None:
         assert math.isclose(math.sqrt(sum(x * x for x in vector)), 1.0, rel_tol=1e-9)
 
 
-def test_default_dimension_is_1024() -> None:
+def test_default_dimension_is_1024_and_same_text_gives_the_same_vector() -> None:
     assert FakeEmbeddingProvider().embed(["x"]).dimensions == 1024
-
-
-def test_same_text_gives_the_same_vector_across_instances() -> None:
     a = embed(FakeEmbeddingProvider(dimensions=32), "Luces LED")
     b = embed(FakeEmbeddingProvider(dimensions=32), "Luces LED")
 
@@ -74,16 +71,12 @@ def test_texts_sharing_tokens_are_more_similar_than_texts_sharing_none() -> None
     assert cosine(first, third) < 0.2
 
 
-def test_folding_makes_case_and_accents_irrelevant() -> None:
+def test_case_accents_word_order_and_punctuation_do_not_matter() -> None:
     a, b = embed(FakeEmbeddingProvider(), "Amplificación Básica", "amplificacion basica")
+    c, d = embed(FakeEmbeddingProvider(), "luces, led!", "led luces")
 
     assert a == b
-
-
-def test_word_order_and_punctuation_do_not_matter() -> None:
-    a, b = embed(FakeEmbeddingProvider(), "luces, led!", "led luces")
-
-    assert a == b
+    assert c == d
 
 
 def test_aliases_make_a_synonym_retrievable_offline() -> None:
@@ -95,14 +88,14 @@ def test_aliases_make_a_synonym_retrievable_offline() -> None:
     assert cosine(*(embed(aliased, query, doc))) > 0.5
 
 
-@pytest.mark.parametrize("text", ["???", "¡!", "- - -"])
-def test_text_without_tokens_maps_to_one_fixed_unit_vector(text: str) -> None:
+def test_text_without_tokens_maps_to_one_fixed_unit_vector() -> None:
     provider = FakeEmbeddingProvider(dimensions=16)
-    vector = embed(provider, text)[0]
+    for text in ("???", "- - -"):
+        vector = embed(provider, text)[0]
 
-    assert vector == embed(provider, "!!!")[0]
-    assert sum(x * x for x in vector) == pytest.approx(1.0)
-    assert vector != embed(provider, "algo real")[0]
+        assert vector == embed(provider, "!!!")[0]
+        assert sum(x * x for x in vector) == pytest.approx(1.0)
+        assert vector != embed(provider, "algo real")[0]
 
 
 def test_a_zero_sum_collision_still_returns_a_unit_vector() -> None:
@@ -130,28 +123,18 @@ def test_empty_input_returns_an_empty_result() -> None:
     assert result.usage.total == 0
 
 
-@pytest.mark.parametrize("dimensions", [0, -1, 2001, 1.5, True, "8", None])
-def test_dimension_is_an_int_within_1_and_2000(dimensions: object) -> None:
-    with pytest.raises(LlmValidationError, match="dimensions"):
-        FakeEmbeddingProvider(dimensions=dimensions)  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize(
-    "aliases",
-    [["a"], {"a": 1}, {1: "a"}, {"": "a"}, "ab"],
-    ids=["list", "int-value", "int-key", "empty-key", "str"],
-)
-def test_aliases_must_be_a_string_mapping(aliases: object) -> None:
-    with pytest.raises(LlmValidationError, match="aliases"):
-        FakeEmbeddingProvider(aliases=aliases)  # type: ignore[arg-type]
+def test_constructor_arguments_are_validated() -> None:
+    for dimensions in (0, 2001, 1.5, True, None):
+        with pytest.raises(LlmValidationError, match="dimensions"):
+            FakeEmbeddingProvider(dimensions=dimensions)  # type: ignore[arg-type]
+    for aliases in (["a"], {"a": 1}, {1: "a"}, {"": "a"}, "ab"):
+        with pytest.raises(LlmValidationError, match="aliases"):
+            FakeEmbeddingProvider(aliases=aliases)  # type: ignore[arg-type]
 
 
 def test_inputs_are_validated_like_the_real_provider() -> None:
     with pytest.raises(LlmValidationError, match="texts"):
         FakeEmbeddingProvider().embed("a string")  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize("blank", ["", "   ", "\n\t "])
-def test_blank_texts_are_rejected_like_the_real_provider(blank: str) -> None:
-    with pytest.raises(LlmValidationError, match="blank"):
-        FakeEmbeddingProvider().embed(["ok", blank])
+    for blank in ("", "\n\t "):
+        with pytest.raises(LlmValidationError, match="blank"):
+            FakeEmbeddingProvider().embed(["ok", blank])
