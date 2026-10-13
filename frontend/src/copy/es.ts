@@ -263,6 +263,7 @@ export const es = {
       rounding: "Ajuste de redondeo",
     } as Record<string, string>,
     kindFallback: "Otro concepto",
+    equipmentFallback: "Equipo",
     availabilityTitle: "Disponibilidad",
     allAvailable: "Todos los equipos están disponibles para la fecha.",
     available: "Disponible",

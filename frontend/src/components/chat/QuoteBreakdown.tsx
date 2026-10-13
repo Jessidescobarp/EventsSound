@@ -9,6 +9,11 @@ function conceptName(line: QuoteLine): string {
   return line.label ?? t.kinds[line.kind] ?? t.kindFallback;
 }
 
+/** A code with no matching line is internal: show a neutral label, plus the code only if it is short and plain. */
+function unknownName(code: string): string {
+  return /^[a-z0-9_]{1,32}$/.test(code) ? `${t.equipmentFallback} (${code})` : t.equipmentFallback;
+}
+
 function lineDetail(line: QuoteLine): string | null {
   if (line.unit_amount !== null) return t.unitDetail(line.quantity, line.periods, formatCop(line.unit_amount));
   if (line.rate_bps !== null && line.basis !== null) {
@@ -20,7 +25,10 @@ function lineDetail(line: QuoteLine): string | null {
 /** Everything below is built from the structured fields of the response, never from its prose. */
 export function QuoteDetails({ response }: { response: ChatResponse }) {
   const { quote, availability, missing_fields } = response;
-  const names = new Map(quote?.lines.map((l) => [l.code, conceptName(l)]));
+  // Only rentable lines name a code: a package_discount shares the package's code.
+  const names = new Map(
+    quote?.lines.filter((l) => l.kind === "item" || l.kind === "package").map((l) => [l.code, conceptName(l)]),
+  );
   const missing = missing_fields.filter((code) => Object.hasOwn(t.missing, code));
   return (
     <div className="mt-3 space-y-4">
@@ -109,7 +117,7 @@ function Availability({
             const s = short.get(code);
             return (
               <li key={code}>
-                <span className="break-words">{names.get(code) ?? code}</span>
+                <span className="break-words">{names.get(code) ?? unknownName(code)}</span>
                 {": "}
                 {s ? t.shortage(s.requested, s.available) : t.available}
               </li>

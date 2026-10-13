@@ -18,8 +18,10 @@ const t = es.chat;
 export default function ChatPage() {
   useDocumentTitle(es.titles.chat);
   const { status: backend } = useBackend();
-  const { messages, sending, error, cooldown, send, retry, reset } = useChat();
   const [draft, setDraft] = useState("");
+  const { messages, sending, error, cooldown, send, retry, reset } = useChat({
+    onRestore: (text) => setDraft((current) => current || text),
+  });
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const inputId = useId();

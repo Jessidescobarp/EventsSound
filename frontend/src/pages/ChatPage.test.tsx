@@ -137,9 +137,31 @@ describe("chat page", () => {
     const bodies = setup(() => json(answer()));
     send("   ");
     expect(screen.getByRole("alert")).toHaveTextContent(es.chat.errors.empty.title);
+    send("\u200b\u2060\ufeff");
+    expect(screen.getByRole("alert")).toHaveTextContent(es.chat.errors.empty.title);
     send("x".repeat(1001));
     expect(screen.getByRole("alert")).toHaveTextContent(es.chat.errors.too_long.title);
+    send("\u2026".repeat(400)); // NFKC expands it to 1200 characters
+    expect(screen.getByRole("alert")).toHaveTextContent(es.chat.errors.too_long.title);
     expect(bodies).toHaveLength(0);
+  });
+
+  it("names a package by its own line, not by the discount that shares its code", async () => {
+    const line = (kind: string, label: string | null, amount: number) => ({
+      kind, code: "pkg_a", label, quantity: 1, periods: 1, unit_amount: kind === "package" ? 1000 : null, rate_bps: null, basis: null, amount,
+    });
+    setup(() =>
+      json({
+        ...quoteAnswer,
+        quote: { ...quoteAnswer.quote, lines: [line("package", "Paquete Fiesta", 1000), line("package_discount", "Descuento", -100)], subtotal: 900, total: 900 },
+        availability: { is_available: false, shortages: [{ item_code: "pkg_a", requested: 1, available: 0 }, { item_code: "Weird Code!", requested: 1, available: 0 }] },
+      }),
+    );
+    send("Hola");
+    const list = (await within(log()).findByText(es.quote.availabilityTitle)).parentElement!;
+    expect(within(list).getByText(/Paquete Fiesta/)).toBeInTheDocument();
+    expect(list).not.toHaveTextContent("Weird Code!");
+    expect(list).toHaveTextContent(es.quote.equipmentFallback);
   });
 });
 
@@ -175,6 +197,32 @@ describe("chat errors", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(es.chat.cooldown(3));
     expect(screen.getByRole("button", { name: es.chat.send })).toBeDisabled();
     await advanceInSteps(3_500);
+    expect(screen.getByRole("button", { name: es.chat.send })).toBeEnabled();
+  });
+
+  it("takes a rejected turn out of the thread and restores the draft", async () => {
+    let calls = 0;
+    const bodies = setup(() => {
+      calls += 1;
+      return calls === 1 ? json({ detail: "invalid_request", message: "No valida.", errors: [] }, 422) : json(answer());
+    });
+    send("Mensaje rechazado");
+    expect(await screen.findByRole("alert")).toHaveTextContent(es.chat.errors.invalid.title);
+    expect(input()).toHaveValue("Mensaje rechazado");
+    expect(within(log()).queryByText("Mensaje rechazado")).toBeNull();
+    send("Otro mensaje");
+    await within(log()).findByText(answer().reply);
+    expect(bodies[1]?.messages).toEqual([{ role: "user", content: "Otro mensaje" }]);
+  });
+
+  it("falls back to a 10 s cooldown when a 429 has no Retry-After", async () => {
+    vi.useFakeTimers();
+    setup(() => json({ detail: "rate_limited", message: "Demasiadas." }, 429));
+    send("Hola");
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    await advanceInSteps(9_000, 1_000);
+    expect(screen.getByRole("button", { name: es.chat.send })).toBeDisabled();
+    await advanceInSteps(1_500, 500);
     expect(screen.getByRole("button", { name: es.chat.send })).toBeEnabled();
   });
 
