@@ -133,9 +133,10 @@ def quote_chat(
     unused part of the reservation instead of losing it.
     """
     client = limiter.hit(client_key)
-    global_decision = limiter.hit("*") if client_key != "*" else client
     if not client.allowed:
+        # A denied client must not consume the global window: one noisy IP would starve everyone.
         raise RateLimited(client.retry_after_seconds)
+    global_decision = limiter.hit("*") if client_key != "*" else client
     if not global_decision.allowed:
         raise RateLimited(global_decision.retry_after_seconds)
 

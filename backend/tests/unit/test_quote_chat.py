@@ -194,7 +194,7 @@ class TestQuoteChat:
         assert caught.value.retry_after_seconds == 37
         assert budget.reserves == []
         assert agent.received is None
-        assert set(limiter.hits) == {"client-1", "*"}  # the global window is recorded too
+        assert limiter.hits == ["client-1"]  # a denied client never touches the global window
 
     def test_a_global_client_key_hits_the_window_once(self) -> None:
         limiter = FakeLimiter()
