@@ -1,5 +1,25 @@
 # EventSoundDR
-Web que permite hacer reservas y cotizar eventos
+
+Web app for a sound, lighting and DJ events company. Its core is an AI quote assistant; the project is the final work (TFM) of a master's in AI-assisted development. All data is synthetic.
+
+## Project status (what exists today)
+
+| Area | Status |
+|---|---|
+| Health checks (`/health`, `/health/db`) | Working, deployed |
+| Catalog and packages API (`GET /catalog/items`, `/catalog/packages`) with public Swagger at `/docs` | Working, deployed. The deployed database has the tables but is empty until the guarded seed is run on purpose |
+| Persistence (Postgres tables `equipment_items`, `service_packages`, `package_items`, `bookings`, `catalog_embeddings`; migrations 0001-0003) | Working |
+| Pure domain: money, pricing oracle (`calculate_price`), availability | Working, covered by tests |
+| Vector search over the catalog (pgvector, embedding CLI) | Working locally; needs an embedding provider key to be used for real |
+| Quote agent (LangGraph pipeline, Spanish proposal text verified against the computed quote) | Built and tested with replayed LLM responses; **not exposed over HTTP yet** |
+| Quote chat endpoint (`POST /quote/chat`), usage cap, evaluations | Not built yet |
+| Frontend: home, about, portfolio, service catalog | Working (an empty catalog shows "Aún no hay equipos publicados"; if the API is unreachable it shows a graceful "available soon" message; a demo-data mode exists for local use only) |
+| Frontend quote page (`/cotizar`) | Placeholder ("Proximamente") |
+| Bookings (creating or managing reservations from the UI) | Not built; the `bookings` table only feeds availability |
+| Authentication, admin area, demo credentials | Not built |
+| Payments, WhatsApp, voice | Out of scope |
+
+Deployment: Render (API and static site) with Neon Postgres, see `documentacion/deploy.md`. Plans and status: `documentacion/roadmap.md`, `documentacion/requirements.md`, `documentacion/architecture.md`.
 
 ## Stack
 
