@@ -1,5 +1,7 @@
 """A small in-test catalog for search and tool tests (6 items, 2 packages)."""
 
+from datetime import timedelta
+
 from eventssound.domain.catalog import (
     Catalog,
     EquipmentCategory,
@@ -48,3 +50,62 @@ def make_catalog() -> Catalog:
             ),
         ),
     )
+
+
+def neutral_rules():
+    """Every adjustment off and no rounding: the quote is just the equipment subtotal."""
+    import dataclasses
+
+    from eventssound.domain.pricing_rules import (
+        DistanceBand,
+        GuestTier,
+        default_pricing_rules,
+    )
+
+    values = {
+        "guest_tiers": (GuestTier(1, 0),),
+        "weekend_holiday_surcharge_bps": 0,
+        "night": dataclasses.replace(default_pricing_rules().night, surcharge_bps=0),
+        "distance_bands": (DistanceBand(None, Money(0)),),
+        "rounding_step": 1,
+    }
+    return dataclasses.replace(default_pricing_rules(), **values)
+
+
+def make_deps(provider, *, catalog=None, search=None, bookings=(), **overrides):
+    """A full AgentDeps over the in-test catalog: keyword search, no bookings, neutral pricing."""
+    from zoneinfo import ZoneInfo
+
+    from eventssound.adapters.agent.nodes import AgentDeps
+    from eventssound.adapters.search.keyword import KeywordSearch
+    from eventssound.application.quote_chat import ChatLimits
+    from eventssound.domain.availability import AvailabilityRules, check_request_availability
+    from eventssound.domain.pricing import calculate_price
+
+    catalog = catalog or make_catalog()
+    rules = neutral_rules()
+
+    def load_catalog():
+        return catalog
+
+    def check_availability(request):
+        return check_request_availability(
+            request, catalog, bookings, AvailabilityRules(timedelta(0))
+        )
+
+    def price(request):
+        return calculate_price(request, catalog, rules)
+
+    values = dict(
+        provider=provider,
+        search=search or KeywordSearch(catalog),
+        load_catalog=load_catalog,
+        check_availability=check_availability,
+        price=price,
+        limits=ChatLimits(),
+        timezone=ZoneInfo("America/Bogota"),
+        scenario=None,
+        token_factory=lambda: "abcdef0123456789",
+    )
+    values.update(overrides)
+    return AgentDeps(**values)
