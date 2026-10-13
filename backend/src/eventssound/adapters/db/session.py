@@ -24,6 +24,7 @@ def build_engine(database_url: str) -> Engine:
         database_url,
         pool_pre_ping=True,
         pool_recycle=300,
+        pool_timeout=5,
         pool_size=3,
         max_overflow=2,
         connect_args={"connect_timeout": 10},

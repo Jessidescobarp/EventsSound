@@ -76,7 +76,7 @@ def make_client(agent=None, **overrides):
     values.update(overrides)
     settings = Settings(_env_file=None, **values)
     # Production settings would otherwise pick the Postgres budget and hit the unreachable URL.
-    if settings.app_env != "local":
+    if settings.llm_provider == "openrouter":
         parts.setdefault(
             "usage_budget",
             InMemoryUsageBudget(

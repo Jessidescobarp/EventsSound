@@ -77,11 +77,11 @@ def make_rate_limiter(settings: Settings) -> RateLimiter:
 
 
 def make_usage_budget(settings: Settings, factory: sessionmaker[Session]) -> UsageBudget:
-    """Postgres whenever the chat can spend money outside a local run; in-memory otherwise.
+    """Postgres whenever the chat can spend real money; in-memory otherwise.
 
-    Explicit rule: `APP_ENV=local` (or a chat that is not active) keeps the in-memory budget,
-    which resets on restart; every other environment uses the persistent one. The engine behind
-    `factory` is lazy, so no connection is opened here.
+    Explicit rule: an active OpenRouter chat (real money) ALWAYS uses the persistent budget, in
+    any APP_ENV; the in-memory one serves only the replay provider, which spends nothing. The
+    engine behind `factory` is lazy, so no connection is opened here.
     """
     if (
         settings.llm_provider == "openrouter"
@@ -93,14 +93,14 @@ def make_usage_budget(settings: Settings, factory: sessionmaker[Session]) -> Usa
     ):
         # Fine for a free model; for a paid one the cost cap never binds (only the token cap).
         logger.warning("LLM prices are 0: the daily cost cap cannot bind, only the token cap")
-    if settings.chat_active and settings.app_env != "local":
+    if settings.chat_active and settings.llm_provider == "openrouter":
         logger.info("daily LLM budget: postgres (persistent)")
         return PostgresUsageBudget(
             factory,
             token_cap=settings.llm_daily_token_cap,
             cost_cap_micro_usd=settings.llm_daily_cost_cap_micro_usd,
         )
-    logger.info("daily LLM budget: in-memory (resets on restart; local use only)")
+    logger.info("daily LLM budget: in-memory (resets on restart; replay provider only)")
     return InMemoryUsageBudget(
         token_cap=settings.llm_daily_token_cap,
         cost_cap_micro_usd=settings.llm_daily_cost_cap_micro_usd,

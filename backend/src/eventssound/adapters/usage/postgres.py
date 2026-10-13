@@ -10,7 +10,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -20,7 +20,7 @@ from eventssound.application.usage import Reservation
 
 logger = logging.getLogger(__name__)
 
-MAX_AMOUNT = 2**62  # far below BIGINT, so a sum of bounded amounts cannot overflow
+MAX_AMOUNT = 2**53  # exactly representable even in a float client; sums stay far below BIGINT
 
 
 class UsageStoreError(Exception):
@@ -42,13 +42,23 @@ class PostgresUsageBudget:
         *,
         token_cap: int,
         cost_cap_micro_usd: int,
+        statement_timeout_ms: int = 5_000,
+        lock_timeout_ms: int = 3_000,
         now: Callable[[], datetime] | None = None,
     ) -> None:
-        _check(token_cap, cost_cap_micro_usd)
+        _check(token_cap, cost_cap_micro_usd, statement_timeout_ms, lock_timeout_ms)
         self._factory = factory
         self._token_cap = token_cap
         self._cost_cap = cost_cap_micro_usd
         self._now = now or (lambda: datetime.now(UTC))
+        self._timeouts = (statement_timeout_ms, lock_timeout_ms)
+
+    def _bound_the_wait(self, session: Session) -> None:
+        # SET LOCAL semantics (is_local=true): scoped to this transaction, safe behind a pooler.
+        for name, milliseconds in zip(
+            ("statement_timeout", "lock_timeout"), self._timeouts, strict=True
+        ):
+            session.execute(select(func.set_config(name, f"{milliseconds}ms", True)))
 
     def reserve(self, tokens: int, cost_micro_usd: int) -> Reservation | None:
         _check(tokens, cost_micro_usd)
@@ -67,12 +77,18 @@ class PostgresUsageBudget:
             where=(Usage.tokens + statement.excluded.tokens <= self._token_cap)
             & (Usage.cost_micro_usd + statement.excluded.cost_micro_usd <= self._cost_cap),
         ).returning(Usage.day)
+        failure: str | None = None
+        granted = False
         try:
             with self._factory.begin() as session:
+                self._bound_the_wait(session)
                 granted = session.execute(statement).first() is not None
         except SQLAlchemyError as exc:
-            logger.error("usage reserve failed: %s", type(exc).__name__)
-            raise UsageStoreError("usage store unavailable") from None
+            failure = type(exc).__name__
+        if failure is not None:
+            # Raised outside the except block: no driver error (DSN, SQL) stays in the context.
+            logger.error("usage reserve failed: %s", failure)
+            raise UsageStoreError("usage store unavailable")
         return Reservation(day, tokens, cost_micro_usd) if granted else None
 
     def settle(
@@ -92,6 +108,7 @@ class PostgresUsageBudget:
         )
         try:
             with self._factory.begin() as session:
+                self._bound_the_wait(session)
                 session.execute(statement)
         except SQLAlchemyError as exc:
             logger.error("usage settle failed: %s", type(exc).__name__)
