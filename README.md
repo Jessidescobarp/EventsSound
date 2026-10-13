@@ -99,6 +99,23 @@ EMBEDDING_PROVIDER=fake uv run python -m eventssound.entrypoints.cli.embed_catal
 
 The CLI uses the same guard as the seed CLI (non-local or production targets need `ALLOW_REMOTE_SEED=1`) and never writes `fake` embeddings to a remote database. With `EMBEDDING_PROVIDER=openrouter` it needs `EMBEDDING_MODEL` and `OPENROUTER_API_KEY` in your shell; it deletes rows of any other embedding model (one active model), so use the model the deployed app uses; rerunning is idempotent and only re-embeds entries whose name, category or members changed.
 
+## Choosing the LLM model
+
+CI measures the agent offline: `backend/tests/unit/test_agent_evals.py` runs 15 golden Spanish requests and 8 injection cases (`adapters/evals/golden.py`) through the real pipeline with a scripted provider, and compares every quote with `calculate_price` of the expected request (never with anything a model said). To compare real models, run the live trial yourself; it spends YOUR OpenRouter quota and is never run by CI or the app.
+
+```powershell
+$secure = Read-Host "OpenRouter API key" -AsSecureString
+$env:OPENROUTER_API_KEY = [System.Net.NetworkCredential]::new("", $secure).Password
+cd backend
+uv run python -m eventssound.entrypoints.cli.model_trial --model <openrouter-model-id> --count 10            # plan only, exit 2
+uv run python -m eventssound.entrypoints.cli.model_trial --model <openrouter-model-id> --count 10 --confirm  # sends requests
+Remove-Item Env:OPENROUTER_API_KEY
+```
+
+Never paste the key in a chat or a file. `LLM_MODEL` is not needed (the model comes from `--model`), neither is a database. The trial paces requests at 20 per minute, never retries, and stops at the first HTTP 429 (exit 4). `--count` is 1 to 30 (default 10; the set has 15 cases). `APP_ENV=production` is refused. Reading the table: `structured output valid` = the model returned parseable, schema-valid JSON; `extraction accuracy` = request fields (type, dates, guests, km, venue, items, packages) equal to the expected ones; `oracle match` = the quote equals the deterministic price of the expected request; `clarification correct` = it asked for the right missing fields or refused when it should. Prefer the cheapest model with 100% structured output and oracle match; the first 3 failures show the case id, field, expected and got. The same report (case ids only, no prompts, no keys) is saved to `.dev/model-trial-<model>-<timestamp>.json`.
+
+Free OpenRouter models are reported to allow 20 requests/minute and 50 requests/day (1,000/day after buying 10 USD of credit). UNVERIFIED on the official page: check it before relying on it. A 10-case trial uses about 20 to 30 requests.
+
 ## Tests
 
 ```bash
