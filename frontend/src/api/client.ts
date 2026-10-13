@@ -15,33 +15,69 @@ export type ApiErrorCode =
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status?: number;
+  /** Machine code from a validated backend error body (`{"detail": "rate_limited"}`). */
+  readonly detail?: string;
+  /** Short customer sentence from a validated backend error body; render as text only. */
+  readonly serverMessage?: string;
+  /** Bounded `Retry-After` seconds (1 to MAX_RETRY_AFTER_SECONDS) when the header is usable. */
+  readonly retryAfterSeconds?: number;
 
-  constructor(code: ApiErrorCode, message: string, status?: number) {
+  constructor(code: ApiErrorCode, message: string, status?: number, extra: ErrorExtra = {}) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.detail = extra.detail;
+    this.serverMessage = extra.serverMessage;
+    this.retryAfterSeconds = extra.retryAfterSeconds;
   }
+}
+
+interface ErrorExtra {
+  detail?: string;
+  serverMessage?: string;
+  retryAfterSeconds?: number;
+}
+
+// C0/C1 controls (incl. newline, tab, NUL, DEL) and bidirectional overrides/isolates.
+// eslint-disable-next-line no-control-regex
+const FORBIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+
+/** True when untrusted text carries control or bidirectional characters. */
+export function hasForbiddenChars(value: string): boolean {
+  return FORBIDDEN_CHARS.test(value);
+}
+
+const FORBIDDEN_CHARS_GLOBAL = new RegExp(FORBIDDEN_CHARS.source, "g");
+
+/** Replaces control and bidirectional characters with a space (for free text that is shown, not parsed). */
+export function replaceForbiddenChars(value: string): string {
+  return value.replace(FORBIDDEN_CHARS_GLOBAL, " ");
 }
 
 /** Upper bound for a response body in bytes. The catalog is about 10 KB. */
 export const MAX_RESPONSE_BYTES = 1_000_000;
 export const DEFAULT_TIMEOUT_MS = 10_000;
+export const MAX_RETRY_AFTER_SECONDS = 300;
+const MAX_ERROR_MESSAGE_CHARS = 200;
 
 export interface ApiFetchOptions<T> {
   /** Typed guard: receives untrusted JSON and must return T or throw. */
   parse: (json: unknown) => T;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Defaults to GET. A POST sends `jsonBody` serialized as JSON. */
+  method?: "GET" | "POST";
+  jsonBody?: unknown;
 }
 
 /**
- * GET JSON from the backend with a timeout, cancellation, a size cap and a runtime
+ * GET (or POST) JSON from the backend with a timeout, cancellation, a size cap and a runtime
  * guard. Every failure is an ApiError with a stable code; nothing else is thrown.
  * No cookies are sent (the API uses bearer tokens, added later).
  */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Promise<T> {
-  const { parse, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const { parse, signal, timeoutMs = DEFAULT_TIMEOUT_MS, method = "GET", jsonBody } = options;
 
   if (!path.startsWith("/")) throw new ApiError("config", "API path must start with '/'.");
   let base: string;
@@ -65,8 +101,12 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Pr
     let response: Response;
     try {
       response = await fetch(`${base}${path}`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
+        method,
+        headers:
+          method === "POST"
+            ? { Accept: "application/json", "Content-Type": "application/json" }
+            : { Accept: "application/json" },
+        body: method === "POST" ? JSON.stringify(jsonBody) : undefined,
         credentials: "omit",
         signal: controller.signal,
       });
@@ -77,8 +117,9 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Pr
     if (!response.ok) {
       const { status } = response;
       if (status === 404) throw new ApiError("not_found", "Not found.", status);
-      if (status >= 500) throw new ApiError("server", `Server error ${status}.`, status);
-      throw new ApiError("http", `Unexpected status ${status}.`, status);
+      const extra = await readErrorInfo(response, controller.signal);
+      if (status >= 500) throw new ApiError("server", `Server error ${status}.`, status, extra);
+      throw new ApiError("http", `Unexpected status ${status}.`, status, extra);
     }
 
     // Content-Length is only an early exit: cross-origin responses do not expose it and
@@ -108,6 +149,36 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Pr
     clearTimeout(timer);
     signal?.removeEventListener("abort", onCallerAbort);
   }
+}
+
+/**
+ * Best-effort read of an error body: only a short lowercase `detail` code and a short,
+ * control-free `message` survive, plus a bounded Retry-After. Anything else is dropped.
+ */
+async function readErrorInfo(response: Response, signal: AbortSignal): Promise<ErrorExtra> {
+  const info: ErrorExtra = {};
+  const retry = Number(response.headers.get("Retry-After"));
+  if (Number.isInteger(retry) && retry >= 1) {
+    info.retryAfterSeconds = Math.min(retry, MAX_RETRY_AFTER_SECONDS);
+  }
+  try {
+    const body: unknown = JSON.parse(await readCapped(response, signal));
+    if (typeof body === "object" && body !== null) {
+      const { detail, message } = body as Record<string, unknown>;
+      if (typeof detail === "string" && /^[a-z_]{1,48}$/.test(detail)) info.detail = detail;
+      if (
+        typeof message === "string" &&
+        message.trim().length > 0 &&
+        message.length <= MAX_ERROR_MESSAGE_CHARS &&
+        !hasForbiddenChars(message)
+      ) {
+        info.serverMessage = message;
+      }
+    }
+  } catch {
+    // not JSON, too large or aborted: the status alone classifies the error
+  }
+  return info;
 }
 
 /** Reads the body as UTF-8 text, refusing to buffer more than MAX_RESPONSE_BYTES. */

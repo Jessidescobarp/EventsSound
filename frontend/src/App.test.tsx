@@ -132,12 +132,10 @@ describe("pages", () => {
     }
   });
 
-  it("chat placeholder is clearly marked as coming soon and offers no input", () => {
+  it("chat page offers a labelled message box and a send button", () => {
     renderApp("/cotizar");
-    expect(screen.getByText(es.chat.badge)).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByRole("button", { name: /enviar/i })).toBeNull();
-    expect(screen.getByRole("link", { name: es.chat.cta })).toHaveAttribute("href", "/servicios");
+    expect(screen.getByRole("textbox", { name: es.chat.inputLabel })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: es.chat.send })).toBeInTheDocument();
   });
 
   it("not found offers a way home", () => {

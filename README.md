@@ -15,7 +15,7 @@ Web app for a sound, lighting and DJ events company. Its core is an AI quote ass
 | Quote chat endpoint (`POST /quote/chat`) with per-IP rate limit, in-memory daily budget and kill switch | Built and tested offline; disabled in production until an OpenRouter model and key are configured. The budget resets on restart |
 | Persistent usage cap (`llm_usage_daily`), evaluations | Not built yet |
 | Frontend: home, about, portfolio, service catalog | Working (an empty catalog shows "Aún no hay equipos publicados"; if the API is unreachable it shows a graceful "available soon" message; a demo-data mode exists for local use only) |
-| Frontend quote page (`/cotizar`) | Placeholder ("Proximamente") |
+| Frontend quote page (`/cotizar`) | Working chat against `POST /quote/chat`: plain-text replies, quote breakdown from the structured response, Spanish error messages. While the endpoint is disabled in production it shows "asistente no disponible por ahora". Demo scenarios exist for local use only (`scripts/dev.ps1 -Mocks`) |
 | Bookings (creating or managing reservations from the UI) | Not built; the `bookings` table only feeds availability |
 | Authentication, admin area, demo credentials | Not built |
 | Payments, WhatsApp, voice | Out of scope |

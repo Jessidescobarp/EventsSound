@@ -240,3 +240,37 @@ describe("apiFetch", () => {
     });
   });
 });
+
+describe("apiFetch POST and error bodies", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example");
+  });
+
+  it("sends the JSON body with a content type", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => json("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    await apiFetch("/echo", { parse: asString, method: "POST", jsonBody: { a: 1 } });
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe('{"a":1}');
+    expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
+  });
+
+  const failure = async (body: unknown, headers: HeadersInit = {}) => {
+    vi.stubGlobal("fetch", vi.fn(() => json(body, 429, headers)));
+    const error = await apiFetch("/x", { parse: asString }).catch((e: unknown) => e);
+    if (!(error instanceof ApiError)) throw new Error("expected ApiError");
+    return error;
+  };
+
+  it.each([
+    [{ detail: "rate_limited", message: "Espera." }, { "Retry-After": "37" }, "rate_limited", "Espera.", 37],
+    [{ detail: "rate_limited", message: "x".repeat(200) }, { "Retry-After": "300" }, "rate_limited", "x".repeat(200), 300],
+    [{ detail: "rate_limited", message: "x".repeat(201) }, { "Retry-After": "99999" }, "rate_limited", undefined, 300],
+    [{ detail: "Bad<Code>", message: "a\nb" }, { "Retry-After": "soon" }, undefined, undefined, undefined],
+    [{ detail: 5, message: { html: "<b>" } }, { "Retry-After": "0" }, undefined, undefined, undefined],
+  ])("keeps only validated error fields: %#", async (body, headers, detail, message, retry) => {
+    const error = await failure(body, headers);
+    expect([error.detail, error.serverMessage, error.retryAfterSeconds]).toEqual([detail, message, retry]);
+  });
+});

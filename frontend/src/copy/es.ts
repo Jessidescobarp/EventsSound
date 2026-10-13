@@ -188,11 +188,96 @@ export const es = {
 
   chat: {
     title: "Asistente de cotización",
-    badge: "Próximamente",
-    lead: "Estamos preparando un asistente que te hará unas preguntas sobre tu evento y te entregará una cotización detallada.",
-    body: "Mientras tanto, explora el catálogo de equipos y paquetes.",
-    cta: "Ver el catálogo",
-    imageLabel: "Ilustración del asistente de cotización, no disponible todavía",
+    lead: "Cuéntanos sobre tu evento (fecha, horario, invitados, lugar y equipos) y el asistente te entregará una cotización detallada.",
+    conversationTitle: "Conversación",
+    empty: "Aún no hay mensajes. Describe tu evento para empezar.",
+    logLabel: "Mensajes de la conversación",
+    authorUser: "Tú",
+    authorAssistant: "Asistente",
+    inputLabel: "Tu mensaje",
+    inputHelp: "Enter envía el mensaje; Mayús + Enter agrega una línea.",
+    counter: (used: number, max: number) => `${used} de ${max} caracteres`,
+    send: "Enviar",
+    typing: "El asistente está escribiendo...",
+    newConversation: "Nueva conversación",
+    demoHint:
+      "Escenarios de la demostración: escribe «pregunta», «faltante», «limite» o «apagado»; cualquier otro texto devuelve una cotización completa.",
+    source: {
+      llm: "Redactado por IA",
+      template: "Respuesta automática",
+      static: "Respuesta automática",
+    } as Record<string, string>,
+    errors: {
+      empty: { title: "Escribe un mensaje antes de enviar.", body: "" },
+      too_long: { title: "El mensaje es demasiado largo.", body: "Acórtalo e inténtalo de nuevo." },
+      disabled: {
+        title: "El asistente no está disponible por ahora",
+        body: "Estamos terminando de prepararlo. Mientras tanto, explora el catálogo o vuelve más tarde.",
+      },
+      rate_limited: {
+        title: "Has enviado demasiadas solicitudes",
+        body: "Espera un momento antes de enviar otro mensaje.",
+      },
+      budget: {
+        title: "El asistente alcanzó su límite diario",
+        body: "Vuelve a intentarlo mañana.",
+      },
+      invalid: {
+        title: "No pudimos procesar tu mensaje",
+        body: "Revisa que no sea demasiado largo e inténtalo de nuevo.",
+      },
+      transient: {
+        title: "No pudimos contactar al asistente",
+        body: "Revisa tu conexión e inténtalo de nuevo.",
+      },
+      unexpected: {
+        title: "Recibimos una respuesta que no pudimos interpretar",
+        body: "Inténtalo de nuevo en unos instantes.",
+      },
+    },
+    waking: "El servidor está despertando, esto puede tardar hasta un minuto.",
+    cooldown: (seconds: number) => `Podrás enviar de nuevo en ${seconds} s.`,
+    catalogLink: "Ver el catálogo",
+  },
+
+  quote: {
+    title: "Detalle de la cotización",
+    caption: "Conceptos de la cotización en pesos colombianos",
+    colConcept: "Concepto",
+    colQuantity: "Cantidad",
+    colAmount: "Valor",
+    rentalDays: (days: number) => (days === 1 ? "Alquiler por 1 día" : `Alquiler por ${days} días`),
+    subtotal: "Subtotal",
+    total: "Total",
+    unitDetail: (quantity: number, periods: number, unit: string) =>
+      `${quantity} × ${periods} ${periods === 1 ? "día" : "días"} × ${unit}`,
+    surchargeDetail: (rate: string, basis: string) => `${rate} sobre ${basis}`,
+    kinds: {
+      item: "Equipo",
+      package: "Paquete",
+      package_discount: "Descuento del paquete",
+      guest_size: "Recargo por número de invitados",
+      weekend_holiday: "Recargo por fin de semana o festivo",
+      night: "Recargo nocturno",
+      distance: "Recargo por distancia",
+      rounding: "Ajuste de redondeo",
+    } as Record<string, string>,
+    kindFallback: "Otro concepto",
+    equipmentFallback: "Equipo",
+    availabilityTitle: "Disponibilidad",
+    allAvailable: "Todos los equipos están disponibles para la fecha.",
+    available: "Disponible",
+    shortage: (requested: number, available: number) =>
+      `No alcanza: pediste ${requested} y hay ${available}`,
+    missingTitle: "Para continuar necesito:",
+    missing: {
+      event_date: "La fecha del evento",
+      start_time: "La hora de inicio",
+      end_time_or_duration: "La hora de fin o la duración",
+      guest_count: "El número de invitados",
+      distance_or_locality: "La ciudad o la distancia desde Bogotá",
+      equipment: "Los equipos que necesitas",
+    } as Record<string, string>,
   },
 
   notFound: {

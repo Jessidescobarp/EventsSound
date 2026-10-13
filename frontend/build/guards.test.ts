@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -39,6 +39,11 @@ describe("findMockMarkers and the CI check script", () => {
 
   it("uses a distinctive fake-catalog marker", () => {
     expect(MOCK_MARKERS).toContain("dj_cdj_pair");
+  });
+
+  it("every marker really exists in the fake API source (the guard cannot go stale)", () => {
+    const source = readFileSync(join(import.meta.dirname, "..", "src", "mocks", "fakeApi.ts"), "utf8");
+    for (const marker of MOCK_MARKERS) expect(source).toContain(marker);
   });
 
   it("finds nothing in a clean bundle", () => {

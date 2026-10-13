@@ -5,6 +5,7 @@
  * All data is synthetic.
  */
 import type { CatalogItem, ServicePackage } from "../api/catalog";
+import type { ChatResponse, QuoteLine } from "../api/chat";
 
 const item = (
   code: string,
@@ -91,14 +92,87 @@ export const MOCK_PACKAGES: ServicePackage[] = [
   ]),
 ].sort(byCode);
 
-const json = (body: unknown, status = 200) =>
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
   });
 
-function route(pathname: string): Response {
+// ---- chat scenarios (POST /quote/chat), picked by a keyword in the last user message ----
+
+const line = (kind: string, code: string, label: string | null, over: Partial<QuoteLine>): QuoteLine => ({
+  kind, code, label, quantity: 1, periods: 1, unit_amount: null, rate_bps: null, basis: null, amount: 0, ...over,
+});
+
+const DEMO_LINES: QuoteLine[] = [
+  line("item", "sound_speaker_active_15", "Parlante activo 15 pulgadas", { quantity: 2, unit_amount: 120_000, amount: 240_000 }),
+  line("item", "sound_mixer_16", "Consola de mezcla de 16 canales", { unit_amount: 179_900, amount: 179_900 }),
+  line("weekend_holiday", "weekend_holiday", null, { rate_bps: 1000, basis: 419_900, amount: 41_990 }),
+  line("rounding", "rounding", null, { amount: 110 }),
+];
+
+const sum = (lines: QuoteLine[]) => lines.reduce((total, l) => total + l.amount, 0);
+const base = { quote: null, availability: null, missing_fields: [] as string[], reply_source: "static" } as const;
+
+const CHAT_QUOTE: ChatResponse = {
+  ...base,
+  request_id: "demo-chat-fixture-quote",
+  status: "quote",
+  reply: "Esta es tu propuesta de demostración.\nLos valores los calcula el sistema de precios.",
+  quote: {
+    version: 1,
+    currency: "COP",
+    rental_days: 1,
+    lines: DEMO_LINES,
+    subtotal: sum(DEMO_LINES.slice(0, -1)),
+    total: sum(DEMO_LINES),
+  },
+  availability: { is_available: true, shortages: [] },
+  reply_source: "llm",
+};
+
+const CHAT_SHORTAGE: ChatResponse = {
+  ...CHAT_QUOTE,
+  request_id: "demo-chat-fixture-shortage",
+  reply: "Hay un equipo que no alcanza para esa fecha (demostración).",
+  availability: {
+    is_available: false,
+    shortages: [{ item_code: "sound_speaker_active_15", requested: 2, available: 1 }],
+  },
+  reply_source: "template",
+};
+
+const CHAT_CLARIFICATION: ChatResponse = {
+  ...base,
+  request_id: "demo-chat-fixture-question",
+  status: "clarification",
+  reply: "Para armar tu cotización necesito algunos datos más (demostración):\n1.¿Cuántos invitados habrá?",
+  missing_fields: ["guest_count", "event_date"],
+};
+
+function chatRoute(init?: RequestInit): Response {
+  let last: string;
+  try {
+    const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+    last = (body.messages.at(-1)?.content ?? "").toLowerCase();
+  } catch {
+    return json({ detail: "invalid_request", message: "Solicitud no valida.", errors: [] }, 422);
+  }
+  if (last.includes("apagado")) {
+    return json({ detail: "chat_disabled", message: "El asistente de cotizaciones no esta disponible por ahora." }, 503);
+  }
+  if (last.includes("limite")) {
+    return json({ detail: "rate_limited", message: "Has enviado demasiadas solicitudes. Intenta de nuevo en unos minutos." }, 429, { "Retry-After": "8" });
+  }
+  if (last.includes("pregunta")) return json(CHAT_CLARIFICATION);
+  if (last.includes("faltante")) return json(CHAT_SHORTAGE);
+  return json(CHAT_QUOTE);
+}
+
+function route(pathname: string, init?: RequestInit): Response {
   switch (pathname) {
+    case "/quote/chat":
+      return init?.method === "POST" ? chatRoute(init) : json({ detail: "Method Not Allowed" }, 405);
     case "/health":
       return json({ status: "ok" });
     case "/catalog/items":
@@ -116,7 +190,7 @@ export function createFakeFetch({ latencyMs = 350 }: { latencyMs?: number } = {}
     new Promise<Response>((resolve, reject) => {
       const signal = init?.signal;
       const url = new URL(input instanceof Request ? input.url : String(input));
-      const timer = setTimeout(() => resolve(route(url.pathname)), latencyMs);
+      const timer = setTimeout(() => resolve(route(url.pathname, init)), latencyMs);
       signal?.addEventListener(
         "abort",
         () => {
