@@ -177,6 +177,27 @@ def render_template(facts: QuoteFacts) -> str:
     return "\n".join(parts)
 
 
+def facts_payload(facts: QuoteFacts, *, event_type: str, available: bool) -> dict:
+    """The exact facts the draft prompt receives (D13): no user text, no raw offsets."""
+    return {
+        "event_type": event_type,
+        "date": _date_span(facts.start, facts.end),
+        "start": _hora(facts.start),
+        "end": _hora(facts.end),
+        "guest_count": facts.guest_count,
+        "distance_km": facts.distance_km,
+        "rental_days": facts.rental_days,
+        "lines": [
+            {"label": line.label, "quantity": line.quantity, "amount_cop": line.amount}
+            for line in facts.lines
+            if not (line.kind is LineKind.ROUNDING and line.amount == 0)
+        ],
+        "subtotal_cop": facts.subtotal,
+        "total_cop": facts.total,
+        "availability": "disponible" if available else "con faltantes",
+    }
+
+
 # --- Verification (design D25): every check fails closed, reasons are stable codes ---
 
 
