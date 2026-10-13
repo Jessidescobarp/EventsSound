@@ -126,6 +126,7 @@ def quote_chat(
     limiter: RateLimiter,
     clock: Callable[[], datetime],
     limits: ChatLimits,
+    request_id: str | None = None,
 ) -> ChatResult:
     """One chat request: rate limit -> sanitize -> reserve -> agent -> settle.
 
@@ -163,7 +164,7 @@ def quote_chat(
     data = AgentInput(
         turns=clean,
         now=clock(),
-        request_id=uuid.uuid4().hex,
+        request_id=request_id or uuid.uuid4().hex,
         meter=meter,
         deadline_monotonic=time.monotonic() + limits.deadline_seconds,
     )

@@ -1,19 +1,30 @@
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
+from eventssound.application.quote_chat import QuoteAgent
+from eventssound.application.usage import RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.entrypoints.api import container
-from eventssound.entrypoints.api.routes import catalog, health
+from eventssound.entrypoints.api.guards import ChatRefusal, FailClosedBudget, FailClosedLimiter
+from eventssound.entrypoints.api.routes import catalog, health, quote
+from eventssound.entrypoints.api.routes.quote import chat_refusal_handler, validation_handler
 
 DESCRIPTION = (
-    "Backend of EventSoundDR, a sound, lights and DJ events company. This public, read-only API "
-    "exposes the equipment catalog and the ready-made packages. All data is synthetic."
+    "Backend of EventSoundDR, a sound, lights and DJ events company. This public API exposes "
+    "the equipment catalog, the ready-made packages and a quote assistant. All data is "
+    "synthetic."
 )
 TAGS = [
     {
         "name": "Catalog",
         "description": "Equipment the company rents out and the packages built from it.",
+    },
+    {
+        "name": "Quote agent",
+        "description": "Describe an event in Spanish and get a priced quote. Prices come from "
+        "the company's pricing rules, not from the AI.",
     },
 ]
 
@@ -23,6 +34,9 @@ def create_app(
     session_provider: container.SessionProvider | None = None,
     database_health: DatabaseHealthPort | None = None,
     catalog_repository: CatalogRepository | None = None,
+    quote_agent: QuoteAgent | None = None,
+    usage_budget: UsageBudget | None = None,
+    rate_limiter: RateLimiter | None = None,
 ) -> FastAPI:
     """Build an isolated FastAPI app. Tests override settings and adapters."""
     settings = settings or Settings()  # type: ignore[call-arg]
@@ -46,13 +60,25 @@ def create_app(
     app.state.database_health = database_health or container.make_database_health(factory)
     app.state.catalog_repository = catalog_repository or container.make_catalog_repository(factory)
 
+    # Quote chat. Limiter and budget are wrapped so that an error in either refuses the request.
+    app.state.chat_agent = quote_agent or container.make_quote_agent(settings, factory)
+    app.state.usage_budget = FailClosedBudget(usage_budget or container.make_usage_budget(settings))
+    app.state.rate_limiter = FailClosedLimiter(
+        rate_limiter or container.make_rate_limiter(settings)
+    )
+    app.state.chat_limits = container.make_chat_limits(settings)
+    app.add_exception_handler(ChatRefusal, chat_refusal_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, validation_handler)  # type: ignore[arg-type]
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
         allow_credentials=False,
+        expose_headers=["X-Request-ID", "Retry-After"],
     )
     app.include_router(health.router)
     app.include_router(catalog.router)
+    app.include_router(quote.router)
     return app

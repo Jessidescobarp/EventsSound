@@ -1,9 +1,10 @@
 """Response models of the public catalog API. They never expose database ids."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from eventssound.application.quote_chat import AgentOutcome
 from eventssound.domain.catalog import Catalog, EquipmentItem, ServicePackage
 
 Code = Annotated[str, Field(description="Stable machine-readable identifier.")]
@@ -155,3 +156,187 @@ class ErrorOut(BaseModel):
     detail: str = Field(
         description="Machine-readable error code.", examples=["catalog_unavailable"]
     )
+
+
+# --- POST /quote/chat -------------------------------------------------------------------------
+
+MAX_MESSAGES = 8
+MAX_MESSAGE_CHARS = 1000
+MAX_TOTAL_CHARS = 4000
+
+_STRICT = ConfigDict(extra="forbid", strict=True)
+
+
+class ChatMessageIn(BaseModel):
+    model_config = _STRICT
+
+    role: Literal["user", "assistant"] = Field(description="Who wrote the message.")
+    content: str = Field(
+        min_length=1, max_length=MAX_MESSAGE_CHARS, description="Message text, in Spanish."
+    )
+
+
+class ChatRequestIn(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "Hola, necesito sonido para una fiesta el sabado 17 de "
+                            "octubre de 8 pm a 11:30 pm, somos 150 personas, en un lugar a unos "
+                            "45 km de Bogota. Quiero 2 parlantes activos de 15 pulgadas y 1 "
+                            "mezcladora de 16 canales.",
+                        }
+                    ]
+                },
+                {"messages": [{"role": "user", "content": "Necesito sonido para una fiesta."}]},
+            ]
+        },
+    )
+
+    messages: list[ChatMessageIn] = Field(
+        min_length=1,
+        max_length=MAX_MESSAGES,
+        description=(
+            f"The conversation so far, oldest first: 1 to {MAX_MESSAGES} messages of up to "
+            f"{MAX_MESSAGE_CHARS} characters ({MAX_TOTAL_CHARS} in total). The last one must "
+            "come from the user. The server keeps no conversation: send the history each time."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _bounded_and_ends_with_the_user(self) -> "ChatRequestIn":
+        if self.messages[-1].role != "user":
+            raise ValueError("last_message_must_be_user")
+        if sum(len(m.content) for m in self.messages) > MAX_TOTAL_CHARS:
+            raise ValueError("conversation_too_long")
+        return self
+
+
+class QuoteLineOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: str = Field(description="item, guest_size, weekend_holiday, night, distance, rounding.")
+    code: str
+    label: str | None
+    quantity: int
+    periods: int
+    unit_amount: int | None = Field(description="Pesos per unit, when the line has one.")
+    rate_bps: int | None = Field(description="Surcharge in basis points (100 = 1%).")
+    basis: int | None = Field(description="Pesos the surcharge was computed on.")
+    amount: int = Field(description="Line amount in whole Colombian pesos.")
+
+
+class QuoteOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    version: int
+    rules_version: str
+    currency: str = Field(description="Always COP.")
+    rental_days: int
+    lines: list[QuoteLineOut] = Field(description="Every charge; they add up to `total`.")
+    subtotal: int = Field(description="Sum of the lines before the rounding adjustment.")
+    total: int = Field(
+        description="Final price in whole pesos, computed by the pricing rules, never by the AI."
+    )
+
+
+class RequestedLineOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    code: str
+    quantity: int
+
+
+class EventRequestOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    event_type: str
+    start: str = Field(description="ISO 8601 local date and time with UTC offset.")
+    end: str
+    guest_count: int
+    distance_km: int
+    venue: str
+    items: list[RequestedLineOut]
+    packages: list[RequestedLineOut]
+
+
+class ShortageOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    item_code: str
+    requested: int
+    available: int
+
+
+class AvailabilityOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    is_available: bool
+    shortages: list[ShortageOut]
+
+
+class ChatResponseOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    request_id: str = Field(description="Opaque id, also sent in the X-Request-ID header.")
+    status: Literal["clarification", "quote", "refused"]
+    reply: str = Field(description="Answer for the customer, in Spanish.")
+    quote: QuoteOut | None = Field(description="Present only when status is `quote`.")
+    event_request: EventRequestOut | None
+    availability: AvailabilityOut | None
+    missing_fields: list[str] = Field(description="What to ask next; only for `clarification`.")
+    reply_source: Literal["llm", "template", "static"] = Field(
+        description="`llm` when the model wrote the reply, `template` or `static` otherwise."
+    )
+
+    @classmethod
+    def from_outcome(cls, request_id: str, outcome: AgentOutcome) -> "ChatResponseOut":
+        request = outcome.event_request
+        report = outcome.availability
+        return cls(
+            request_id=request_id,
+            status=outcome.status.value,
+            reply=outcome.reply,
+            quote=QuoteOut.model_validate(outcome.quote.to_dict()) if outcome.quote else None,
+            event_request=None
+            if request is None
+            else EventRequestOut(
+                event_type=request.event_type.value,
+                start=request.start.isoformat(),
+                end=request.end.isoformat(),
+                guest_count=request.guest_count,
+                distance_km=request.distance_km,
+                venue=request.venue.value,
+                items=[RequestedLineOut(code=x.code, quantity=x.quantity) for x in request.items],
+                packages=[
+                    RequestedLineOut(code=x.code, quantity=x.quantity) for x in request.packages
+                ],
+            ),
+            availability=None
+            if report is None
+            else AvailabilityOut(
+                is_available=report.is_available,
+                shortages=[
+                    ShortageOut(item_code=s.item_code, requested=s.requested, available=s.remaining)
+                    for s in report.shortages
+                ],
+            ),
+            missing_fields=list(outcome.missing_fields),
+            reply_source=outcome.reply_source,
+        )
+
+
+class ChatInvalidOut(BaseModel):
+    detail: Literal["invalid_request"]
+    message: str
+    errors: list[dict[str, str]] = Field(description="Field path and error code; no input echo.")
+
+
+class ChatErrorOut(BaseModel):
+    detail: str = Field(description="Machine-readable error code.", examples=["rate_limited"])
+    message: str = Field(description="Sentence for the customer, in Spanish.")

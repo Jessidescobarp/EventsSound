@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     embedding_model: str = ""
     embedding_dimensions: int = 1024
     openrouter_api_key: SecretStr | None = None
+    # Public quote chat. The kill switch and the replay default mean a forgotten variable
+    # can never spend money.
+    chat_enabled: bool = True
+    llm_provider: Literal["replay", "openrouter"] = "replay"
+    llm_model: str = ""
+    llm_input_price_micro_usd_per_mtok: Annotated[int, Field(ge=0)] = 0
+    llm_output_price_micro_usd_per_mtok: Annotated[int, Field(ge=0)] = 0
+    llm_daily_token_cap: Annotated[int, Field(ge=0)] = 100_000
+    llm_daily_cost_cap_micro_usd: Annotated[int, Field(ge=0)] = 1_000_000
+    chat_rate_limit_per_minute: Annotated[int, Field(ge=1, le=1000)] = 5
+    # How many reverse proxies sit in front of the app (Render: 1). 0 ignores X-Forwarded-For.
+    trusted_proxy_hops: Annotated[int, Field(ge=0, le=3)] = 0
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -57,7 +69,7 @@ class Settings(BaseSettings):
         # `OPENROUTER_API_KEY=` in .env.example means "not set".
         return None if isinstance(value, str) and not value.strip() else value
 
-    @field_validator("embedding_model", mode="after")
+    @field_validator("embedding_model", "llm_model", mode="after")
     @classmethod
     def _strip_model(cls, value: str) -> str:
         return value.strip()
@@ -101,3 +113,16 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def chat_active(self) -> bool:
+        """Whether `POST /quote/chat` may serve answers.
+
+        A misconfigured chat disables itself instead of failing startup, so the catalog API
+        stays up. The replay provider only serves fixtures and never runs in production.
+        """
+        if not self.chat_enabled:
+            return False
+        if self.llm_provider == "openrouter":
+            return bool(self.llm_model and self.openrouter_api_key)
+        return not self.is_production
