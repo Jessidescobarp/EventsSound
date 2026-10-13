@@ -87,9 +87,9 @@ Checks MUST run in this order, each short-circuiting without an LLM call: payloa
 - Then 503 `{"detail": "chat_disabled"}` and zero provider calls
 
 #### Scenario: Order
-- Given the switch off and an invalid body
+- Given the switch off and a well-formed but invalid body
 - When posting
-- Then 422 (validation precedes the switch)
+- Then 503 `chat_disabled` (the switch is answered by a middleware before the body is read; a body over 16 KiB gets 413 `payload_too_large` as it streams in)
 
 #### Scenario: Budget exhausted
 - Given a budget with zero remaining
@@ -102,7 +102,7 @@ Checks MUST run in this order, each short-circuiting without an LLM call: payloa
 - Then 503 `llm_unavailable` and the reserved budget is settled to actual usage
 
 ### Requirement: Error shapes
-All errors MUST be `{"detail": code}` with codes from a closed set: `rate_limited`, `chat_disabled`, `daily_budget_exhausted`, `llm_unavailable`, plus FastAPI's 422 body for validation. Responses MUST NOT contain stack traces, hostnames, provider names, model ids, prompts or provider text. Unhandled exceptions MUST return 500 `{"detail": "internal_error"}` with the same constraints.
+All errors MUST be `{"detail": code, "message": <Spanish sentence>}` (the 422 adds `errors`) with codes from a closed set: `rate_limited`, `chat_disabled`, `daily_budget_exhausted`, `llm_unavailable`, plus FastAPI's 422 body for validation. Responses MUST NOT contain stack traces, hostnames, provider names, model ids, prompts or provider text. Unhandled exceptions MUST return 500 `{"detail": "internal_error"}` with the same constraints.
 
 #### Scenario: Internal failure sanitized
 - Given an agent raising `RuntimeError("host db.internal key sk-abc")`

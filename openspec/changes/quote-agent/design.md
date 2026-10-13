@@ -753,3 +753,16 @@ Delivered as one PR (`feat/agent-pgvector`) instead of Q10a-c (the provider port
 - `embed_catalog` is the second module allowed to read `ALLOW_REMOTE_SEED` from the environment (same guard as the seed CLI) and refuses the `fake` provider on any remote or production target.
 - The Alembic drift test passes with the custom type without `compare_type=False`: reflection resolves `vector` through `ischema_names`, and `VectorType` compares equal by dimension.
 
+
+## 22. Implementation notes: Q6b (chat endpoint)
+
+Deviations from the sections above, decided while building `POST /quote/chat`:
+
+- **Production safety (supersedes D36's last sentence).** `Settings.chat_active` is false when `CHAT_ENABLED=false`, when `LLM_PROVIDER=openrouter` lacks `LLM_MODEL` or the key, and ALWAYS for `LLM_PROVIDER=replay` in `APP_ENV=production`. The endpoint then answers 503 `chat_disabled`. No startup error: a misconfigured chat must not take the catalog API down. `LLM_RESPONSE_FORMAT` is not added (no consumer yet); 9 new Settings fields.
+- **Error body** is `{"detail": code, "message": <Spanish sentence>}`; messages live in `application/messages_es_chat.py`. Availability shortages carry `item_code`, `requested`, `available` (no `name`: the outcome has no catalog at hand).
+- **Fail closed.** `entrypoints/api/guards.py` wraps the limiter (error -> 429) and the budget (reserve error -> 503 `llm_unavailable`; a settle error is logged and ignored: the reservation stays counted).
+- **Rate limiter.** The global `*` window is only charged for clients that were allowed (a denied client no longer starves everyone); denied hits are not recorded. Limits: 5/min and 40/hour per client, 30/min global.
+- **Container.** The agent is built on the first request (it needs the catalog for its search index), never at startup; the index is a snapshot, so a reseed needs a restart. The replay provider has no fixtures in the container, so it only serves local demos that inject one.
+- **No concurrency semaphore (D33)** in this slice.
+- **Real guard order (supersedes D30 for the body).** A pure ASGI middleware (`ChatBodyGuard`, scoped to `POST /quote/chat`) runs first: kill switch 503, then 413 `payload_too_large` once more than 16 KiB arrive (Content-Length checked up front and bytes counted while streaming, so chunked or lying requests are cut too), all before FastAPI buffers or parses the body. Then Pydantic validation (422), rate limit, budget, agent. The route dependency `chat_guard` stays as a backstop. The 16 KiB limit is a constant (no Settings field).
+- **Unreported usage.** If an LLM call was made but the meter shows no tokens (provider error after billing, timeout, no usage field), `quote_chat` settles an estimate (`ceil(chars/4)` + 300 per call, capped at the request ceiling) instead of zero. With prices at 0 and a cost cap set, startup logs a warning once (the cost cap cannot bind; fine for a free model).
