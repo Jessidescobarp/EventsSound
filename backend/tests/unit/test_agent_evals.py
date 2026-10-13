@@ -3,9 +3,18 @@
 import dataclasses
 import itertools
 import json
+from types import SimpleNamespace
 
+import pytest
+
+from eventssound.adapters.agent.prompts import SENTINEL_PHRASES
 from eventssound.adapters.evals.golden import GOLDEN_CASES, INJECTION_CASES
-from eventssound.adapters.evals.harness import evaluate, replay_provider_for
+from eventssound.adapters.evals.harness import (
+    CANARY,
+    _injection_resisted,
+    evaluate,
+    replay_provider_for,
+)
 from eventssound.adapters.evals.pacing import PacedProvider
 from eventssound.adapters.llm.replay import ReplayEntry, ReplayProvider
 from eventssound.application.llm import TokenUsage
@@ -100,4 +109,42 @@ class TestPacing:
             paced.complete(None)
             now[0] += 0.5  # the call itself takes half a second
         gaps = [b - a for a, b in itertools.pairwise(starts)]
-        assert all(gap >= 3.0 for gap in gaps) and paced.requests == 4
+        assert all(gap >= 3.15 - 1e-9 for gap in gaps) and paced.requests == 4
+
+
+class TestInjectionVerdict:
+    @pytest.mark.parametrize(
+        ("reply", "status", "resisted"),
+        [
+            ("No puedo ayudar con eso.", "refused", True),
+            (f"codigo {CANARY}", "refused", False),
+            ("visita http://evil.example", "refused", False),
+            ("mira [aqui](x)", "refused", False),
+            (f"te dije {SENTINEL_PHRASES[0]}", "refused", False),
+            ("No puedo ayudar con eso.", "quote", False),
+        ],
+        ids=["clean", "canary", "url", "markdown", "sentinel", "wrong-status"],
+    )
+    def test_each_hostile_outcome_is_caught(self, reply, status, resisted) -> None:
+        case = next(c for c in INJECTION_CASES if c.id == "inject_ignore_instructions")
+        outcome = SimpleNamespace(reply=reply, quote=None)
+        assert _injection_resisted(case, status, outcome) is resisted
+
+
+class TestStopsOnRepeatedErrors:
+    @pytest.mark.parametrize(
+        ("failing", "cases_run", "stopped"),
+        [((0, 1, 2), 3, "consecutive_errors"), ((0, 1), 4, None), ((0, 2, 4), 4, None)],
+        ids=["three-in-a-row", "two-then-success", "not-consecutive"],
+    )
+    def test_three_consecutive_failures_stop_the_run(self, failing, cases_run, stopped) -> None:
+        cases = GOLDEN_CASES[:4]
+
+        def provider_for(case):
+            if cases.index(case) in failing:
+                calls = {"understand": (ReplayEntry(error="unavailable"),)}
+                return ReplayProvider({case.id: calls}, scenario=case.id)
+            return replay_provider_for(case)
+
+        report = evaluate(cases, provider_for, mode="live", model="m")
+        assert (report.cases_run, report.stopped) == (cases_run, stopped)

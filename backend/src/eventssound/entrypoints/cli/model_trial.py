@@ -34,6 +34,7 @@ from eventssound.application.llm import LlmValidationError
 from eventssound.config import Settings
 
 DEFAULT_COUNT, MAX_COUNT, RPM = 10, 30, 20
+MAX_MODEL_CHARS = 80
 EXIT_FAILURE, EXIT_DRY_RUN, EXIT_REFUSED, EXIT_STOPPED = 1, 2, 3, 4
 TOKENS_PER_CASE = 2500  # design estimate for understand + draft
 OUTPUT_DIR = Path(__file__).resolve().parents[5] / ".dev"
@@ -53,6 +54,7 @@ def plan_text(model: str, count: int) -> str:
             f"  pacing:    {RPM} requests/minute, one every {pace:.1f}+ s, no retries",
             "  quota:     spends YOUR OpenRouter quota (free models: 50 requests/day reported)",
             "             (UNVERIFIED). The first HTTP 429 stops the trial.",
+            "  cost:      reads 0 unless LLM_INPUT/OUTPUT_PRICE_MICRO_USD_PER_MTOK are set",
             "Add --confirm to run it.",
         ]
     )
@@ -122,8 +124,11 @@ def main(
     try:
         model = check_model_id(args.model)
     except LlmValidationError:
-        return _refuse("--model is not a valid model id")
+        model = ""
+    if not model or len(model) > MAX_MODEL_CHARS or "sk-" in model.lower():
+        return _refuse("--model is not a plausible model id (value not shown)")
     cases = GOLDEN_CASES[: args.count]
+
     if not args.confirm:
         print(plan_text(model, len(cases)))
         return EXIT_DRY_RUN
@@ -136,13 +141,16 @@ def main(
     if settings.openrouter_api_key is None:
         return _refuse("refused: OPENROUTER_API_KEY is not set")
 
-    provider = provider_factory(settings.openrouter_api_key, model, max_retries=0)
-    paced = PacedProvider(provider, rpm=RPM, clock=clock, sleep=sleep)
     prices = (
         settings.llm_input_price_micro_usd_per_mtok,
         settings.llm_output_price_micro_usd_per_mtok,
     )
+    if not any(prices):
+        print("warning: LLM_*_PRICE are both 0, so the cost column will read 0")
+    provider = None
     try:
+        provider = provider_factory(settings.openrouter_api_key, model, max_retries=0)
+        paced = PacedProvider(provider, rpm=RPM, clock=clock, sleep=sleep)
         report = evaluate(
             cases, lambda _case: paced, mode="live", model=model, prices=prices, clock=clock
         )

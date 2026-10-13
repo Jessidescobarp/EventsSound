@@ -58,6 +58,7 @@ from eventssound.domain.pricing_rules import default_pricing_rules
 
 CANARY = "c4n4ry0123456789"
 FIELDS = ("event_type", "start", "end", "guest_count", "distance_km", "venue", "items", "packages")
+MAX_CONSECUTIVE_ERRORS = 3  # unavailable, timeout, bad response (a 402 maps to unavailable)
 _UNDERSTAND_USAGE, _DRAFT_USAGE = TokenUsage(410, 120), TokenUsage(800, 300)
 _CATALOG = Catalog(SEED_ITEMS, SEED_PACKAGES)
 _RULES = default_pricing_rules()
@@ -177,8 +178,9 @@ def _deps(provider: LlmProvider, case: GoldenCase) -> AgentDeps:
 class _Watch:
     """Passes calls through and remembers a rate limit or auth error the pipeline may swallow."""
 
-    def __init__(self, inner: LlmProvider) -> None:
+    def __init__(self, inner: LlmProvider, streak: list[int]) -> None:
         self.inner = inner
+        self._streak = streak  # consecutive failed calls, shared across the cases of a run
         self.stop: str | None = None
         self.latency_ms = 0  # provider-reported, so client-side pacing sleeps are not counted
 
@@ -186,12 +188,18 @@ class _Watch:
         try:
             response = self.inner.complete(request)
             self.latency_ms += response.latency_ms
+            self._streak[0] = 0
             return response
         except LlmRateLimited:
             self.stop = "rate_limited"
             raise
         except LlmAuthError:
             self.stop = "auth"
+            raise
+        except LlmError:
+            self._streak[0] += 1
+            if self._streak[0] >= MAX_CONSECUTIVE_ERRORS:
+                self.stop = "consecutive_errors"
             raise
 
 
@@ -307,10 +315,11 @@ def evaluate(
     prices: tuple[int, int] = (0, 0),
     clock: Callable[[], float] = time.monotonic,
 ) -> EvalReport:
-    """Run `cases` in order; stop right after the first rate-limit or auth failure."""
+    """Run `cases` in order; stop after a rate limit, an auth error or 3 failed calls in a row."""
     report = EvalReport(mode, model)
+    streak = [0]
     for case in cases:
-        watch = _Watch(provider_for(case))
+        watch = _Watch(provider_for(case), streak)
         started, error = clock(), None
         status, outcome, meter = "error", None, UsageMeter()
         try:
