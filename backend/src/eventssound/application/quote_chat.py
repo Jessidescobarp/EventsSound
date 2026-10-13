@@ -63,6 +63,7 @@ class UsageMeter:
     completion_tokens: int = 0
     llm_calls: int = 0
     embed_calls: int = 0
+    repairs: int = 0
     tools: list[str] = field(default_factory=list)
     node_ms: dict[str, int] = field(default_factory=dict)
 
