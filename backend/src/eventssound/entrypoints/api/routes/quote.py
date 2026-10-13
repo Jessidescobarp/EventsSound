@@ -188,7 +188,8 @@ def validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         "message": CHAT_ERRORS["invalid_request"],
         "errors": errors,
     }
-    return JSONResponse(body, status_code=422)
+    headers = {"X-Request-ID": uuid.uuid4().hex, "Cache-Control": "no-store"}
+    return JSONResponse(body, status_code=422, headers=headers)
 
 
 @router.post(
@@ -219,6 +220,8 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
             limits=state.chat_limits,
             request_id=request_id,
         )
+        # Serialized inside the try: a failure here is a safe 500 with the request id.
+        payload = ChatResponseOut.from_outcome(request_id, result.outcome).model_dump(mode="json")
     except RateLimited as exc:
         retry = {"Retry-After": str(max(1, exc.retry_after_seconds))}
         return _refuse("rate_limited", 429, request_id, **retry)
@@ -257,10 +260,7 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
         len(outcome.degraded),
         int((time.monotonic() - started) * 1000),
     )
-    return JSONResponse(
-        ChatResponseOut.from_outcome(request_id, outcome).model_dump(mode="json"),
-        headers={"X-Request-ID": request_id, "Cache-Control": "no-store"},
-    )
+    return JSONResponse(payload, headers={"X-Request-ID": request_id, "Cache-Control": "no-store"})
 
 
 def _refuse(code: str, status: int, request_id: str, **headers: str) -> JSONResponse:

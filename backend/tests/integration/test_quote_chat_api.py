@@ -1,5 +1,6 @@
 """POST /quote/chat: guards, error shapes, schemas and OpenAPI, without a database or network."""
 
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -16,6 +17,7 @@ from eventssound.config import Settings
 from eventssound.domain.event_request import EventRequest, EventType, RequestedLine, VenueType
 from eventssound.domain.pricing import calculate_price
 from eventssound.entrypoints.api.app import create_app
+from eventssound.entrypoints.api.guards import MAX_BODY_BYTES
 from eventssound.entrypoints.api.routes.quote import RESPONSE_EXAMPLES
 from eventssound.entrypoints.api.schemas import ChatRequestIn, ChatResponseOut
 
@@ -214,11 +216,66 @@ def test_agent_failures_map_to_public_errors_without_detail(failure, status, cod
     assert response.headers["x-request-id"]
 
 
-def test_oversized_body_is_a_413_before_parsing() -> None:
+def padded(size: int) -> bytes:
+    """A valid chat body of exactly `size` bytes (trailing JSON whitespace)."""
+    raw = json.dumps(BODY, separators=(",", ":")).encode()
+    return raw + b" " * (size - len(raw))
+
+
+def chunks(data: bytes):
+    for start in range(0, len(data), 1024):
+        yield data[start : start + 1024]
+
+
+@pytest.mark.parametrize(
+    ("size", "mode", "status"),
+    [
+        (MAX_BODY_BYTES, "plain", 200),  # exactly at the limit
+        (MAX_BODY_BYTES, "chunked", 200),
+        (MAX_BODY_BYTES + 1, "plain", 413),  # declared length too big
+        (MAX_BODY_BYTES + 1, "chunked", 413),  # no Content-Length: counted while streaming
+        (MAX_BODY_BYTES + 1, "lying", 413),  # Content-Length says 100
+        (MAX_BODY_BYTES * 20, "chunked", 413),
+    ],
+)
+def test_body_limit_counts_streamed_bytes(size, mode, status) -> None:
     client, agent = make_client(rate_limiter=AllowAll())
-    response = client.post(URL, json={"messages": [message("x" * 20_000)]})
-    assert (response.status_code, response.json()["detail"]) == (413, "payload_too_large")
+    data = padded(size)
+    headers = {"Content-Type": "application/json"}
+    if mode == "lying":
+        headers["Content-Length"] = "100"
+    response = client.post(
+        URL, headers=headers, content=chunks(data) if mode == "chunked" else data
+    )
+    assert response.status_code == status and agent.calls == (status == 200)
+    if status == 413:
+        assert response.json()["detail"] == "payload_too_large" and "message" in response.json()
+
+
+def test_kill_switch_answers_oversized_bodies_without_reading_them() -> None:
+    client, agent = make_client(CHAT_ENABLED="false")
+    assert client.post(URL, content=chunks(padded(MAX_BODY_BYTES * 2))).status_code == 503
     assert agent.calls == 0
+
+
+def test_global_window_is_enforced_across_distinct_clients() -> None:
+    client, agent = make_client(TRUSTED_PROXY_HOPS=1)
+    codes = [
+        client.post(URL, json=BODY, headers={"X-Forwarded-For": f"7.7.7.{i}"}).status_code
+        for i in range(31)
+    ]
+    assert codes == [200] * 30 + [429] and agent.calls == 30
+
+
+def test_a_serialization_failure_is_a_safe_500_with_a_request_id(monkeypatch) -> None:
+    def boom(*args, **kwargs):
+        raise ValueError("host db.internal")
+
+    monkeypatch.setattr(ChatResponseOut, "from_outcome", boom)
+    client, _ = make_client()
+    response = client.post(URL, json=BODY)
+    assert (response.status_code, response.json()["detail"]) == (500, "internal_error")
+    assert response.headers["x-request-id"] and "db.internal" not in response.text
 
 
 def test_logs_carry_no_user_text_ip_or_keys(caplog) -> None:

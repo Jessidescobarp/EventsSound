@@ -7,7 +7,12 @@ from eventssound.application.quote_chat import QuoteAgent
 from eventssound.application.usage import RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.entrypoints.api import container
-from eventssound.entrypoints.api.guards import ChatRefusal, FailClosedBudget, FailClosedLimiter
+from eventssound.entrypoints.api.guards import (
+    ChatBodyGuard,
+    ChatRefusal,
+    FailClosedBudget,
+    FailClosedLimiter,
+)
 from eventssound.entrypoints.api.routes import catalog, health, quote
 from eventssound.entrypoints.api.routes.quote import chat_refusal_handler, validation_handler
 
@@ -70,6 +75,8 @@ def create_app(
     app.add_exception_handler(ChatRefusal, chat_refusal_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_handler)  # type: ignore[arg-type]
 
+    # Added before CORS so the CORS layer wraps it and its 413/503 answers carry CORS headers.
+    app.add_middleware(ChatBodyGuard, settings=settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
