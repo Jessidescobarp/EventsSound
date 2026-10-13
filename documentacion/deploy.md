@@ -38,7 +38,7 @@ Swagger UI (`/docs`) and the schema (`/openapi.json`) stay enabled when `APP_ENV
 
 ## Migration 0004 (daily LLM budget)
 
-Deploying migration `0004` creates the empty `llm_usage_daily` table in Neon automatically (a plain `CREATE TABLE`, no lock on existing data; downgrade drops it). The chat uses it as its persistent daily cap whenever `APP_ENV` is not `local` and the chat is active.
+Deploying migration `0004` creates the empty `llm_usage_daily` table in Neon automatically (a plain `CREATE TABLE`, no lock on existing data; downgrade drops it). The chat uses it as its persistent daily cap whenever the chat is active with the `openrouter` provider, in any `APP_ENV`.
 
 ## Migration 0003 (pgvector)
 
