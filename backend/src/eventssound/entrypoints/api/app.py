@@ -67,7 +67,9 @@ def create_app(
 
     # Quote chat. Limiter and budget are wrapped so that an error in either refuses the request.
     app.state.chat_agent = quote_agent or container.make_quote_agent(settings, factory)
-    app.state.usage_budget = FailClosedBudget(usage_budget or container.make_usage_budget(settings))
+    app.state.usage_budget = FailClosedBudget(
+        usage_budget or container.make_usage_budget(settings, factory)
+    )
     app.state.rate_limiter = FailClosedLimiter(
         rate_limiter or container.make_rate_limiter(settings)
     )

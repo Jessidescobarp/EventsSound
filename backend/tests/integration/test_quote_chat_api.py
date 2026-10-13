@@ -75,6 +75,15 @@ def make_client(agent=None, **overrides):
     parts = {k: overrides.pop(k) for k in ("usage_budget", "rate_limiter") if k in overrides}
     values.update(overrides)
     settings = Settings(_env_file=None, **values)
+    # Production settings would otherwise pick the Postgres budget and hit the unreachable URL.
+    if settings.llm_provider == "openrouter":
+        parts.setdefault(
+            "usage_budget",
+            InMemoryUsageBudget(
+                token_cap=settings.llm_daily_token_cap,
+                cost_cap_micro_usd=settings.llm_daily_cost_cap_micro_usd,
+            ),
+        )
     return TestClient(create_app(settings, quote_agent=agent, **parts)), agent
 
 

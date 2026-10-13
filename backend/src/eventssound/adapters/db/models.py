@@ -6,11 +6,12 @@ allowed values is a normal migration. The CHECK value lists are literal on purpo
 frozen history and must not follow later changes to the domain enums by accident.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -134,3 +135,21 @@ class CatalogEmbeddingModel(TimestampMixin, Base):
     model: Mapped[str] = mapped_column(String(120))
     content_hash: Mapped[str] = mapped_column(String(64))
     embedding: Mapped[tuple[float, ...]] = mapped_column(VectorType(EMBEDDING_DIMENSIONS))
+
+
+class LlmUsageDailyModel(Base):
+    """Reserved plus settled LLM usage per UTC day (the persistent daily money cap).
+
+    Caps are not stored: they come from Settings, so changing a cap needs no migration.
+    """
+
+    __tablename__ = "llm_usage_daily"
+    __table_args__ = (
+        CheckConstraint("tokens >= 0", name="tokens_non_negative"),
+        CheckConstraint("cost_micro_usd >= 0", name="cost_non_negative"),
+    )
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    tokens: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    cost_micro_usd: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
