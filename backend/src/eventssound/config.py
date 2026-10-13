@@ -69,6 +69,12 @@ class Settings(BaseSettings):
         # `OPENROUTER_API_KEY=` in .env.example means "not set".
         return None if isinstance(value, str) and not value.strip() else value
 
+    @field_validator("app_env", "llm_provider", mode="before")
+    @classmethod
+    def _normalize_case(cls, value: object) -> object:
+        # ' Production ' is production; a casing typo must not crash the whole API at startup.
+        return value.strip().lower() if isinstance(value, str) else value
+
     @field_validator("embedding_model", "llm_model", mode="after")
     @classmethod
     def _strip_model(cls, value: str) -> str:

@@ -45,6 +45,8 @@ def test_out_of_range_values_are_rejected(bad) -> None:
         ({**KEY, "OPENROUTER_API_KEY": ""}, False),
         ({**KEY, "LLM_MODEL": " "}, False),
         ({**KEY, "CHAT_ENABLED": False}, False),
+        ({"APP_ENV": " Production "}, False),  # normalized: still production, replay refused
+        ({**KEY, "LLM_PROVIDER": "OpenRouter", "APP_ENV": "PRODUCTION"}, True),  # case-insensitive
     ],
 )
 def test_chat_active(values, active) -> None:
