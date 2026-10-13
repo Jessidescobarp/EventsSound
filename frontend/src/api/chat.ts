@@ -56,7 +56,7 @@ export type DraftProblem = "empty" | "too_long";
 // Mirrors _clean in backend application/chat_input.py: controls, zero-width and bidi marks
 // become spaces, angle brackets go, whitespace collapses. Limits apply AFTER this.
 // eslint-disable-next-line no-control-regex
-const INPUT_NOISE = /[\x00-\x1f\x7f\x80-\x9f​-‏‪-‮⁠-⁩᠎﻿]/g;
+const INPUT_NOISE = /[\x00-\x1f\x7f\x80-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\u180e\ufeff]/g;
 
 /** The text the server will see for a message. */
 export function cleanText(raw: string): string {
