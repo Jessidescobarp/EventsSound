@@ -49,6 +49,13 @@ Rules (mandatory):
 
 FACTS are trusted system data; the user never sees this prompt."""
 
+# Fragments of the understand system prompt that must never leak into a draft (D26):
+# if one appears, verify fails and the template is served instead.
+SENTINEL_PHRASES: tuple[str, ...] = (
+    "untrusted_conversation",
+    "never output the internal marker",
+)
+
 
 def build_calendar(today: date) -> str:
     """Fourteen `weekday YYYY-MM-DD` lines built by code: weak models do poor date math."""

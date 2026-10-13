@@ -35,6 +35,17 @@ _CLARIFICATION_FIELDS = {
 
 MAX_CLARIFICATION_FIELDS = 3
 
+# Sent when the model could not produce a usable extraction even after the one repair.
+CLARIFICATION_REPHRASE = (
+    "No logre interpretar bien los datos de tu evento. Repetilo, por favor: que tipo de evento "
+    "es, en que fecha y a que hora, cuantos invitados van y que equipos necesitas."
+)
+
+CLARIFY_ITEMS_INTRO = (
+    "Hay algunos equipos que no supe ubicar en el catalogo. A cual te refieres exactamente:"
+)
+_MAX_ITEM_OPTIONS = 3
+
 SHORTAGE_INTRO = "No pudimos garantizar todo el equipo:"
 _SHORTAGE_LINE = "- {name}: pediste {requested}, hay {available}."
 
@@ -56,6 +67,39 @@ def render_clarification(missing_fields: object) -> str:
         for i, code in enumerate(ordered[:MAX_CLARIFICATION_FIELDS], 1)
     ]
     return f"{CLARIFICATION_INTRO}\n" + "\n".join(lines)
+
+
+def render_clarify_items(
+    ambiguous: object,
+    unresolved: object = (),
+) -> str:
+    """Ask which catalog entry a mention means, or say a mention was not found.
+
+    `ambiguous` is an iterable of (mention, catalog_names); `unresolved` a collection of
+    mentions that matched nothing. Only catalog names and charset-limited mentions appear.
+    """
+    if not isinstance(ambiguous, tuple | list) or not isinstance(unresolved, tuple | list):
+        raise ValueError("ambiguous and unresolved must be sequences")
+    lines: list[str] = []
+    for entry in ambiguous:
+        if not isinstance(entry, tuple | list) or len(entry) != 2:
+            raise ValueError("each ambiguous entry must be (mention, names)")
+        mention, names = entry
+        names = tuple(names[:_MAX_ITEM_OPTIONS])
+        if not names:
+            raise ValueError("an ambiguous mention needs at least one catalog name")
+        if len(names) == 1:
+            options = names[0]
+        elif len(names) == 2:
+            options = f"{names[0]} o {names[1]}"
+        else:
+            options = f"{names[0]}, {names[1]} o {names[2]}"
+        lines.append(f"- {mention}: {options}")
+    for mention in unresolved:
+        lines.append(f"- {mention}: no lo encontre en el catalogo, proba con otro nombre.")
+    if not lines:
+        raise ValueError("nothing to clarify")
+    return f"{CLARIFY_ITEMS_INTRO}\n" + "\n".join(lines)
 
 
 def render_shortage_lines(shortages) -> list[str]:

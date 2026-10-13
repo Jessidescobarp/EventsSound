@@ -179,3 +179,59 @@ class TestAvailabilityShortageShape:
 
         assert issubclass(Availability, object)
         assert ShortageFact("a", "b", 1, 0).item_code == "a"
+
+
+class TestClarifyItems:
+    def test_ambiguous_mentions_list_catalog_names_only(self) -> None:
+        from eventssound.application.messages_es import render_clarify_items
+
+        text = render_clarify_items(
+            (("parlantes", ("Parlante activo de 15 pulgadas", "Paquete DJ")),), ()
+        )
+        assert "parlantes" in text
+        assert "Parlante activo de 15 pulgadas" in text
+        assert "o" in text
+
+    def test_three_options_are_joined_with_o(self) -> None:
+        from eventssound.application.messages_es import render_clarify_items
+
+        text = render_clarify_items((("luces", ("Luz LED PAR RGB", "Luz A", "Luz B")),), ())
+        assert "Luz LED PAR RGB, Luz A o Luz B" in text
+
+    def test_unresolved_mentions_say_not_found(self) -> None:
+        from eventssound.application.messages_es import render_clarify_items
+
+        text = render_clarify_items((), ("tarima gigante",))
+        assert "tarima gigante" in text
+        assert "catalogo" in text
+
+    def test_mixed_ambiguous_and_unresolved(self) -> None:
+        from eventssound.application.messages_es import render_clarify_items
+
+        text = render_clarify_items((("dj", ("Controlador DJ de 4 canales",)),), ("humo",))
+        assert "dj" in text and "humo" in text
+
+    def test_rephrase_constant_is_static_spanish(self) -> None:
+        from eventssound.application.messages_es import CLARIFICATION_REPHRASE
+
+        assert isinstance(CLARIFICATION_REPHRASE, str)
+        assert len(CLARIFICATION_REPHRASE) > 20
+
+
+class TestFactsPayload:
+    def test_payload_covers_the_draft_contract(self) -> None:
+        from eventssound.application.proposal_check import facts_payload
+
+        quote, request, _ = golden()
+        payload = facts_payload(
+            QuoteFacts.from_quote(quote, request, _, canary=CANARY),
+            event_type="wedding",
+            available=True,
+        )
+        assert payload["event_type"] == "wedding"
+        assert payload["guest_count"] == request.guest_count
+        assert payload["total_cop"] == quote.total.amount
+        assert payload["date"].startswith("el ") or payload["date"].startswith("del ")
+        assert payload["start"] == "8:00 p. m."
+        assert payload["availability"] == "disponible"
+        assert all("amount_cop" in line for line in payload["lines"])
