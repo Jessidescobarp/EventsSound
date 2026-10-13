@@ -56,6 +56,15 @@ CI (`.github/workflows/ci.yml`) runs all of the above on every PR and push to `m
 - Tests live in the same commit as the behavior they verify.
 - Stacked PRs: retarget the dependent PR's base to `main` BEFORE merging the previous one; merging a stacked PR into its parent branch does not reach `main` (happened with #2 -> `feat/backend-core`, fixed by #6).
 
+## Testing and review budget (token-lean)
+
+- Run the compact runner, not raw suites: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-summary.ps1 -Suite backend|frontend|all -Mode focused|full [-Filter <name>]`. Use the nearest focused test while editing and the full suite once per work unit.
+- Test volume: tests should stay about 1x the lines of code or less. One parametrized table per class of input (valid, boundary, each distinct error class), not one row per variation. Rigorous coverage is reserved for money, pricing, availability, secret handling and the seed guard; everything else gets the happy path plus its distinct error classes.
+- Do not hand-mutate code to prove every test; for the critical modules above, 3 to 5 targeted breakages are enough.
+- Independent review only for critical changes (pricing, availability, LLM/embedding adapters, secrets, seed guard, auth, chat endpoint, migrations). Other PRs rely on CI and the author's checklist. Reviewers read `git diff --stat` and the diff first, open whole files only when needed, and report at most 60 lines.
+- Final reports from agents: at most 60 lines, facts and commands only.
+- Reviewer agents live in `.claude/agents/` (`security-auditor.md`, `code-quality-reviewer.md`, read-only) and the runner skill in `.claude/skills/test-summary/`. If OpenCode does not read `.claude/agents`, copy those files to its own agent folder (the source of truth stays in `.claude`).
+
 ## SDD workflow
 
 - Specs-driven development with the `openspec/` store. Current change: `openspec/changes/walking-skeleton-and-deploy/` (`proposal.md`, `specs/`, `design.md`, `tasks.md`).
