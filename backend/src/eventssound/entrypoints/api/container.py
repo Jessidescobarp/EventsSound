@@ -78,6 +78,16 @@ def make_rate_limiter(settings: Settings) -> RateLimiter:
 def make_usage_budget(settings: Settings) -> UsageBudget:
     if settings.is_production:
         logger.warning("chat uses the in-memory daily budget: it resets on every restart")
+    if (
+        settings.llm_provider == "openrouter"
+        and settings.llm_daily_cost_cap_micro_usd > 0
+        and not (
+            settings.llm_input_price_micro_usd_per_mtok
+            or settings.llm_output_price_micro_usd_per_mtok
+        )
+    ):
+        # Fine for a free model; for a paid one the cost cap never binds (only the token cap).
+        logger.warning("LLM prices are 0: the daily cost cap cannot bind, only the token cap")
     return InMemoryUsageBudget(
         token_cap=settings.llm_daily_token_cap,
         cost_cap_micro_usd=settings.llm_daily_cost_cap_micro_usd,

@@ -12,11 +12,14 @@ from enum import StrEnum
 from typing import Literal, Protocol
 
 from eventssound.application.chat_input import sanitize_turns
-from eventssound.application.llm import TokenUsage, estimate_cost_micro_usd
+from eventssound.application.llm import TokenUsage, estimate_cost_micro_usd, estimate_tokens
 from eventssound.application.usage import RateLimiter, UsageBudget
 from eventssound.domain.availability import AvailabilityReport
 from eventssound.domain.event_request import EventRequest
 from eventssound.domain.pricing import Quote
+
+# Prompt scaffolding per LLM call (system prompt, schema); the floor for unreported usage.
+_CALL_OVERHEAD_TOKENS = 300
 
 
 class InvalidChat(Exception):
@@ -171,10 +174,17 @@ def quote_chat(
     try:
         outcome = agent.run(data)
     finally:
+        prompt, completion = meter.prompt_tokens, meter.completion_tokens
+        if meter.llm_calls and not meter.total_tokens:
+            # A call was made but no usage came back (provider error after billing, timeout,
+            # or a response without usage): settle an estimate, never zero.
+            chars = sum(len(turn.content) for turn in clean)
+            per_call = estimate_tokens(chars) + _CALL_OVERHEAD_TOKENS
+            prompt = min(limits.request_token_ceiling, per_call * meter.llm_calls)
         cost = estimate_cost_micro_usd(
-            TokenUsage(meter.prompt_tokens, meter.completion_tokens),
+            TokenUsage(prompt, completion),
             limits.input_price_micro_usd,
             limits.output_price_micro_usd,
         )
-        budget.settle(reservation, meter.total_tokens, cost)
+        budget.settle(reservation, prompt + completion, cost)
     return ChatResult(outcome=outcome, meter=meter)

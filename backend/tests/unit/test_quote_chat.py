@@ -315,3 +315,31 @@ class TestQuoteChat:
 class TestAgentStatus:
     def test_values(self) -> None:
         assert {s.value for s in AgentStatus} == {"clarification", "quote", "refused"}
+
+
+class TestUnreportedUsageIsStillSettled:
+    @pytest.mark.parametrize(
+        ("calls", "prompt", "completion", "fails", "settled"),
+        [
+            (1, 0, 0, True, 301),  # provider error after billing: 1 token + 300 overhead
+            (2, 0, 0, False, 602),  # a response without usage, two calls
+            (1, 50, 20, False, 70),  # reported usage is settled as is
+            (0, 0, 0, True, 0),  # failed before any LLM call: nothing to charge
+        ],
+    )
+    def test_settled_tokens(self, calls, prompt, completion, fails, settled) -> None:
+        def run(data: AgentInput) -> AgentOutcome:
+            data.meter.llm_calls = calls
+            data.meter.prompt_tokens, data.meter.completion_tokens = prompt, completion
+            if fails:
+                raise LlmUnavailable()
+            return outcome()
+
+        agent, budget = FakeAgent(), FakeBudget()
+        agent.run = run  # type: ignore[method-assign]
+        if fails:
+            with pytest.raises(LlmUnavailable):
+                run_use_case(agent=agent, budget=budget, content="hola")
+        else:
+            run_use_case(agent=agent, budget=budget, content="hola")
+        assert budget.settles[0][1] == settled
