@@ -11,8 +11,9 @@ Web app for a sound, lighting and DJ events company. Its core is an AI quote ass
 | Persistence (Postgres tables `equipment_items`, `service_packages`, `package_items`, `bookings`, `catalog_embeddings`; migrations 0001-0003) | Working |
 | Pure domain: money, pricing oracle (`calculate_price`), availability | Working, covered by tests |
 | Vector search over the catalog (pgvector, embedding CLI) | Working locally; needs an embedding provider key to be used for real |
-| Quote agent (LangGraph pipeline, Spanish proposal text verified against the computed quote) | Built and tested with replayed LLM responses; **not exposed over HTTP yet** |
-| Quote chat endpoint (`POST /quote/chat`), usage cap, evaluations | Not built yet |
+| Quote agent (LangGraph pipeline, Spanish proposal text verified against the computed quote) | Built and tested with replayed LLM responses |
+| Quote chat endpoint (`POST /quote/chat`) with per-IP rate limit, in-memory daily budget and kill switch | Built and tested offline; disabled in production until an OpenRouter model and key are configured. The budget resets on restart |
+| Persistent usage cap (`llm_usage_daily`), evaluations | Not built yet |
 | Frontend: home, about, portfolio, service catalog | Working (an empty catalog shows "Aún no hay equipos publicados"; if the API is unreachable it shows a graceful "available soon" message; a demo-data mode exists for local use only) |
 | Frontend quote page (`/cotizar`) | Placeholder ("Proximamente") |
 | Bookings (creating or managing reservations from the UI) | Not built; the `bookings` table only feeds availability |

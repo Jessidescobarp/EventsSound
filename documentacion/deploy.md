@@ -23,6 +23,8 @@ If Render appends a suffix because a name is taken, update `CORS_ALLOWED_ORIGINS
 
 `CORS_ALLOWED_ORIGINS` is the web URL with scheme and no trailing slash. `DATABASE_URL` is the Neon DIRECT (non-pooled, no `-pooler` in the host) string with the scheme rewritten to `postgresql+psycopg://` (the backend also rewrites `postgres://` and `postgresql://` itself).
 
+Quote chat (`POST /quote/chat`): `CHAT_ENABLED=false` is the kill switch (redeploy). In `APP_ENV=production` the chat answers 503 `chat_disabled` unless `LLM_PROVIDER=openrouter` with `LLM_MODEL` and `OPENROUTER_API_KEY` set (the replay provider never serves in production). `TRUSTED_PROXY_HOPS` is how many reverse proxies sit in front of the app: the default `0` ignores `X-Forwarded-For` (every client behind a proxy would share the proxy's address and one rate-limit bucket); behind Render set it to `1` (UNVERIFIED: confirm by checking that two different clients get different buckets, since a value too high lets a client choose its own key). The rate limiter and the daily budget are in memory and reset on every restart: the persistent budget table is a later change.
+
 ## Deploy order
 
 1. Merge to `main` with green CI. Services deploy automatically only after CI checks pass (`autoDeployTrigger: checksPass`). If a merge does not deploy, check the service's Events tab and trigger a manual deploy (Render does not deploy when it detects no checks).
