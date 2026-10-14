@@ -303,6 +303,21 @@ class TestResolveItems:
         assert out["resolved_packages"] == (RequestedLine("pkg_party", 1),)
         assert out["route"] == "build_request"
 
+    def test_needs_are_searched_together_with_the_event_type(self) -> None:
+        seen: list[str] = []
+
+        class Spy:
+            def search(self, queries, category, limit):
+                from eventssound.application.search import SearchResult
+
+                seen.extend(queries)
+                return tuple(SearchResult(()) for _ in queries)
+
+        deps = make_deps(ScriptedProvider([]), search=Spy())
+        ex = extraction(items=[], needs=["sonido luces DJ"], event_type="wedding")
+        resolve_items(deps)(state(extraction=ex))
+        assert seen == ["boda sonido luces DJ"]
+
     def test_needs_with_multiple_packages_are_ambiguous(self) -> None:
         deps = make_deps(ScriptedProvider([]))
         ex = extraction(items=[], needs=["paquete dj"])

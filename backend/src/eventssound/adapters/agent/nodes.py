@@ -178,8 +178,9 @@ def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
         catalog = deps.load_catalog()
         queries = [mention.mention for mention in extraction.items]
         needs_query = " ".join(extraction.needs).strip() if extraction.needs else None
+        event_word = EVENT_WORD_ES.get(extraction.event_type or "", "")
         if needs_query:
-            queries.append(needs_query)
+            queries.append(f"{event_word} {needs_query}".strip())
         results = deps.search.search(queries, None, SEARCH_LIMIT)
         degraded = any(result.degraded for result in results)
         resolved_items: list[RequestedLine] = []
