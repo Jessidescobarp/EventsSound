@@ -8,9 +8,10 @@ import json
 import secrets
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from datetime import time as dtime
+from functools import partial
 from typing import TYPE_CHECKING
 
 from eventssound.adapters.agent.prompts import (
@@ -72,7 +73,7 @@ class AgentDeps:
     limits: ChatLimits
     timezone: "tzinfo"
     scenario: str | None = None
-    token_factory: Callable[[], str] = field(default_factory=lambda: secrets.token_hex(8))
+    token_factory: Callable[[], str] = partial(secrets.token_hex, 8)
     monotonic: Callable[[], float] = time.monotonic
 
 
