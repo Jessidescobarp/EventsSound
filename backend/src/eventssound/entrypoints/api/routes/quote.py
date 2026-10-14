@@ -239,7 +239,9 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
             status_code=422,
             headers={"X-Request-ID": request_id, "Cache-Control": "no-store"},
         )
-    except LlmError:
+    except LlmError as exc:
+        # Only the class (auth, rate limit, timeout, ...): it tells operators why without leaks.
+        logger.warning("chat llm error request_id=%s error=%s", request_id, type(exc).__name__)
         return _refuse("llm_unavailable", 503, request_id)
     except (RepositoryUnavailable, InvalidStoredData):
         return _refuse("catalog_unavailable", 503, request_id)
