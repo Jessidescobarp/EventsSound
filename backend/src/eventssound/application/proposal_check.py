@@ -187,10 +187,19 @@ def facts_payload(facts: QuoteFacts, *, event_type: str, available: bool) -> dic
         "guest_count": facts.guest_count,
         "distance_km": facts.distance_km,
         "rental_days": facts.rental_days,
+        # `text` is the template bullet (Spanish name plus the line total), so surcharges that
+        # carry no label are still named and the draft cannot read a line total as a unit price.
         "lines": [
-            {"label": line.label, "quantity": line.quantity, "amount_cop": line.amount}
-            for line in facts.lines
-            if not (line.kind is LineKind.ROUNDING and line.amount == 0)
+            {
+                "text": bullet[2:],
+                "quantity": line.quantity,
+                "amount_cop": line.amount,
+            }
+            for line, bullet in zip(
+                [ln for ln in facts.lines if not (ln.kind is LineKind.ROUNDING and ln.amount == 0)],
+                _line_bullets(facts),
+                strict=True,
+            )
         ],
         "subtotal_cop": facts.subtotal,
         "total_cop": facts.total,
