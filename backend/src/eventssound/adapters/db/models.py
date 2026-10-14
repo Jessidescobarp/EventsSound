@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .session import Base
 from .vector import VectorType
 
-CATEGORIES = "('sound', 'lighting', 'dj', 'stage', 'effects', 'video')"
+CATEGORIES = "('sound', 'lighting', 'dj', 'stage', 'effects', 'video', 'staff')"
 BOOKING_STATUSES = "('pending', 'confirmed', 'cancelled')"
 EMBEDDING_KINDS = "('item', 'package')"
 # Frozen in migration 0003: a different size is a new revision plus a full refresh.

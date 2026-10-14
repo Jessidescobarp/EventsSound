@@ -42,6 +42,7 @@ def test_categories_match_the_design() -> None:
         "stage",
         "effects",
         "video",
+        "staff",
     ]
 
 

@@ -1,7 +1,8 @@
 """Synthetic seed definitions: plain domain values, no database access.
 
 All data is invented. Codes are English slugs (stable upsert keys); display names are Spanish.
-Prices are whole COP pesos per rental day. To grow the demo catalog, edit this module only.
+Prices are whole COP pesos per rental day (staff items: a fixed price per event day).
+To grow the demo catalog, edit this module only.
 """
 
 from datetime import datetime
@@ -14,6 +15,7 @@ from eventssound.domain.money import Money
 _BOGOTA = ZoneInfo("America/Bogota")
 _SOUND, _LIGHT, _DJ = EquipmentCategory.SOUND, EquipmentCategory.LIGHTING, EquipmentCategory.DJ
 _STAGE, _FX, _VIDEO = EquipmentCategory.STAGE, EquipmentCategory.EFFECTS, EquipmentCategory.VIDEO
+_STAFF = EquipmentCategory.STAFF
 
 
 def _item(code: str, name: str, category: EquipmentCategory, stock: int, price: int):
@@ -45,6 +47,9 @@ SEED_ITEMS: tuple[EquipmentItem, ...] = (
     _item("fx_fog_machine", "Máquina de humo", _FX, 5, 55_000),
     _item("fx_cold_spark", "Fuente de chispas frías", _FX, 3, 180_000),
     _item("video_led_screen_3x2", "Pantalla LED de 3 x 2 metros", _VIDEO, 2, 900_000),
+    _item("staff_dj", "DJ profesional (hasta 5 horas)", _STAFF, 2, 900_000),
+    _item("staff_mc", "Animador / maestro de ceremonias (hasta 5 horas)", _STAFF, 2, 700_000),
+    _item("staff_sound_tech", "Tecnico de sonido en sitio", _STAFF, 3, 400_000),
 )
 
 SEED_PACKAGES: tuple[ServicePackage, ...] = (
@@ -68,6 +73,8 @@ SEED_PACKAGES: tuple[ServicePackage, ...] = (
         ("light_led_par", 8),
         ("light_moving_head_wash", 4),
         ("stage_platform_2x1", 4),
+        ("staff_dj", 1),
+        ("staff_mc", 1),
     ),
     _package(
         "pkg_corporate",
@@ -79,6 +86,8 @@ SEED_PACKAGES: tuple[ServicePackage, ...] = (
         ("stage_platform_2x1", 6),
         ("stage_access_stairs", 1),
         ("video_led_screen_3x2", 1),
+        ("staff_mc", 1),
+        ("staff_sound_tech", 1),
     ),
     _package(
         "pkg_dj_night",

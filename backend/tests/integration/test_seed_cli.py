@@ -35,11 +35,11 @@ def test_main_twice_seeds_once_and_reports_a_safe_summary(
     assert cli.main(["--confirm"], settings=settings, environ=allow) == 0
 
     assert counts(migrated_database) == first
-    assert first[0] == 20
+    assert first[0] == 23
     assert first[1] == 4
     assert first[2] > 0
     out = capsys.readouterr().out
-    assert out.count("seeded 20 items, 4 packages and 5 demo bookings") == 2
+    assert out.count("seeded 23 items, 4 packages and 5 demo bookings") == 2
     password = make_url(migrated_database).password
     assert not password or password not in out
 
@@ -61,7 +61,7 @@ def test_module_entrypoint_runs_as_a_script(migrated_database: str) -> None:
     )
 
     assert done.returncode == 0, done.stderr
-    assert "seeded 20 items" in done.stdout
-    assert counts(migrated_database)[0] == 20
+    assert "seeded 23 items" in done.stdout
+    assert counts(migrated_database)[0] == 23
     password = make_url(migrated_database).password
     assert not password or password not in done.stdout + done.stderr

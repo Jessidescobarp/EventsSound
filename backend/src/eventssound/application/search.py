@@ -14,6 +14,7 @@ CATEGORY_ES: dict[EquipmentCategory, str] = {
     EquipmentCategory.STAGE: "escenario",
     EquipmentCategory.EFFECTS: "efectos",
     EquipmentCategory.VIDEO: "video",
+    EquipmentCategory.STAFF: "personal",
 }
 
 MAX_QUERIES = 16

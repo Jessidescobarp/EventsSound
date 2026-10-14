@@ -20,6 +20,7 @@ class EquipmentCategory(StrEnum):
     STAGE = "stage"
     EFFECTS = "effects"
     VIDEO = "video"
+    STAFF = "staff"
 
 
 def _check_code(code: str) -> None:
