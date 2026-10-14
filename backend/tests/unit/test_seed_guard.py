@@ -111,7 +111,7 @@ def test_dry_run_exits_2_and_touches_nothing(
     assert code == 2
     assert factory.calls == 0
     out = capsys.readouterr().out
-    assert "dry run: would upsert 20 items and 4 packages" in out
+    assert "dry run: would upsert 23 items and 4 packages" in out
     assert "5 demo bookings" in out
     assert "--no-bookings" in out
     assert "--confirm" in out
@@ -383,7 +383,7 @@ def test_the_engine_built_by_the_cli_is_disposed_in_every_case(
     monkeypatch.setattr(cli, "build_engine", lambda url: spy)
     monkeypatch.setattr(cli, "build_session_factory", lambda engine: factory)
     if outcome == "success":
-        monkeypatch.setattr(cli, "seed_catalog", lambda *args, **kwargs: SeedResult(20, 4, 5))
+        monkeypatch.setattr(cli, "seed_catalog", lambda *args, **kwargs: SeedResult(23, 4, 5))
 
     code = cli.main(["--confirm"], settings=settings_for(url_for("localhost")))
 
@@ -515,7 +515,7 @@ def test_a_local_non_production_run_seeds_the_demo_bookings(
     assert code == 0
     assert [len(call[2]) for call in spy.calls] == [5]
     out = capsys.readouterr().out
-    assert "seeded 20 items, 4 packages and 5 demo bookings (target: local)" in out
+    assert "seeded 23 items, 4 packages and 5 demo bookings (target: local)" in out
 
 
 @pytest.mark.parametrize(
@@ -542,7 +542,7 @@ def test_demo_bookings_are_skipped_and_the_summary_says_so(
     assert code == 0
     assert [call[2] for call in spy.calls] == [()]
     captured = capsys.readouterr()
-    assert "seeded 20 items and 4 packages" in captured.out
+    assert "seeded 23 items and 4 packages" in captured.out
     assert f"demo bookings: skipped ({reason})" in captured.out
     for secret in SENTINELS:
         assert secret not in captured.out + captured.err

@@ -48,9 +48,9 @@ def test_first_run_loads_everything_and_reports_counts(
 ) -> None:
     result = seed(session_factory)
 
-    assert result == SeedResult(items=20, packages=4, bookings=len(SEED_BOOKINGS))
+    assert result == SeedResult(items=23, packages=4, bookings=len(SEED_BOOKINGS))
     data = snapshot(session_factory)
-    assert len(data["items"]) == 20
+    assert len(data["items"]) == 23
     assert len(data["packages"]) == 4
     assert len(data["lines"]) == LINES
     assert len(data["bookings"]) == len(SEED_BOOKINGS)
@@ -80,7 +80,7 @@ def test_running_twice_creates_no_duplicates_and_changes_nothing(
 
     second_result = seed(session_factory)
 
-    assert second_result == SeedResult(items=20, packages=4, bookings=len(SEED_BOOKINGS))
+    assert second_result == SeedResult(items=23, packages=4, bookings=len(SEED_BOOKINGS))
     assert snapshot(session_factory) == first
     assert run(session_factory, "SELECT code, created_at FROM equipment_items ORDER BY code") == (
         created

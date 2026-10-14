@@ -8,7 +8,7 @@ Web app for a sound, lighting and DJ events company. Its core is an AI quote ass
 |---|---|
 | Health checks (`/health`, `/health/db`) | Working, deployed |
 | Catalog and packages API (`GET /catalog/items`, `/catalog/packages`) with public Swagger at `/docs` | Working, deployed. The deployed database has the tables but is empty until the guarded seed is run on purpose |
-| Persistence (Postgres tables `equipment_items`, `service_packages`, `package_items`, `bookings`, `catalog_embeddings`, `llm_usage_daily`; migrations 0001-0004) | Working |
+| Persistence (Postgres tables `equipment_items`, `service_packages`, `package_items`, `bookings`, `catalog_embeddings`, `llm_usage_daily`; migrations 0001-0005; the catalog also has `staff` services: DJ, MC, sound technician, priced per event day) | Working |
 | Pure domain: money, pricing oracle (`calculate_price`), availability | Working, covered by tests |
 | Vector search over the catalog (pgvector, embedding CLI) | Working locally; needs an embedding provider key to be used for real |
 | Quote agent (LangGraph pipeline, Spanish proposal text verified against the computed quote) | Built and tested with replayed LLM responses |

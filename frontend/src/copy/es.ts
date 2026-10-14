@@ -182,6 +182,7 @@ export const es = {
       stage: "Escenarios",
       effects: "Efectos",
       video: "Video",
+      staff: "Personal",
     } as Record<string, string>,
     categoryFallback: "Otros",
   },

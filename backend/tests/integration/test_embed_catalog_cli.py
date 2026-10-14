@@ -167,9 +167,9 @@ def test_main_embeds_the_seeded_catalog_and_a_second_run_embeds_nothing(
     second, out2 = run(capsys, ["--confirm"], settings=cfg, environ=allow)
 
     assert (first, second) == (0, 0)
-    assert "embedded 24, skipped 0, deleted 0" in out1
-    assert "embedded 0, skipped 24, deleted 0" in out2
-    assert stored(migrated_database) == 24
+    assert "embedded 27, skipped 0, deleted 0" in out1
+    assert "embedded 0, skipped 27, deleted 0" in out2
+    assert stored(migrated_database) == 27
     password = make_url(migrated_database).password
     assert not password or password not in out1 + out2
 

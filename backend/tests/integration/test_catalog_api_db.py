@@ -32,7 +32,7 @@ def test_seeded_database_is_served_through_the_real_wiring(
         set(package) == {"code", "name", "discount_bps", "base_price_cop", "items"}
         for package in packages
     )
-    assert len(items) == len(SEED_ITEMS) == 20
+    assert len(items) == len(SEED_ITEMS) == 23
     assert [item["code"] for item in items] == sorted(item["code"] for item in items)
     assert all(type(item["unit_price_cop"]) is int for item in items)
     assert len(packages) == len(SEED_PACKAGES) == 4

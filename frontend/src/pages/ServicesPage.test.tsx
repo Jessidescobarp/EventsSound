@@ -133,6 +133,14 @@ describe("catalog page: category filter", () => {
     expect(within(list).getAllByRole("listitem")).toHaveLength(3);
   });
 
+  it("labels the staff category as 'Personal' in the filter", async () => {
+    const staff = { items: [item({ code: "staff_dj", name: "DJ profesional", category: "staff" })] };
+    renderApp("/servicios", server(serve(staff, { packages: [] })));
+    const select = await screen.findByRole("combobox", { name: es.services.categoryFilterLabel });
+    const options = within(select).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual([es.services.categoryAll, "Personal"]);
+  });
+
   it("shows unknown categories as 'Otros', never the raw value", async () => {
     renderApp("/servicios", server(serve(data, { packages: [] })));
     const list = await screen.findByRole("list", { name: es.services.itemsTitle });

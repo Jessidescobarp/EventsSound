@@ -15,7 +15,7 @@ class CatalogItemOut(BaseModel):
 
     code: Code
     name: str = Field(description="Display name, in Spanish.")
-    category: str = Field(description="One of: sound, lighting, dj, stage, effects, video.")
+    category: str = Field(description="One of: sound, lighting, dj, stage, effects, video, staff.")
     stock_quantity: int = Field(description="Units the company owns.")
     unit_price_cop: int = Field(description="Rental price per unit per day, in Colombian pesos.")
 

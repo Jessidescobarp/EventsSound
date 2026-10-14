@@ -189,5 +189,5 @@ def test_cli_writes_the_catalog_but_no_demo_bookings_when_they_are_skipped(
     code = cli.main(["--confirm", *argv], settings=settings, environ={"ALLOW_REMOTE_SEED": "1"})
 
     assert code == 0
-    assert counts(migrated_database) == (20, 0)
+    assert counts(migrated_database) == (23, 0)
     assert "demo bookings: skipped" in capsys.readouterr().out

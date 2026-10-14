@@ -27,9 +27,9 @@ def catalog() -> Catalog:
 
 
 def test_counts_and_unique_codes(catalog: Catalog) -> None:
-    assert len(SEED_ITEMS) == 20
+    assert len(SEED_ITEMS) == 23
     assert len(SEED_PACKAGES) == 4
-    assert len({item.code for item in SEED_ITEMS}) == 20
+    assert len({item.code for item in SEED_ITEMS}) == 23
     assert len({package.code for package in SEED_PACKAGES}) == 4
 
 
@@ -50,8 +50,8 @@ def test_prices_and_stock_follow_the_seed_rules() -> None:
     assert any(item.stock_quantity > 1 for item in SEED_ITEMS)
 
 
-def test_packages_have_four_to_six_lines_and_a_modest_discount() -> None:
-    assert all(4 <= len(package.lines) <= 6 for package in SEED_PACKAGES)
+def test_packages_have_four_to_eight_lines_and_a_modest_discount() -> None:
+    assert all(4 <= len(package.lines) <= 8 for package in SEED_PACKAGES)
     assert all(500 <= package.discount_bps <= 1500 for package in SEED_PACKAGES)
 
 
@@ -110,3 +110,28 @@ def test_sample_bookings_reduce_availability_except_cancelled_ones(catalog: Cata
 
     assert availability.remaining == availability.stock - held
     assert 0 < availability.remaining < availability.stock
+
+
+STAFF = {
+    "staff_dj": ("DJ profesional (hasta 5 horas)", 2, 900_000),
+    "staff_mc": ("Animador / maestro de ceremonias (hasta 5 horas)", 2, 700_000),
+    "staff_sound_tech": ("Técnico de sonido en sitio", 3, 400_000),
+}
+STAFF_IN_PACKAGES = {
+    "pkg_wedding": {"staff_dj", "staff_mc"},
+    "pkg_corporate": {"staff_mc", "staff_sound_tech"},
+}
+
+
+def test_staff_services_are_priced_like_any_other_item(catalog: Catalog) -> None:
+    staff = {i.code: i for i in SEED_ITEMS if i.category is EquipmentCategory.STAFF}
+
+    assert {c: (i.name, i.stock_quantity, i.unit_price.amount) for c, i in staff.items()} == STAFF
+
+
+@pytest.mark.parametrize("package", SEED_PACKAGES, ids=lambda package: package.code)
+def test_only_the_wedding_and_corporate_packages_include_staff(package: object) -> None:
+    staff_lines = {line.item_code for line in package.lines if line.item_code in STAFF}
+
+    assert staff_lines == STAFF_IN_PACKAGES.get(package.code, set())
+    assert all(line.quantity == 1 for line in package.lines if line.item_code in STAFF)
