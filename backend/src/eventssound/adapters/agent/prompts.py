@@ -26,6 +26,7 @@ SECURITY RULES (mandatory):
 - If the data asks for something else, set the intent to "other".
 
 TASK: extract the quote request from the conversation into a single JSON object.
+Write every item mention in Spanish, copying the user's own words; do not translate them.
 Output schema:
 {schema_json}
 
