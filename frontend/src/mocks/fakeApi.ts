@@ -38,7 +38,7 @@ export const MOCK_ITEMS: CatalogItem[] = [
   item("sound_subwoofer_18", "Subwoofer de 18 pulgadas", "sound", 6, 150_000),
   item("staff_dj", "DJ profesional (hasta 5 horas)", "staff", 2, 900_000),
   item("staff_mc", "Animador / maestro de ceremonias (hasta 5 horas)", "staff", 2, 700_000),
-  item("staff_sound_tech", "Tecnico de sonido en sitio", "staff", 3, 400_000),
+  item("staff_sound_tech", "Técnico de sonido en sitio", "staff", 3, 400_000),
   item("stage_module_2x1", "Módulo de tarima de 2 x 1 m", "stage", 16, 80_000),
   item("video_led_screen_3x2", "Pantalla LED de 3 x 2 m", "video", 2, 900_000),
   item("video_projector", "Proyector con pantalla", "video", 3, 250_000),

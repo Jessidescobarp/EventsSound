@@ -115,7 +115,7 @@ def test_sample_bookings_reduce_availability_except_cancelled_ones(catalog: Cata
 STAFF = {
     "staff_dj": ("DJ profesional (hasta 5 horas)", 2, 900_000),
     "staff_mc": ("Animador / maestro de ceremonias (hasta 5 horas)", 2, 700_000),
-    "staff_sound_tech": ("Tecnico de sonido en sitio", 3, 400_000),
+    "staff_sound_tech": ("Técnico de sonido en sitio", 3, 400_000),
 }
 STAFF_IN_PACKAGES = {
     "pkg_wedding": {"staff_dj", "staff_mc"},

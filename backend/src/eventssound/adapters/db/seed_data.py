@@ -49,7 +49,7 @@ SEED_ITEMS: tuple[EquipmentItem, ...] = (
     _item("video_led_screen_3x2", "Pantalla LED de 3 x 2 metros", _VIDEO, 2, 900_000),
     _item("staff_dj", "DJ profesional (hasta 5 horas)", _STAFF, 2, 900_000),
     _item("staff_mc", "Animador / maestro de ceremonias (hasta 5 horas)", _STAFF, 2, 700_000),
-    _item("staff_sound_tech", "Tecnico de sonido en sitio", _STAFF, 3, 400_000),
+    _item("staff_sound_tech", "Técnico de sonido en sitio", _STAFF, 3, 400_000),
 )
 
 SEED_PACKAGES: tuple[ServicePackage, ...] = (
