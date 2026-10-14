@@ -27,6 +27,9 @@ SECURITY RULES (mandatory):
 
 TASK: extract the quote request from the conversation into a single JSON object.
 Write every item mention in Spanish, copying the user's own words; do not translate them.
+Items are only specific equipment (for example "parlante activo de 15 pulgadas"). When the user \
+asks for a whole service in general terms (sound, lights, DJ, MC, "animador") without naming \
+equipment, put it in needs, not in items, as one short phrase with the event type.
 Output schema:
 {schema_json}
 
