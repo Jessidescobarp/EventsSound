@@ -141,6 +141,14 @@ class TestStrictness:
         assert {"enum": ["indoor", "outdoor"], "type": "string"} in props["venue"]["anyOf"]
         assert "pattern" not in props["intent"]
 
+    def test_json_schema_requires_every_field_so_the_model_cannot_skip_one(self) -> None:
+        schema = Extraction.model_json_schema()
+        assert sorted(schema["required"]) == sorted(schema["properties"])
+        # ...while validation still accepts an omitted optional field (defaults apply).
+        assert make().event_type == "wedding"
+        data = {"intent": "other"}
+        assert Extraction.model_validate(data).items == []
+
     def test_strings_are_not_coerced_from_numbers(self) -> None:
         with pytest.raises(ValidationError):
             make(event_date=20261017)
