@@ -43,7 +43,7 @@ from eventssound.application.proposal_check import (
     verify_proposal,
 )
 from eventssound.application.quote_chat import AgentLimitExceeded, ChatLimits
-from eventssound.application.search import EquipmentSearch
+from eventssound.application.search import EquipmentSearch, SearchHit
 from eventssound.domain.availability import AvailabilityReport
 from eventssound.domain.catalog import Catalog
 from eventssound.domain.errors import InvalidEventRequest
@@ -172,6 +172,17 @@ def _catalog_name(catalog: Catalog, code: str) -> str:
         return catalog.package(code).name
 
 
+def _leading_package(hits: tuple[SearchHit, ...]) -> str | None:
+    """The first hit when it is a package both search legs found and no rival ties it."""
+    if not hits or hits[0].kind != "package":
+        return None
+    top = hits[0]
+    if top.keyword_score is None or top.vector_similarity is None:
+        return None
+    rival = hits[1].keyword_score if len(hits) > 1 else None
+    return top.code if rival is None or top.keyword_score > rival else None
+
+
 def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
         extraction = state["extraction"]
@@ -216,8 +227,9 @@ def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
             codes = list(
                 dict.fromkeys(hit.code for hit in results[-1].hits if hit.kind == "package")
             )
-            if len(codes) == 1:
-                resolved_packages.append(RequestedLine(codes[0], 1))
+            leader = _leading_package(results[-1].hits)
+            if len(codes) == 1 or leader is not None:
+                resolved_packages.append(RequestedLine(leader or codes[0], 1))
             elif codes:
                 ambiguous.append(
                     (
