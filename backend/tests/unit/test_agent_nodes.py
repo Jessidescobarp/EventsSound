@@ -258,6 +258,37 @@ class TestResolveItems:
         assert out["route"] == route
         assert out["resolved_items"] == resolved
 
+    def test_several_broad_wishes_resolve_to_the_package_that_tops_the_search(self) -> None:
+        from eventssound.application.search import SearchHit, SearchResult
+
+        class Broad:
+            def search(self, queries, category, limit):
+                def one(query):
+                    if "boda" in query:
+                        return SearchResult((SearchHit("package", "pkg_wedding", 1),))
+                    return SearchResult(
+                        (
+                            SearchHit("item", "sound_speaker_15", 1),
+                            SearchHit("item", "sound_mixer_16", 2),
+                        )
+                    )
+
+                return tuple(one(q) for q in queries)
+
+        deps = make_deps(ScriptedProvider([]), search=Broad())
+        mentions = [{"mention": m, "quantity": 1} for m in ("sonido", "luces", "dj")]
+        ex = extraction(items=mentions, event_type="wedding")
+        out = resolve_items(deps)(state(extraction=ex))
+        assert out["route"] == "build_request"
+        assert out["resolved_packages"] == (RequestedLine("pkg_wedding", 1),)
+        assert out["ambiguous"] == ()
+
+    def test_one_ambiguous_mention_is_still_asked_about(self) -> None:
+        deps = make_deps(ScriptedProvider([]))
+        ex = extraction(items=[{"mention": "parlantes", "quantity": 2}], event_type="wedding")
+        out = resolve_items(deps)(state(extraction=ex))
+        assert out["route"] == "clarify_items"
+
     def test_no_hits_is_unresolved(self) -> None:
         deps = make_deps(ScriptedProvider([]))
         ex = extraction(items=[{"mention": "tarima gigante", "quantity": 1}])

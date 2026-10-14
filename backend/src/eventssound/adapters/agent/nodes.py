@@ -58,6 +58,15 @@ DRAFT_MAX_OUTPUT_TOKENS = 500
 UNDERSTAND_MAX_OUTPUT_TOKENS = 400
 MAX_HORIZON_DAYS = 730
 MAX_OPTION_NAMES = 3
+BROAD_WISH_MIN = 2  # this many unresolved mentions read as a broad wish, not a precise ask
+EVENT_WORD_ES = {
+    "wedding": "boda",
+    "corporate": "evento corporativo",
+    "birthday": "cumpleanos",
+    "quinceanera": "quinceanera",
+    "graduation": "grado",
+    "concert": "concierto",
+}
 SEARCH_LIMIT = 5
 
 
@@ -191,6 +200,17 @@ def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
             else:
                 unresolved.append(mention.mention)
         resolved_packages: list[RequestedLine] = []
+        if len(ambiguous) + len(unresolved) >= BROAD_WISH_MIN and needs_query is None:
+            # Several vague mentions ("sonido, luces, DJ") describe a whole service: when the
+            # search puts a package first for them plus the event type, that package covers them.
+            wish = " ".join(
+                [EVENT_WORD_ES.get(extraction.event_type or "", ""), *(m for m, _ in ambiguous)]
+                + unresolved
+            ).strip()
+            top = deps.search.search([wish], None, SEARCH_LIMIT)[0].hits[:1]
+            if top and top[0].kind == "package":
+                resolved_packages.append(RequestedLine(top[0].code, 1))
+                ambiguous, unresolved = [], []
         if needs_query is not None:
             codes = list(
                 dict.fromkeys(hit.code for hit in results[-1].hits if hit.kind == "package")
