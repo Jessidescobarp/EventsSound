@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from agent_fixtures import make_catalog, neutral_rules
 from eventssound.adapters.usage.memory import InMemoryUsageBudget
 from eventssound.application.errors import RepositoryUnavailable
-from eventssound.application.llm import LlmUnavailable
+from eventssound.application.llm import LlmAuthError, LlmUnavailable
 from eventssound.application.quote_chat import AgentOutcome, AgentStatus
 from eventssound.application.usage import RateDecision
 from eventssound.config import Settings
@@ -223,6 +223,15 @@ def test_agent_failures_map_to_public_errors_without_detail(failure, status, cod
     assert (response.status_code, response.json()["detail"]) == (status, code)
     assert "db.internal" not in response.text and "sk-abc" not in response.text
     assert response.headers["x-request-id"]
+
+
+def test_llm_failure_logs_only_its_class(caplog) -> None:
+    client, _ = make_client(FakeAgent(LlmAuthError()))
+    with caplog.at_level("WARNING"):
+        response = client.post(URL, json=BODY)
+    assert response.status_code == 503
+    line = next(r.getMessage() for r in caplog.records if "chat llm error" in r.getMessage())
+    assert "LlmAuthError" in line and response.headers["x-request-id"] in line
 
 
 def padded(size: int) -> bytes:
