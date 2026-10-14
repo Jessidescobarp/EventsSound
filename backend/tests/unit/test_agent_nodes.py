@@ -318,6 +318,33 @@ class TestResolveItems:
         resolve_items(deps)(state(extraction=ex))
         assert seen == ["boda sonido luces DJ"]
 
+    @pytest.mark.parametrize(
+        ("second_keyword", "expected"),
+        [(0.4, "pkg_party"), (0.9, None)],
+        ids=["clear-leader", "tied-with-another-package"],
+    )
+    def test_needs_resolve_to_a_package_that_clearly_leads_both_legs(
+        self, second_keyword, expected
+    ):
+        from eventssound.application.search import SearchHit, SearchResult
+
+        class Leader:
+            def search(self, queries, category, limit):
+                hits = (
+                    SearchHit("package", "pkg_party", 1, 0.9, 0.8),
+                    SearchHit("package", "pkg_dj", 2, second_keyword, 0.5),
+                )
+                return tuple(SearchResult(hits) for _ in queries)
+
+        deps = make_deps(ScriptedProvider([]), search=Leader())
+        ex = extraction(items=[], needs=["sonido luces DJ"], event_type="wedding")
+        out = resolve_items(deps)(state(extraction=ex))
+        if expected:
+            assert out["resolved_packages"] == (RequestedLine(expected, 1),)
+            assert out["route"] == "build_request"
+        else:
+            assert out["route"] == "clarify_items"
+
     def test_needs_with_multiple_packages_are_ambiguous(self) -> None:
         deps = make_deps(ScriptedProvider([]))
         ex = extraction(items=[], needs=["paquete dj"])
