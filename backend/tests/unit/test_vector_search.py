@@ -6,14 +6,19 @@ import pytest
 
 from agent_fixtures import make_catalog
 from eventssound.adapters.embeddings.fake import FakeEmbeddingProvider
-from eventssound.adapters.search.hybrid import RRF_K, HybridSearch
+from eventssound.adapters.search.hybrid import RRF_K, HybridSearch, _fuse
 from eventssound.adapters.search.keyword import KeywordSearch
 from eventssound.adapters.search.vector import VectorSearch
 from eventssound.application.embedding_index import refresh_embeddings
 from eventssound.application.embeddings import EmbeddingResult
 from eventssound.application.errors import RepositoryUnavailable
 from eventssound.application.llm import LlmRateLimited, LlmUnavailable
-from eventssound.application.search import EquipmentSearch, InvalidSearch
+from eventssound.application.search import (
+    EquipmentSearch,
+    InvalidSearch,
+    SearchHit,
+    SearchResult,
+)
 from eventssound.domain.catalog import Catalog, EquipmentCategory
 from fakes import BrokenEmbeddingStore, InMemoryEmbeddingStore
 
@@ -259,3 +264,54 @@ def test_a_provider_returning_the_wrong_number_of_vectors_is_a_bad_response() ->
         search.search(["luz", "humo"], None, 3)
     # and the composite falls back instead of crashing
     assert hybrid(search).search(["luz", "humo"], None, 3)[0].degraded is True
+
+
+def _leg(*specs: tuple[str, str, float | None], vector: bool = False) -> SearchResult:
+    field = "vector_similarity" if vector else "keyword_score"
+    return SearchResult(
+        tuple(
+            SearchHit(kind, code, rank, **{field: score})  # type: ignore[arg-type]
+            for rank, (kind, code, score) in enumerate(specs, start=1)
+        )
+    )
+
+
+A, B = ("item", "a", 2.0), ("item", "b", 1.0)
+
+
+@pytest.mark.parametrize(
+    ("keyword", "vector", "expected"),
+    [
+        (_leg(A, B), _leg(("item", "a", 0.9), vector=True), "a"),
+        (_leg(A), _leg(("item", "a", 0.9), vector=True), "a"),
+        (_leg(A, B), _leg(("item", "b", 0.9), vector=True), None),
+        (_leg(A, ("item", "b", 2.0)), _leg(("item", "a", 0.9), vector=True), None),
+        (_leg(("package", "p", 2.0), B), _leg(("package", "p", 0.9), vector=True), None),
+        (_leg(A, B), _leg(), None),
+        (_leg(), _leg(("item", "a", 0.9), vector=True), None),
+    ],
+    ids=[
+        "agree",
+        "single-keyword",
+        "disagree",
+        "keyword-tie",
+        "package",
+        "no-vector",
+        "no-keyword",
+    ],
+)
+def test_fuse_sets_confident_code_only_when_both_legs_agree_on_an_untied_item(
+    keyword: SearchResult, vector: SearchResult, expected: str | None
+) -> None:
+    assert _fuse(keyword, vector, 5).confident_code == expected
+
+
+def test_keyword_only_and_degraded_results_are_never_confident() -> None:
+    class Down:
+        def embed(self, texts: Sequence[str], timeout_s: float = 10.0) -> EmbeddingResult:
+            raise LlmUnavailable()
+
+    degraded = hybrid(VectorSearch(Down(), indexed_store(), CATALOG, MODEL))
+    for search in (hybrid(None), degraded):
+        (result,) = search.search(["parlante"], None, 5)
+        assert result.confident_code is None

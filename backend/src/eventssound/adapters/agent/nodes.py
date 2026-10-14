@@ -178,8 +178,9 @@ def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
         unresolved: list[str] = []
         for mention, result in zip(extraction.items, results, strict=False):
             codes = list(dict.fromkeys(hit.code for hit in result.hits))
-            if len(codes) == 1:
-                resolved_items.append(RequestedLine(codes[0], mention.quantity))
+            if len(codes) == 1 or result.confident_code is not None:
+                code = result.confident_code or codes[0]
+                resolved_items.append(RequestedLine(code, mention.quantity))
             elif codes:
                 ambiguous.append(
                     (
