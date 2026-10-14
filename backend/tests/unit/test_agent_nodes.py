@@ -233,6 +233,31 @@ class TestResolveItems:
         assert "Parlante activo de 15 pulgadas" in names
         assert len(names) <= 3
 
+    @pytest.mark.parametrize(
+        ("confident", "route", "resolved"),
+        [
+            ("sound_speaker_15", "build_request", (RequestedLine("sound_speaker_15", 4),)),
+            (None, "clarify_items", ()),
+        ],
+        ids=["confident", "not-confident"],
+    )
+    def test_several_hits_resolve_only_with_a_confident_code(self, confident, route, resolved):
+        from eventssound.application.search import SearchHit, SearchResult
+
+        class Several:
+            def search(self, queries, category, limit):
+                hits = (
+                    SearchHit("item", "sound_speaker_15", 1),
+                    SearchHit("item", "sound_mixer_16", 2),
+                )
+                return (SearchResult(hits, confident_code=confident),) * len(queries)
+
+        deps = make_deps(ScriptedProvider([]), search=Several())
+        ex = extraction(items=[{"mention": "parlantes", "quantity": 4}])
+        out = resolve_items(deps)(state(extraction=ex))
+        assert out["route"] == route
+        assert out["resolved_items"] == resolved
+
     def test_no_hits_is_unresolved(self) -> None:
         deps = make_deps(ScriptedProvider([]))
         ex = extraction(items=[{"mention": "tarima gigante", "quantity": 1}])

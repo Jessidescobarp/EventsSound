@@ -51,15 +51,30 @@ def _fuse(keyword: SearchResult, vector: SearchResult, limit: int) -> SearchResu
             parts.setdefault(key, {})[field] = getattr(hit, field)
     # Equal fused scores: items before packages, then by code (same rule as keyword search).
     ordered = sorted(scores, key=lambda key: (-scores[key], key[0] != "item", key[1]))
-    return SearchResult(
-        tuple(
-            SearchHit(
-                kind,  # type: ignore[arg-type]
-                code,
-                rank,
-                keyword_score=parts[(kind, code)].get("keyword_score"),
-                vector_similarity=parts[(kind, code)].get("vector_similarity"),
-            )
-            for rank, (kind, code) in enumerate(ordered[:limit], start=1)
+    hits = tuple(
+        SearchHit(
+            kind,  # type: ignore[arg-type]
+            code,
+            rank,
+            keyword_score=parts[(kind, code)].get("keyword_score"),
+            vector_similarity=parts[(kind, code)].get("vector_similarity"),
         )
+        for rank, (kind, code) in enumerate(ordered[:limit], start=1)
     )
+    return SearchResult(hits, confident_code=_confident_code(keyword, vector, hits))
+
+
+def _confident_code(
+    keyword: SearchResult, vector: SearchResult, fused: tuple[SearchHit, ...]
+) -> str | None:
+    """The item both legs rank first, when keywords do not tie at the top and fusion agrees."""
+    if not keyword.hits or not vector.hits or not fused:
+        return None
+    top = keyword.hits[0]
+    if (top.kind, top.code) != (vector.hits[0].kind, vector.hits[0].code) or top.kind != "item":
+        return None
+    if len(keyword.hits) > 1 and keyword.hits[1].keyword_score == top.keyword_score:
+        return None
+    if (fused[0].kind, fused[0].code) != (top.kind, top.code):
+        return None
+    return top.code

@@ -38,10 +38,14 @@ class SearchHit:
 
 @dataclass(frozen=True, slots=True)
 class SearchResult:
-    """Hits for one query. `degraded` means the vector leg failed and keywords answered."""
+    """Hits for one query. `degraded` means the vector leg failed and keywords answered.
+
+    `confident_code` is set only when both legs independently agree on one untied item.
+    """
 
     hits: tuple[SearchHit, ...]
     degraded: bool = False
+    confident_code: str | None = None
 
 
 @runtime_checkable
