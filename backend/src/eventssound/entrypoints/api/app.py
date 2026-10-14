@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +36,16 @@ TAGS = [
 ]
 
 
+def _configure_logging(level: str) -> None:
+    """Uvicorn leaves application loggers unconfigured, so INFO lines would be dropped."""
+    logger = logging.getLogger("eventssound")
+    logger.setLevel(level.upper())
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s %(message)s"))
+        logger.addHandler(handler)
+
+
 def create_app(
     settings: Settings | None = None,
     session_provider: container.SessionProvider | None = None,
@@ -45,6 +57,7 @@ def create_app(
 ) -> FastAPI:
     """Build an isolated FastAPI app. Tests override settings and adapters."""
     settings = settings or Settings()  # type: ignore[call-arg]
+    _configure_logging(settings.log_level)
     production = settings.is_production
 
     app = FastAPI(

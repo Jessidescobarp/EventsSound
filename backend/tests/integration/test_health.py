@@ -60,3 +60,12 @@ def test_production_disables_debug() -> None:
     app = create_app(make_settings(app_env="production"))
 
     assert app.debug is False
+
+
+def test_log_level_setting_reaches_the_application_logger() -> None:
+    import logging
+
+    create_app(make_settings(log_level="INFO"))
+
+    assert logging.getLogger("eventssound").isEnabledFor(logging.INFO)
+    assert logging.getLogger("eventssound").handlers
