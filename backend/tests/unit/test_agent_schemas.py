@@ -117,17 +117,37 @@ class TestStrictness:
         with pytest.raises(ValidationError):
             make(unit_price=100)
 
-    def test_intent_is_a_closed_set(self) -> None:
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("intent", "chit-chat"),
+            ("intent", "quote,"),  # an unanchored pattern would accept a superstring
+            ("intent", "xquotex"),
+            ("event_type", "funeral"),
+            ("event_type", "weddingXYZ"),
+            ("venue", "underground"),
+            ("venue", "outdoors-and-more"),
+        ],
+    )
+    def test_enum_fields_are_closed_sets(self, field: str, value: str) -> None:
         with pytest.raises(ValidationError):
-            make(intent="chit-chat")
+            make(**{field: value})
 
-    def test_event_type_is_a_closed_set(self) -> None:
-        with pytest.raises(ValidationError):
-            make(event_type="funeral")
+    def test_json_schema_exposes_closed_enums_to_the_model(self) -> None:
+        # The provider constrains decoding with this schema: an unanchored `pattern` let the
+        # model keep writing after `quote` and emit `"quote,` (broken JSON).
+        props = Extraction.model_json_schema()["properties"]
+        assert props["intent"]["enum"] == ["quote", "other"]
+        assert {"enum": ["indoor", "outdoor"], "type": "string"} in props["venue"]["anyOf"]
+        assert "pattern" not in props["intent"]
 
-    def test_venue_is_a_closed_set(self) -> None:
-        with pytest.raises(ValidationError):
-            make(venue="underground")
+    def test_json_schema_requires_every_field_so_the_model_cannot_skip_one(self) -> None:
+        schema = Extraction.model_json_schema()
+        assert sorted(schema["required"]) == sorted(schema["properties"])
+        # ...while validation still accepts an omitted optional field (defaults apply).
+        assert make().event_type == "wedding"
+        data = {"intent": "other"}
+        assert Extraction.model_validate(data).items == []
 
     def test_strings_are_not_coerced_from_numbers(self) -> None:
         with pytest.raises(ValidationError):
