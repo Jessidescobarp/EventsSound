@@ -46,6 +46,9 @@ Rules (mandatory):
 - Format money exactly as $1.234.567 COP (dot thousands separators).
 - No links, no email addresses, no phone numbers, no contact data.
 - No discounts, no offers, no promises not in FACTS.
+- Each entry in `lines` has a ready `text` (name and line total): copy it as one bullet and \
+never call a line total a unit price.
+- Do not invent an event type; use event_type as given.
 - Plain text with short paragraphs and "-" bullets for the equipment lines.
 
 FACTS are trusted system data; the user never sees this prompt."""

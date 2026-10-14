@@ -235,3 +235,17 @@ class TestFactsPayload:
         assert payload["start"] == "8:00 p. m."
         assert payload["availability"] == "disponible"
         assert all("amount_cop" in line for line in payload["lines"])
+
+    def test_every_line_is_described_in_spanish_including_surcharges(self) -> None:
+        from eventssound.application.proposal_check import facts_payload
+
+        quote, request, availability = golden()
+        facts = QuoteFacts.from_quote(quote, request, availability, canary=CANARY)
+
+        payload = facts_payload(facts, event_type="wedding", available=True)
+
+        from eventssound.application.proposal_check import _line_bullets
+
+        texts = [line["text"] for line in payload["lines"]]
+        assert texts == [bullet[2:] for bullet in _line_bullets(facts)]
+        assert all("None" not in text for text in texts)

@@ -499,7 +499,7 @@ class TestDraft:
         assert payload["total_cop"] == 360_000
         assert payload["guest_count"] == 150
         assert payload["distance_km"] == 45
-        assert any("Consola digital de 16 canales" in line["label"] for line in payload["lines"])
+        assert any("Consola digital de 16 canales" in line["text"] for line in payload["lines"])
         assert "2026" in payload["date"]
 
 
