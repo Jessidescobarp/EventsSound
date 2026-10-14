@@ -6,13 +6,15 @@ compromised model can only pass through data that is safe to echo to a user late
 
 import re
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints, field_validator
 
-INTENTS = ("quote", "other")
-EVENT_TYPES = ("wedding", "corporate", "birthday", "quinceanera", "graduation", "concert")
-VENUES = ("indoor", "outdoor")
+# Closed sets as `Literal`: the JSON schema sent to the model becomes an `enum`. An unanchored
+# `pattern="quote|other"` accepted any superstring and let the model write `"quote,`.
+Intent = Literal["quote", "other"]
+EventType = Literal["wedding", "corporate", "birthday", "quinceanera", "graduation", "concert"]
+Venue = Literal["indoor", "outdoor"]
 
 MAX_ITEMS = 8
 MAX_NEEDS = 8
@@ -52,8 +54,8 @@ class ItemMention(_Strict):
 
 
 class Extraction(_Strict):
-    intent: str = Field(pattern="quote|other")
-    event_type: str | None = Field(default=None, pattern="|".join(EVENT_TYPES))
+    intent: Intent
+    event_type: EventType | None = None
     event_date: str | None = Field(default=None, pattern=_DATE.pattern)
     start_time: str | None = Field(default=None, pattern=_TIME.pattern)
     end_time: str | None = Field(default=None, pattern=_TIME.pattern)
@@ -62,7 +64,7 @@ class Extraction(_Strict):
     guest_count: StrictInt | None = Field(default=None, ge=1, le=MAX_GUESTS)
     distance_km: StrictInt | None = Field(default=None, ge=0, le=MAX_DISTANCE_KM)
     locality: str | None = Field(default=None, max_length=MAX_LOCALITY_CHARS)
-    venue: str | None = Field(default=None, pattern="|".join(VENUES))
+    venue: Venue | None = None
     items: list[ItemMention] = Field(default_factory=list, max_length=MAX_ITEMS)
     needs: list[Annotated[str, StringConstraints(min_length=1, max_length=MAX_NEED_CHARS)]] = Field(
         default_factory=list, max_length=MAX_NEEDS
