@@ -286,6 +286,8 @@ A, B = ("item", "a", 2.0), ("item", "b", 1.0)
         (_leg(A), _leg(("item", "a", 0.9), vector=True), "a"),
         (_leg(A, B), _leg(("item", "b", 0.9), vector=True), None),
         (_leg(A, ("item", "b", 2.0)), _leg(("item", "a", 0.9), vector=True), None),
+        # a package tied with the item does not compete with it (production: pkg_dj_night)
+        (_leg(A, ("package", "p", 2.0), B), _leg(("item", "a", 0.9), vector=True), "a"),
         (_leg(("package", "p", 2.0), B), _leg(("package", "p", 0.9), vector=True), None),
         (_leg(A, B), _leg(), None),
         (_leg(), _leg(("item", "a", 0.9), vector=True), None),
@@ -295,6 +297,7 @@ A, B = ("item", "a", 2.0), ("item", "b", 1.0)
         "single-keyword",
         "disagree",
         "keyword-tie",
+        "tied-package-ignored",
         "package",
         "no-vector",
         "no-keyword",

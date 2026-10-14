@@ -67,13 +67,18 @@ def _fuse(keyword: SearchResult, vector: SearchResult, limit: int) -> SearchResu
 def _confident_code(
     keyword: SearchResult, vector: SearchResult, fused: tuple[SearchHit, ...]
 ) -> str | None:
-    """The item both legs rank first, when keywords do not tie at the top and fusion agrees."""
+    """The item both legs rank first, when no other ITEM ties it on keywords and fusion agrees.
+
+    A package that contains the same words ties with its own item; it does not compete with it.
+    """
     if not keyword.hits or not vector.hits or not fused:
         return None
     top = keyword.hits[0]
     if (top.kind, top.code) != (vector.hits[0].kind, vector.hits[0].code) or top.kind != "item":
         return None
-    if len(keyword.hits) > 1 and keyword.hits[1].keyword_score == top.keyword_score:
+    if any(
+        hit.kind == "item" and hit.keyword_score == top.keyword_score for hit in keyword.hits[1:]
+    ):
         return None
     if (fused[0].kind, fused[0].code) != (top.kind, top.code):
         return None
