@@ -26,10 +26,8 @@ export function usePagedRecords<T>(fetcher: Fetcher<T>) {
   }, [failure, expireSession]);
 
   // The list shrank under the reader: an empty page past the start sends them back to the start.
-  const stranded = state.status === "success" && state.data.items.length === 0 && offset > 0;
-  useEffect(() => {
-    if (stranded) setOffset(0);
-  }, [stranded]);
+  // Adjusting state during render (guarded by the condition) is the React-sanctioned way.
+  if (state.status === "success" && state.data.items.length === 0 && offset > 0) setOffset(0);
 
   return { state, failure, setOffset, reload };
 }
