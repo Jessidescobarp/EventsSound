@@ -18,6 +18,7 @@ from eventssound.adapters.auth.hasher import Argon2Hasher
 from eventssound.adapters.auth.tokens import JwtTokenIssuer
 from eventssound.adapters.db.booking_repository import SqlAlchemyBookingRepository
 from eventssound.adapters.db.catalog_repository import SqlAlchemyCatalogRepository
+from eventssound.adapters.db.catalog_writer import SqlAlchemyCatalogWriter
 from eventssound.adapters.db.embedding_store import SqlAlchemyEmbeddingStore
 from eventssound.adapters.db.health import SqlAlchemyDatabaseHealth
 from eventssound.adapters.db.quote_repository import SqlAlchemyBookingLister, SqlAlchemyQuoteStore
@@ -35,6 +36,9 @@ from eventssound.adapters.usage.postgres import PostgresUsageBudget
 from eventssound.adapters.usage.rate_limit import InMemoryRateLimiter
 from eventssound.application.auth import AuthService
 from eventssound.application.availability import check_event_availability
+from eventssound.application.catalog_admin import CatalogAdmin
+from eventssound.application.embedding_index import refresh_embeddings
+from eventssound.application.embeddings import EmbeddingProvider
 from eventssound.application.llm import LlmProvider
 from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
 from eventssound.application.pricing import price_quote
@@ -129,18 +133,27 @@ def _make_search(
     settings: Settings, factory: sessionmaker[Session], catalog: Catalog
 ) -> HybridSearch:
     keyword = KeywordSearch(catalog)
-    if settings.embedding_provider == "off":
+    built = _make_embedder(settings)
+    if built is None:
         return HybridSearch(keyword, None)
-    if settings.embedding_provider == "fake":
-        embedder = FakeEmbeddingProvider(settings.embedding_dimensions, FAKE_EMBEDDING_MODEL)
-        model = FAKE_EMBEDDING_MODEL
-    else:
-        embedder = OpenRouterEmbeddingProvider(
-            settings.openrouter_api_key, settings.embedding_model, settings.embedding_dimensions
-        )
-        model = settings.embedding_model
+    embedder, model = built
     vector = VectorSearch(embedder, SqlAlchemyEmbeddingStore(factory), catalog, model)
     return HybridSearch(keyword, vector)
+
+
+def _make_embedder(settings: Settings) -> tuple[EmbeddingProvider, str] | None:
+    """The embedder and its model name, or None when embeddings are off."""
+    if settings.embedding_provider == "off":
+        return None
+    if settings.embedding_provider == "fake":
+        return (
+            FakeEmbeddingProvider(settings.embedding_dimensions, FAKE_EMBEDDING_MODEL),
+            FAKE_EMBEDDING_MODEL,
+        )
+    embedder = OpenRouterEmbeddingProvider(
+        settings.openrouter_api_key, settings.embedding_model, settings.embedding_dimensions
+    )
+    return embedder, settings.embedding_model
 
 
 def _build_agent(settings: Settings, factory: sessionmaker[Session]) -> QuoteAgent:
@@ -177,6 +190,12 @@ class LazyQuoteAgent:
         self._agent: QuoteAgent | None = None
         self._lock = threading.Lock()
 
+    def reset(self) -> None:
+        """Drop the built agent: the next request rebuilds it, and its search index, from the
+        current catalog. Requests already running keep the agent they started with."""
+        with self._lock:
+            self._agent = None
+
     def run(self, data: AgentInput) -> AgentOutcome:
         agent = self._agent
         if agent is None:
@@ -189,6 +208,37 @@ class LazyQuoteAgent:
 
 def make_quote_agent(settings: Settings, factory: sessionmaker[Session]) -> QuoteAgent:
     return LazyQuoteAgent(lambda: _build_agent(settings, factory))
+
+
+def make_catalog_admin(
+    settings: Settings, factory: sessionmaker[Session], agent: QuoteAgent
+) -> CatalogAdmin:
+    return CatalogAdmin(
+        SqlAlchemyCatalogWriter(factory), make_catalog_change_hook(settings, factory, agent)
+    )
+
+
+def make_catalog_change_hook(
+    settings: Settings, factory: sessionmaker[Session], agent: QuoteAgent
+) -> Callable[[], None]:
+    """The follow-up of a catalog edit: re-embed what changed, then make the agent rebuild its
+    search index. Without it the agent would not see an edit until the process restarts. The
+    agent is reset even when embedding fails (keyword search still needs the new catalog)."""
+    repository = SqlAlchemyCatalogRepository(factory)
+
+    def on_changed() -> None:
+        try:
+            built = _make_embedder(settings)
+            if built is not None:
+                embedder, model = built
+                refresh_embeddings(
+                    repository.get_catalog(), embedder, SqlAlchemyEmbeddingStore(factory), model
+                )
+        finally:
+            if isinstance(agent, LazyQuoteAgent):
+                agent.reset()
+
+    return on_changed
 
 
 def make_auth_kit(settings: Settings, factory: sessionmaker[Session]) -> AuthKit | None:

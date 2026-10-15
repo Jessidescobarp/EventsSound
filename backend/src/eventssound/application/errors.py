@@ -19,3 +19,11 @@ class SchemaNotReady(RepositoryUnavailable):
 
 class InvalidStoredData(Exception):
     """A stored row violates the domain contract (the caller is not at fault: not a DomainError)."""
+
+
+class CodeTaken(Exception):
+    """A catalog entry with that code already exists."""
+
+
+class NotFound(Exception):
+    """The catalog entry to update does not exist."""

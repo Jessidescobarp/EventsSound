@@ -41,6 +41,8 @@ def _check_name(name: str) -> None:
         raise InvalidCatalog("name must not be empty")
     if len(name) > MAX_NAME_LENGTH:
         raise InvalidCatalog(f"name must have at most {MAX_NAME_LENGTH} characters")
+    if any(not char.isprintable() for char in name):
+        raise InvalidCatalog("name must not contain control characters")  # it reaches LLM prompts
 
 
 @dataclass(frozen=True, slots=True)

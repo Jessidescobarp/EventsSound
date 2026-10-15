@@ -11,4 +11,8 @@ AUTH_ERRORS = {
     "auth_not_configured": "El inicio de sesion no esta disponible por ahora.",
     "auth_unavailable": "No pudimos validar tus datos. Intenta mas tarde.",
     "storage_unavailable": "No pudimos consultar los datos. Intenta mas tarde.",
+    "code_taken": "Ya existe un registro con ese codigo.",
+    "not_found": "No encontramos ese registro.",
+    "unknown_item": "Alguno de los equipos del paquete no existe.",
+    "invalid_catalog_entry": "Los datos del registro no son validos.",
 }
