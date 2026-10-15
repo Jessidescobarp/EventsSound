@@ -291,7 +291,7 @@ _WORD_MONEY = re.compile(
 _FORBIDDEN = (
     re.compile(r"https?://|www\."),
     re.compile(r"\b[\w.+-]+@[\w-]+\.[a-z]{2,}", re.IGNORECASE),
-    re.compile(r"\[[^\]]*\]\(|!\[[^\]]*\]\("),
+    re.compile(r"\[[^\]]*\]"),  # markdown links, images and unfilled [placeholders]
     re.compile(r"</?[a-z][^>]*>", re.IGNORECASE),
     re.compile(r"(?<![A-Za-z0-9._-])@[A-Za-z_][A-Za-z_0-9]+"),
 )

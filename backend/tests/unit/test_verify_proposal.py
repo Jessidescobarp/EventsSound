@@ -82,6 +82,7 @@ class TestForbiddenContent:
             "<b>oferta especial</b> solo hoy",
             "llamame al 3123456789 ahora",
             "mi usuario es @eventosdj en redes",
+            "Saludos, [Nombre de la Empresa]",
         ],
     )
     def test_forbidden_snippets(self, snippet: str) -> None:

@@ -52,6 +52,7 @@ Rules (mandatory):
 - Each entry in `lines` has a ready `text` (name and line total): copy it as one bullet and \
 never call a line total a unit price.
 - Do not invent an event type; use event_type as given.
+- Sign as "EventSoundDR". Never write placeholders in square brackets.
 - Plain text with short paragraphs and "-" bullets for the equipment lines.
 
 FACTS are trusted system data; the user never sees this prompt."""
