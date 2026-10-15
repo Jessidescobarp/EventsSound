@@ -9,13 +9,14 @@ from eventssound.application.quote_chat import QuoteAgent
 from eventssound.application.usage import RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.entrypoints.api import container
+from eventssound.entrypoints.api.auth_kit import AuthKit, AuthRefusal, refusal_handler
 from eventssound.entrypoints.api.guards import (
     ChatBodyGuard,
     ChatRefusal,
     FailClosedBudget,
     FailClosedLimiter,
 )
-from eventssound.entrypoints.api.routes import catalog, health, quote
+from eventssound.entrypoints.api.routes import auth, catalog, health, quote
 from eventssound.entrypoints.api.routes.quote import chat_refusal_handler, validation_handler
 
 DESCRIPTION = (
@@ -27,6 +28,10 @@ TAGS = [
     {
         "name": "Catalog",
         "description": "Equipment the company rents out and the packages built from it.",
+    },
+    {
+        "name": "Auth",
+        "description": "Login with email and password; returns a bearer token.",
     },
     {
         "name": "Quote agent",
@@ -54,6 +59,7 @@ def create_app(
     quote_agent: QuoteAgent | None = None,
     usage_budget: UsageBudget | None = None,
     rate_limiter: RateLimiter | None = None,
+    auth_kit: AuthKit | None = None,
 ) -> FastAPI:
     """Build an isolated FastAPI app. Tests override settings and adapters."""
     settings = settings or Settings()  # type: ignore[call-arg]
@@ -87,6 +93,10 @@ def create_app(
         rate_limiter or container.make_rate_limiter(settings)
     )
     app.state.chat_limits = container.make_chat_limits(settings)
+    # Login. None means auth is not configured (production without JWT_SECRET): its routes
+    # answer 503 and the rest of the app keeps serving.
+    app.state.auth = auth_kit or container.make_auth_kit(settings, factory)
+    app.add_exception_handler(AuthRefusal, refusal_handler)  # type: ignore[arg-type]
     app.add_exception_handler(ChatRefusal, chat_refusal_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_handler)  # type: ignore[arg-type]
 
@@ -103,4 +113,5 @@ def create_app(
     app.include_router(health.router)
     app.include_router(catalog.router)
     app.include_router(quote.router)
+    app.include_router(auth.router)
     return app

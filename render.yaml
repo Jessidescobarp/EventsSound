@@ -30,6 +30,8 @@ services:
         value: https://eventsounddr-web.onrender.com
       - key: DATABASE_URL
         sync: false # Neon DIRECT string, scheme postgresql+psycopg://; set in the dashboard
+      - key: JWT_SECRET
+        sync: false # 32+ random characters; set in the dashboard BEFORE the auth PR deploys
 
   - type: web
     name: eventsounddr-web

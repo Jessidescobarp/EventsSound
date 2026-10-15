@@ -6,6 +6,7 @@ allowed values is a normal migration. The CHECK value lists are literal on purpo
 frozen history and must not follow later changes to the domain enums by accident.
 """
 
+import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
@@ -19,7 +20,9 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +31,7 @@ from .vector import VectorType
 
 CATEGORIES = "('sound', 'lighting', 'dj', 'stage', 'effects', 'video', 'staff')"
 BOOKING_STATUSES = "('pending', 'confirmed', 'cancelled')"
+USER_ROLES = "('client', 'admin')"
 EMBEDDING_KINDS = "('item', 'package')"
 # Frozen in migration 0003: a different size is a new revision plus a full refresh.
 EMBEDDING_DIMENSIONS = 1024
@@ -153,3 +157,18 @@ class LlmUsageDailyModel(Base):
     tokens: Mapped[int] = mapped_column(BigInteger, server_default="0")
     cost_micro_usd: Mapped[int] = mapped_column(BigInteger, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserModel(TimestampMixin, Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(f"role IN {USER_ROLES}", name="role_valid"),
+        CheckConstraint("email = lower(email)", name="email_lower"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    role: Mapped[str] = mapped_column(String(16))
+    password_hash: Mapped[str] = mapped_column(String(255))

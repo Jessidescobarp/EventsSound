@@ -96,3 +96,31 @@ def test_database_url_is_hidden_from_repr(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert "s3cret" not in repr(settings)
     assert "s3cret" not in str(settings)
+
+
+@pytest.mark.parametrize(
+    ("value", "usable"),
+    [
+        ("s" * 32, True),
+        ("s" * 31, False),
+        ("", False),
+        ("   ", False),
+        ("changeme" * 5, False),
+        ("replace-with-a-long-random-secret-0000", False),
+    ],
+    ids=["ok", "short", "empty", "blank", "placeholder", "template-text"],
+)
+def test_jwt_secret_counts_as_set_only_when_long_and_not_a_placeholder(
+    value: str, usable: bool
+) -> None:
+    settings = Settings(_env_file=None, DATABASE_URL=DB_URL, jwt_secret=value)  # type: ignore[arg-type]
+
+    assert (settings.jwt_secret is not None) is usable
+
+
+def test_auth_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(_env_file=None, DATABASE_URL=DB_URL)  # type: ignore[arg-type]
+
+    assert settings.jwt_secret is None
+    assert settings.jwt_access_ttl_minutes == 60
+    assert settings.login_rate_limit_per_minute == 5

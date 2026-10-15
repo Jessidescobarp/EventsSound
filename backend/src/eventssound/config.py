@@ -20,6 +20,10 @@ def root_env_file(module: Path | None = None) -> Path | None:
     return None
 
 
+MIN_JWT_SECRET_CHARS = 32
+_PLACEHOLDERS = ("changeme", "replace-with", "your-secret", "placeholder")
+
+
 class Settings(BaseSettings):
     # Environment variables always take precedence over the file.
     # hide_input_in_errors: a ValidationError would otherwise print the raw input values
@@ -48,6 +52,10 @@ class Settings(BaseSettings):
     llm_daily_token_cap: Annotated[int, Field(ge=0)] = 100_000
     llm_daily_cost_cap_micro_usd: Annotated[int, Field(ge=0)] = 1_000_000
     chat_rate_limit_per_minute: Annotated[int, Field(ge=1, le=1000)] = 5
+    # Login. An unset, short or placeholder secret disables the auth routes in production.
+    jwt_secret: SecretStr | None = None
+    jwt_access_ttl_minutes: Annotated[int, Field(ge=1, le=1440)] = 60
+    login_rate_limit_per_minute: Annotated[int, Field(ge=1, le=1000)] = 5
     # How many reverse proxies sit in front of the app (Render: 1). 0 ignores X-Forwarded-For.
     trusted_proxy_hops: Annotated[int, Field(ge=0, le=3)] = 0
 
@@ -68,6 +76,16 @@ class Settings(BaseSettings):
     def _blank_key_is_missing(cls, value: object) -> object:
         # `OPENROUTER_API_KEY=` in .env.example means "not set".
         return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("jwt_secret", mode="after")
+    @classmethod
+    def _weak_secret_is_missing(cls, value: SecretStr | None) -> SecretStr | None:
+        # Fewer than 32 characters or an obvious placeholder is the same as not set.
+        if value is None:
+            return None
+        text = value.get_secret_value().strip()
+        weak = len(text) < MIN_JWT_SECRET_CHARS or any(w in text.lower() for w in _PLACEHOLDERS)
+        return None if weak else value
 
     @field_validator("app_env", "llm_provider", mode="before")
     @classmethod

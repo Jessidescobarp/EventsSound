@@ -6,17 +6,22 @@ request, and a configuration that cannot serve chat simply leaves the endpoint d
 """
 
 import logging
+import secrets
 import threading
 from collections.abc import Callable, Iterator
 from zoneinfo import ZoneInfo
 
+from pydantic import SecretStr
 from sqlalchemy.orm import Session, sessionmaker
 
+from eventssound.adapters.auth.hasher import Argon2Hasher
+from eventssound.adapters.auth.tokens import JwtTokenIssuer
 from eventssound.adapters.db.booking_repository import SqlAlchemyBookingRepository
 from eventssound.adapters.db.catalog_repository import SqlAlchemyCatalogRepository
 from eventssound.adapters.db.embedding_store import SqlAlchemyEmbeddingStore
 from eventssound.adapters.db.health import SqlAlchemyDatabaseHealth
 from eventssound.adapters.db.session import build_engine, build_session_factory
+from eventssound.adapters.db.user_repository import SqlAlchemyUserRepository
 from eventssound.adapters.embeddings.fake import FakeEmbeddingProvider
 from eventssound.adapters.embeddings.openrouter import OpenRouterEmbeddingProvider
 from eventssound.adapters.llm.openrouter import OpenRouterProvider
@@ -27,6 +32,7 @@ from eventssound.adapters.search.vector import VectorSearch
 from eventssound.adapters.usage.memory import InMemoryUsageBudget
 from eventssound.adapters.usage.postgres import PostgresUsageBudget
 from eventssound.adapters.usage.rate_limit import InMemoryRateLimiter
+from eventssound.application.auth import AuthService
 from eventssound.application.availability import check_event_availability
 from eventssound.application.llm import LlmProvider
 from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
@@ -37,6 +43,8 @@ from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
 from eventssound.domain.catalog import Catalog
 from eventssound.domain.pricing_rules import default_pricing_rules
+from eventssound.entrypoints.api.auth_kit import AuthKit
+from eventssound.entrypoints.api.guards import FailClosedLimiter
 
 SessionProvider = Callable[[], Iterator[Session]]
 
@@ -179,3 +187,33 @@ class LazyQuoteAgent:
 
 def make_quote_agent(settings: Settings, factory: sessionmaker[Session]) -> QuoteAgent:
     return LazyQuoteAgent(lambda: _build_agent(settings, factory))
+
+
+def make_auth_kit(settings: Settings, factory: sessionmaker[Session]) -> AuthKit | None:
+    """The login pieces, or None when production has no usable JWT secret.
+
+    Outside production an unset secret becomes a random per-process one (tokens die on restart),
+    so local development needs no setup. In production None keeps the app booting while the
+    auth routes answer 503.
+    """
+    secret = settings.jwt_secret
+    if secret is None:
+        if settings.is_production:
+            logger.warning("JWT_SECRET is missing or weak: auth routes are disabled")
+            return None
+        secret = SecretStr(secrets.token_urlsafe(48))
+    hasher = Argon2Hasher()
+    tokens = JwtTokenIssuer(secret, settings.jwt_access_ttl_minutes)
+    service = AuthService(
+        SqlAlchemyUserRepository(factory),
+        hasher,
+        tokens,
+        dummy_hash=hasher.hash(secrets.token_urlsafe(16)),
+    )
+    per_minute = settings.login_rate_limit_per_minute
+    return AuthKit(
+        service,
+        tokens,
+        FailClosedLimiter(InMemoryRateLimiter(per_minute)),
+        FailClosedLimiter(InMemoryRateLimiter(per_minute)),
+    )

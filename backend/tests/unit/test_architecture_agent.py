@@ -113,11 +113,13 @@ def test_no_module_except_settings_reads_the_environment() -> None:
         relative = path.relative_to(PACKAGE_ROOT).as_posix()
         # Settings is the sanctioned reader. The seed CLI is the one documented exception: it reads
         # the operator override ALLOW_REMOTE_SEED (an injectable `environ`), see its docstring; the
-        # embed CLI shares that guard and reads it the same way.
+        # embed CLI shares that guard and reads it the same way; the user seed CLI also reads the
+        # two demo-account passwords (SEED_*_PASSWORD) from the same injectable `environ`.
         if relative in {
             "config.py",
             "entrypoints/cli/seed_catalog.py",
             "entrypoints/cli/embed_catalog.py",
+            "entrypoints/cli/seed_users.py",
         }:
             continue
         scanned.append(relative)
