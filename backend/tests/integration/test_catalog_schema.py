@@ -18,7 +18,7 @@ from eventssound.adapters.db.session import Base
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 TABLES = {"equipment_items", "service_packages", "package_items", "bookings"}
-ALL_TABLES = TABLES | {"catalog_embeddings", "llm_usage_daily", "users"}  # 0003, 0004, 0006
+ALL_TABLES = TABLES | {"catalog_embeddings", "llm_usage_daily", "users", "quotes"}
 
 ITEM: dict[str, Any] = {
     "code": "sound_speaker",

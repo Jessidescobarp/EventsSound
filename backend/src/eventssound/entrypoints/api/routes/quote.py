@@ -11,12 +11,15 @@ from eventssound.application.errors import InvalidStoredData, RepositoryUnavaila
 from eventssound.application.llm import LlmError
 from eventssound.application.messages_es_chat import CHAT_ERRORS
 from eventssound.application.quote_chat import (
+    AgentStatus,
     BudgetExhausted,
     ChatTurn,
     InvalidChat,
     RateLimited,
     quote_chat,
 )
+from eventssound.application.quotes import NewQuote, record_quote
+from eventssound.entrypoints.api.auth_kit import optional_principal
 from eventssound.entrypoints.api.client_ip import client_ip
 from eventssound.entrypoints.api.guards import ChatRefusal, chat_guard
 from eventssound.entrypoints.api.schemas import (
@@ -251,6 +254,25 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
         return _error("internal_error", 500, request_id)
 
     outcome, meter = result.outcome, result.meter
+    if outcome.status is AgentStatus.QUOTE and outcome.quote and outcome.event_request:
+        who = optional_principal(request)
+        event = outcome.event_request
+        payload["quote_id"] = record_quote(
+            state.quote_store,
+            NewQuote(
+                user_id=who.user_id if who else None,
+                event_type=event.event_type.value,
+                event_start=event.start,
+                event_end=event.end,
+                guest_count=event.guest_count,
+                total_cop=payload["quote"]["total"],
+                available=None
+                if outcome.availability is None
+                else outcome.availability.is_available,
+                quote=payload["quote"],
+                event_request=payload["event_request"],
+            ),
+        )
     logger.info(
         "chat request_id=%s status=%s source=%s tokens=%d llm_calls=%d tools=%s degraded=%d ms=%d",
         request_id,
