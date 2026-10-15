@@ -230,3 +230,34 @@ def test_storage_failure_on_a_list_is_a_503_without_detail() -> None:
     response = client.get("/admin/quotes", headers=headers)
 
     assert response.status_code == 503 and response.json()["detail"] == "storage_unavailable"
+
+
+def test_an_old_shaped_stored_quote_never_breaks_the_list() -> None:
+    client, store = make_client()
+    store.add(
+        NewQuote(
+            None,
+            "wedding",
+            START,
+            START + timedelta(hours=1),
+            10,
+            1000,
+            None,
+            {"legacy_field": 1},
+            {"legacy": True},
+        )
+    )
+
+    response = client.get("/admin/quotes", headers=token_for(client, ROOT))
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["quote"] == {"legacy_field": 1}
+
+
+def test_offset_has_an_upper_bound() -> None:
+    client, _ = make_client()
+
+    assert (
+        client.get("/admin/quotes?offset=100001", headers=token_for(client, ROOT)).status_code
+        == 422
+    )

@@ -255,24 +255,28 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
 
     outcome, meter = result.outcome, result.meter
     if outcome.status is AgentStatus.QUOTE and outcome.quote and outcome.event_request:
-        who = optional_principal(request)
-        event = outcome.event_request
-        payload["quote_id"] = record_quote(
-            state.quote_store,
-            NewQuote(
-                user_id=who.user_id if who else None,
-                event_type=event.event_type.value,
-                event_start=event.start,
-                event_end=event.end,
-                guest_count=event.guest_count,
-                total_cop=payload["quote"]["total"],
-                available=None
-                if outcome.availability is None
-                else outcome.availability.is_available,
-                quote=payload["quote"],
-                event_request=payload["event_request"],
-            ),
-        )
+        try:
+            who = optional_principal(request)
+            event = outcome.event_request
+            payload["quote_id"] = record_quote(
+                state.quote_store,
+                NewQuote(
+                    user_id=who.user_id if who else None,
+                    event_type=event.event_type.value,
+                    event_start=event.start,
+                    event_end=event.end,
+                    guest_count=event.guest_count,
+                    total_cop=payload["quote"]["total"],
+                    available=None
+                    if outcome.availability is None
+                    else outcome.availability.is_available,
+                    quote=payload["quote"],
+                    event_request=payload["event_request"],
+                ),
+            )
+        except Exception as exc:  # saving is best effort: the customer still gets the quote
+            logger.warning("quote not saved request_id=%s error=%s", request_id, type(exc).__name__)
+            payload["quote_id"] = None
     logger.info(
         "chat request_id=%s status=%s source=%s tokens=%d llm_calls=%d tools=%s degraded=%d ms=%d",
         request_id,

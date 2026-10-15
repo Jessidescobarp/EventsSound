@@ -23,7 +23,7 @@ me_router = APIRouter(prefix="/me", tags=["Quotes"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
 Limit = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE, description="Page size, 1 to 100.")]
-Offset = Annotated[int, Query(ge=0, description="Rows to skip.")]
+Offset = Annotated[int, Query(ge=0, le=100_000, description="Rows to skip.")]
 AnyUser = Annotated[Principal, Depends(require_role(Role.CLIENT, Role.ADMIN))]
 AdminOnly = Annotated[Principal, Depends(require_role(Role.ADMIN))]
 ERRORS = {
@@ -54,8 +54,8 @@ def _quotes(request: Request, user_id: str | None, limit: int, offset: int):
             guest_count=q.guest_count,
             total_cop=q.total_cop,
             available=q.available,
-            quote=q.quote,  # type: ignore[arg-type]
-            event_request=q.event_request,  # type: ignore[arg-type]
+            quote=q.quote,
+            event_request=q.event_request,
         )
         for q in page.items
     ]

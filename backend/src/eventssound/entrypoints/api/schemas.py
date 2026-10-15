@@ -1,6 +1,6 @@
 """Response models of the public catalog API. They never expose database ids."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -376,8 +376,10 @@ class QuoteRecordOut(BaseModel):
     guest_count: int
     total_cop: int
     available: bool | None
-    quote: QuoteOut
-    event_request: EventRequestOut
+    # Stored as validated at save time (same shape as the chat response `quote` and
+    # `event_request`). Not re-validated on read, so a later schema change cannot break old rows.
+    quote: dict[str, Any]
+    event_request: dict[str, Any]
 
 
 class QuotePageOut(BaseModel):
