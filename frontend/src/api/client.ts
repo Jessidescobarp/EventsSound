@@ -66,8 +66,8 @@ export interface ApiFetchOptions<T> {
   parse: (json: unknown) => T;
   signal?: AbortSignal;
   timeoutMs?: number;
-  /** Defaults to GET. A POST sends `jsonBody` serialized as JSON. */
-  method?: "GET" | "POST";
+  /** Defaults to GET. A POST or PUT sends `jsonBody` serialized as JSON. */
+  method?: "GET" | "POST" | "PUT";
   jsonBody?: unknown;
   /** Bearer token for protected routes. Never logged; cookies stay off either way. */
   token?: string;
@@ -106,10 +106,10 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Pr
         method,
         headers: {
           Accept: "application/json",
-          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+          ...(method !== "GET" ? { "Content-Type": "application/json" } : {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: method === "POST" ? JSON.stringify(jsonBody) : undefined,
+        body: method !== "GET" ? JSON.stringify(jsonBody) : undefined,
         credentials: "omit",
         signal: controller.signal,
       });

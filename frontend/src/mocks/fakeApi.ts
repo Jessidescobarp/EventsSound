@@ -249,7 +249,85 @@ function recordsRoute(pathname: string, init: RequestInit | undefined, search: U
   return pathname === "/admin/quotes" ? pageOf(demoQuotes, search) : pageOf(demoBookings, search);
 }
 
+// ---- admin catalog edits: a live copy of the demo catalog that the edits change ----
+
+let liveItems: CatalogItem[] = [];
+let livePackages: ServicePackage[] = [];
+
+/** Back to the built-in demo catalog (tests call this between cases). */
+export function resetDemoCatalog(): void {
+  liveItems = MOCK_ITEMS.map((i) => ({ ...i }));
+  livePackages = MOCK_PACKAGES.map((p) => ({ ...p, items: p.items.map((m) => ({ ...m })) }));
+}
+resetDemoCatalog();
+
+const withBasePrices = (): ServicePackage[] =>
+  livePackages.map((p) => ({
+    ...p,
+    base_price_cop: p.items.reduce(
+      (sum, m) => sum + (liveItems.find((i) => i.code === m.item_code)?.unit_price_cop ?? 0) * m.quantity,
+      0,
+    ),
+  }));
+
+const CODE_SHAPE = /^[a-z0-9_]{3,64}$/;
+
+function adminCatalogRoute(pathname: string, init?: RequestInit): Response {
+  const role = callerRole(init);
+  if (role === null) return json({ detail: "not_authenticated", message: "Debes iniciar sesion." }, 401);
+  if (role !== "admin") return json({ detail: "forbidden", message: "No tienes permiso." }, 403);
+  const match = /^\/admin\/catalog\/(items|packages)(?:\/([^/]+))?$/.exec(pathname);
+  const creating = init?.method === "POST" && match !== null && match[2] === undefined;
+  const editing = init?.method === "PUT" && match !== null && match[2] !== undefined;
+  if (!match || !(creating || editing)) return json({ detail: "Not Found" }, 404);
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+  } catch {
+    return json({ detail: "invalid_request", message: "Solicitud no valida." }, 422);
+  }
+  const code = creating ? body.code : decodeURIComponent(match[2] ?? "");
+  const invalid = json({ detail: "invalid_catalog_entry", message: "Los datos no son validos." }, 422);
+  if (typeof code !== "string" || !CODE_SHAPE.test(code) || typeof body.name !== "string" || !body.name.trim()) {
+    return invalid;
+  }
+  const list: { code: string }[] = match[1] === "items" ? liveItems : livePackages;
+  const at = list.findIndex((entry) => entry.code === code);
+  if (creating && at !== -1) return json({ detail: "code_taken", message: "Ya existe." }, 409);
+  if (editing && at === -1) return json({ detail: "not_found", message: "No existe." }, 404);
+
+  if (match[1] === "items") {
+    const next: CatalogItem = {
+      code,
+      name: body.name.trim(),
+      category: String(body.category),
+      stock_quantity: Number(body.stock_quantity),
+      unit_price_cop: Number(body.unit_price_cop),
+    };
+    if (!Number.isInteger(next.stock_quantity) || !Number.isInteger(next.unit_price_cop)) return invalid;
+    if (at === -1) liveItems.push(next);
+    else liveItems[at] = next;
+  } else {
+    const lines = Array.isArray(body.lines) ? (body.lines as { item_code: string; quantity: number }[]) : [];
+    if (lines.length === 0) return invalid;
+    if (lines.some((l) => !liveItems.some((i) => i.code === l.item_code))) {
+      return json({ detail: "unknown_item", message: "Equipo desconocido." }, 422);
+    }
+    const next: ServicePackage = {
+      code,
+      name: body.name.trim(),
+      discount_bps: Number(body.discount_bps),
+      base_price_cop: 0,
+      items: lines.map((l) => ({ item_code: l.item_code, quantity: l.quantity })),
+    };
+    if (at === -1) livePackages.push(next);
+    else livePackages[at] = next;
+  }
+  return json({ status: "saved" }, creating ? 201 : 200);
+}
+
 function route(pathname: string, init?: RequestInit, search = new URLSearchParams()): Response {
+  if (pathname.startsWith("/admin/catalog/")) return adminCatalogRoute(pathname, init);
   switch (pathname) {
     case "/auth/login":
       return init?.method === "POST" ? loginRoute(init) : json({ detail: "Method Not Allowed" }, 405);
@@ -262,9 +340,9 @@ function route(pathname: string, init?: RequestInit, search = new URLSearchParam
     case "/health":
       return json({ status: "ok" });
     case "/catalog/items":
-      return json({ items: MOCK_ITEMS });
+      return json({ items: [...liveItems].sort(byCode) });
     case "/catalog/packages":
-      return json({ packages: MOCK_PACKAGES });
+      return json({ packages: withBasePrices().sort(byCode) });
     default:
       return json({ detail: "Not Found" }, 404);
   }

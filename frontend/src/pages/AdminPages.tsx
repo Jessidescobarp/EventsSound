@@ -29,6 +29,9 @@ export function AdminLayout() {
           <NavLink to="/admin/cotizaciones" className={tabClass}>
             {t.tabQuotes}
           </NavLink>
+          <NavLink to="/admin/catalogo" className={tabClass}>
+            {es.catalogAdmin.tab}
+          </NavLink>
           <NavLink to="/admin/reservas" className={tabClass}>
             {t.tabBookings}
           </NavLink>
