@@ -23,6 +23,7 @@ const RECORD = {
   id: "q-1",
   created_at: "2026-10-15T12:00:00+00:00",
   registered: false,
+  owner_email: null,
   event_type: "wedding",
   event_start: "2026-10-31T17:00:00-05:00",
   event_end: "2026-10-31T22:00:00-05:00",
@@ -42,6 +43,14 @@ describe("quote pages", () => {
     expect(parsed.items[0]).not.toHaveProperty("event_request");
   });
 
+  it("keeps the owner's email, or null for an anonymous quote", () => {
+    const parsed = parseQuotePage(
+      page([{ ...RECORD, registered: true, owner_email: "cliente@eventsounddr.example" }, RECORD]),
+    );
+
+    expect(parsed.items.map((q) => q.owner_email)).toEqual(["cliente@eventsounddr.example", null]);
+  });
+
   it("keeps a row whose stored breakdown no longer parses, with a null quote", () => {
     const parsed = parseQuotePage(page([{ ...RECORD, quote: { legacy_field: 1 } }]));
 
@@ -54,6 +63,7 @@ describe("quote pages", () => {
     [page([RECORD, RECORD], { limit: 1 })],
     [page([{ ...RECORD, guest_count: 0 }])],
     [page([{ ...RECORD, registered: "yes" }])],
+    [page([{ ...RECORD, owner_email: 42 }])],
     [{ items: "x", total: 1, limit: 10, offset: 0 }],
   ])("rejects a malformed page: %#", (body) => {
     expect(() => parseQuotePage(body)).toThrow();

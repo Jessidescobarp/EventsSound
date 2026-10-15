@@ -34,6 +34,7 @@ class StoredQuote:
     id: str
     created_at: datetime
     registered: bool  # saved while a user was logged in
+    owner_email: str | None  # that account's email (demo accounts only); None when anonymous
     event_type: str
     event_start: datetime
     event_end: datetime

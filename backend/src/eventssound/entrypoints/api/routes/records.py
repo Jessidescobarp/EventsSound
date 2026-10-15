@@ -48,6 +48,7 @@ def _quotes(request: Request, user_id: str | None, limit: int, offset: int):
             id=q.id,
             created_at=q.created_at.isoformat(),
             registered=q.registered,
+            owner_email=q.owner_email,
             event_type=q.event_type,
             event_start=q.event_start.isoformat(),
             event_end=q.event_end.isoformat(),

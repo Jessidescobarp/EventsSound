@@ -71,6 +71,7 @@ class Store:
                 i,
                 START,
                 q.user_id is not None,
+                {ANA.id: ANA.email}.get(q.user_id or ""),
                 q.event_type,
                 q.event_start,
                 q.event_end,
@@ -198,6 +199,7 @@ def test_me_quotes_lists_only_the_callers_quotes() -> None:
 
     assert (page["total"], page["limit"], page["offset"]) == (1, 20, 0)
     assert page["items"][0]["registered"] is True and page["items"][0]["quote"]["lines"]
+    assert page["items"][0]["owner_email"] == ANA.email
 
 
 def test_admin_lists_are_admin_only_and_paginated() -> None:

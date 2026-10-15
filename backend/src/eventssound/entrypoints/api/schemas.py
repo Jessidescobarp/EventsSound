@@ -370,6 +370,9 @@ class QuoteRecordOut(BaseModel):
     id: str
     created_at: str
     registered: bool = Field(description="True when the quote was made while logged in.")
+    owner_email: str | None = Field(
+        description="Email of the account that made the quote; null when anonymous."
+    )
     event_type: str
     event_start: str
     event_end: str

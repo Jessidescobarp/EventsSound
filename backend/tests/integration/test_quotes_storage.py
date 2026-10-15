@@ -83,6 +83,7 @@ def test_user_filter_returns_only_that_users_quotes(engine: Engine) -> None:
     page = store.page(USER_ID, 20, 0)
 
     assert [q.id for q in page.items] == [mine] and page.total == 1 and page.items[0].registered
+    assert page.items[0].owner_email == f"{USER_ID[:4]}@example.com"
 
 
 def test_deleting_the_user_keeps_the_quote_as_anonymous(engine: Engine) -> None:
@@ -93,7 +94,8 @@ def test_deleting_the_user_keeps_the_quote_as_anonymous(engine: Engine) -> None:
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM users"))
 
-    assert store.page(None, 20, 0).items[0].registered is False
+    kept = store.page(None, 20, 0).items[0]
+    assert kept.registered is False and kept.owner_email is None
 
 
 @pytest.mark.parametrize(
