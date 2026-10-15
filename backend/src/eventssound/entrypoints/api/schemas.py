@@ -340,3 +340,19 @@ class ChatInvalidOut(BaseModel):
 class ChatErrorOut(BaseModel):
     detail: str = Field(description="Machine-readable error code.", examples=["rate_limited"])
     message: str = Field(description="Sentence for the customer, in Spanish.")
+
+
+class LoginIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class LoginOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int = Field(description="Seconds until the token expires.")
+    role: Literal["client", "admin"]

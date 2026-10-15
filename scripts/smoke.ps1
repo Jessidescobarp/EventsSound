@@ -63,6 +63,13 @@ Add-Check 'backend /docs (public Swagger)' {
   $r = Get-Safe "$BackendUrl/docs"
   ($r.StatusCode -eq 200), "HTTP $($r.StatusCode)"
 }
+Add-Check 'backend login rejects bad credentials (401, not 503)' {
+  try {
+    $r = Invoke-WebRequest "$BackendUrl/auth/login" -Method Post -ContentType 'application/json' -Body '{"email":"nobody@smoke.invalid","password":"not-a-password"}' -UseBasicParsing -TimeoutSec 30
+    $code = [int]$r.StatusCode
+  } catch { $code = [int]$_.Exception.Response.StatusCode }
+  ($code -eq 401), "HTTP $code (503 means JWT_SECRET is missing or weak)"
+}
 Add-Check 'frontend root' {
   $r = Get-Safe $FrontendUrl
   $mount = $r.Content -match 'id="root"'

@@ -88,6 +88,16 @@ cd backend && uv run python -m eventssound.entrypoints.cli.seed_catalog --confir
 
 The CLI refuses non-local hosts and `APP_ENV=production` unless the environment variable `ALLOW_REMOTE_SEED` is exactly `1`. That variable is a one-off operator override of the CLI, not application configuration: never put it in `.env.example` or a deploy. On remote targets only the catalog is seeded, never the demo bookings.
 
+### Demo accounts (login)
+
+`POST /auth/login` needs `JWT_SECRET` (32+ random characters; in production set it in the Render dashboard, otherwise the auth routes answer 503 `auth_not_configured` and the rest of the app keeps working). Create the two synthetic accounts with passwords you choose (12+ characters), kept out of the repo:
+
+```
+SEED_ADMIN_PASSWORD=... SEED_CLIENT_PASSWORD=... uv run python -m eventssound.entrypoints.cli.seed_users --confirm
+```
+
+Accounts: `admin@eventsounddr.example` (admin) and `cliente@eventsounddr.example` (client). The CLI has the same guard as the catalog seed (dry run without `--confirm`, remote or production targets need `ALLOW_REMOTE_SEED=1`) and stores only argon2id hashes.
+
 ## Vector search (embeddings)
 
 Equipment search is keyword-only until embeddings are configured. Migration `0003` creates the `catalog_embeddings` table and runs `CREATE EXTENSION IF NOT EXISTS vector` (pgvector ships in the local `pgvector/pgvector:pg16` image and on Neon). To index the catalog into a LOCAL database for experiments (the `fake` provider is a deterministic hashing stand-in; a dry run without `--confirm` exits 2 and changes nothing):
