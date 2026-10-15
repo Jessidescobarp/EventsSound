@@ -87,3 +87,33 @@ def forge(**overrides: object) -> str:
 )
 def test_every_bad_token_verifies_to_none(token: str) -> None:
     assert issuer().verify(token) is None
+
+
+def test_concurrent_verifications_are_capped_to_protect_the_small_instance() -> None:
+    import threading
+    from types import SimpleNamespace
+
+    hasher = Argon2Hasher(max_concurrent=2)
+    stored = hasher.hash("pw-for-the-cap-test")
+    live = peak = 0
+    lock = threading.Lock()
+    real_verify = hasher._hasher.verify
+
+    def spy(*args: object) -> bool:
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(0.05)
+        with lock:
+            live -= 1
+        return real_verify(*args)  # type: ignore[arg-type]
+
+    hasher._hasher = SimpleNamespace(verify=spy)  # type: ignore[assignment]
+    threads = [threading.Thread(target=hasher.verify, args=(stored, "x")) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert peak <= 2
