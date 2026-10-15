@@ -106,7 +106,17 @@ class TestCharset:
         with pytest.raises(ValidationError):
             make(items=[{"mention": hostile, "quantity": 1}])
 
-    @pytest.mark.parametrize("allowed", ["parlantes 15", "Mezcladora-16", "cafe, con leche"])
+    @pytest.mark.parametrize(
+        "allowed",
+        [
+            "parlantes 15",
+            "Mezcladora-16",
+            "cafe, con leche",
+            "Bogotá",
+            "luz estroboscópica",
+            "niños Über",
+        ],
+    )
     def test_allowed_characters_pass(self, allowed: str) -> None:
         extraction = make(items=[{"mention": allowed, "quantity": 1}])
         assert extraction.items[0].mention == allowed

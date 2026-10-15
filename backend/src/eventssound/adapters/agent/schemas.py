@@ -29,8 +29,9 @@ DURATION_MAX_HOURS = 72
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-# Letters, digits, spaces and . , ; : - / ' # % ( )  — anything else is refused.
-_CHARSET = re.compile(r"^[A-Za-z0-9 .,;:/'#%()\-]+$")
+# Letters (including Spanish accents), digits, spaces and . , ; : - / ' # % ( ) — anything else
+# is refused. Names like "Bogotá" or "luz estroboscópica" must pass.
+_CHARSET = re.compile(r"^[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ .,;:/'#%()\-]+$")
 
 
 class _Strict(BaseModel):
