@@ -11,6 +11,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -24,6 +25,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .session import Base
@@ -172,3 +174,31 @@ class UserModel(TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(254), unique=True)
     role: Mapped[str] = mapped_column(String(16))
     password_hash: Mapped[str] = mapped_column(String(255))
+
+
+class QuoteModel(TimestampMixin, Base):
+    """A quote saved by the chat route. Validated fields only: no message text or contact data."""
+
+    __tablename__ = "quotes"
+    __table_args__ = (
+        CheckConstraint("total_cop >= 0", name="total_non_negative"),
+        CheckConstraint("guest_count > 0", name="guests_positive"),
+        CheckConstraint("event_end > event_start", name="ends_after_starts"),
+        Index("ix_quotes_created_at_id", "created_at", "id"),
+        Index("ix_quotes_user_id", "user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    event_type: Mapped[str] = mapped_column(String(32))
+    event_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    event_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    guest_count: Mapped[int] = mapped_column(Integer)
+    total_cop: Mapped[int] = mapped_column(BigInteger)
+    available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    quote: Mapped[dict] = mapped_column(JSONB)
+    event_request: Mapped[dict] = mapped_column(JSONB)

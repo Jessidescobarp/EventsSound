@@ -98,6 +98,10 @@ SEED_ADMIN_PASSWORD=... SEED_CLIENT_PASSWORD=... uv run python -m eventssound.en
 
 Accounts: `admin@eventsounddr.example` (admin) and `cliente@eventsounddr.example` (client). The CLI has the same guard as the catalog seed (dry run without `--confirm`, remote or production targets need `ALLOW_REMOTE_SEED=1`) and stores only argon2id hashes.
 
+### Saved quotes and admin lists
+
+Every `status=quote` answer of `POST /quote/chat` is saved by the server (validated quote and event fields only: no message text, reply, address, name or email) and the response carries its `quote_id` (null if saving failed; the chat never fails because of it). With a bearer token the quote belongs to that user. Reads, all newest first with `limit` (1 to 100, default 20) and `offset`, answering `{items, total, limit, offset}`: `GET /me/quotes` (any logged-in user, own quotes), `GET /admin/quotes` and `GET /admin/bookings` (admin only: 401 `not_authenticated`, 403 `forbidden`).
+
 ## Vector search (embeddings)
 
 Equipment search is keyword-only until embeddings are configured. Migration `0003` creates the `catalog_embeddings` table and runs `CREATE EXTENSION IF NOT EXISTS vector` (pgvector ships in the local `pgvector/pgvector:pg16` image and on Neon). To index the catalog into a LOCAL database for experiments (the `fake` provider is a deterministic hashing stand-in; a dry run without `--confirm` exits 2 and changes nothing):

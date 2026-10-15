@@ -20,6 +20,7 @@ from eventssound.adapters.db.booking_repository import SqlAlchemyBookingReposito
 from eventssound.adapters.db.catalog_repository import SqlAlchemyCatalogRepository
 from eventssound.adapters.db.embedding_store import SqlAlchemyEmbeddingStore
 from eventssound.adapters.db.health import SqlAlchemyDatabaseHealth
+from eventssound.adapters.db.quote_repository import SqlAlchemyBookingLister, SqlAlchemyQuoteStore
 from eventssound.adapters.db.session import build_engine, build_session_factory
 from eventssound.adapters.db.user_repository import SqlAlchemyUserRepository
 from eventssound.adapters.embeddings.fake import FakeEmbeddingProvider
@@ -38,6 +39,7 @@ from eventssound.application.llm import LlmProvider
 from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
 from eventssound.application.pricing import price_quote
 from eventssound.application.quote_chat import AgentInput, AgentOutcome, ChatLimits, QuoteAgent
+from eventssound.application.quotes import BookingLister, QuoteStore
 from eventssound.application.usage import RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
@@ -217,3 +219,11 @@ def make_auth_kit(settings: Settings, factory: sessionmaker[Session]) -> AuthKit
         FailClosedLimiter(InMemoryRateLimiter(per_minute)),
         FailClosedLimiter(InMemoryRateLimiter(per_minute)),
     )
+
+
+def make_quote_store(factory: sessionmaker[Session]) -> QuoteStore:
+    return SqlAlchemyQuoteStore(factory)
+
+
+def make_booking_lister(factory: sessionmaker[Session]) -> BookingLister:
+    return SqlAlchemyBookingLister(factory)

@@ -45,6 +45,15 @@ def refusal_handler(_: Request, exc: AuthRefusal) -> JSONResponse:
     return refusal_response(exc.status, exc.code, **extra)
 
 
+def optional_principal(request: Request) -> Principal | None:
+    """Who the bearer token says is calling; None for no token, a bad one, or auth disabled."""
+    kit: AuthKit | None = request.app.state.auth
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    if kit is None or scheme.lower() != "bearer":
+        return None
+    return kit.tokens.verify(token.strip())
+
+
 def require_role(*roles: Role) -> Callable[[Request], Principal]:
     """Dependency: a valid bearer token whose role is one of `roles`, else 401 or 403."""
 

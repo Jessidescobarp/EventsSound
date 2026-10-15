@@ -1,6 +1,6 @@
 """Response models of the public catalog API. They never expose database ids."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -293,6 +293,9 @@ class ChatResponseOut(BaseModel):
     reply_source: Literal["llm", "template", "static"] = Field(
         description="`llm` when the model wrote the reply, `template` or `static` otherwise."
     )
+    quote_id: str | None = Field(
+        default=None, description="Id of the saved quote; null when it could not be saved."
+    )
 
     @classmethod
     def from_outcome(cls, request_id: str, outcome: AgentOutcome) -> "ChatResponseOut":
@@ -356,3 +359,54 @@ class LoginOut(BaseModel):
     token_type: Literal["bearer"] = "bearer"
     expires_in: int = Field(description="Seconds until the token expires.")
     role: Literal["client", "admin"]
+
+
+# --- Saved quotes and admin lists -------------------------------------------------------------
+
+
+class QuoteRecordOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    created_at: str
+    registered: bool = Field(description="True when the quote was made while logged in.")
+    event_type: str
+    event_start: str
+    event_end: str
+    guest_count: int
+    total_cop: int
+    available: bool | None
+    # Stored as validated at save time (same shape as the chat response `quote` and
+    # `event_request`). Not re-validated on read, so a later schema change cannot break old rows.
+    quote: dict[str, Any]
+    event_request: dict[str, Any]
+
+
+class QuotePageOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: list[QuoteRecordOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class BookingOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    booking_code: str
+    item_code: str
+    quantity: int
+    starts_at: str
+    ends_at: str
+    status: str
+    created_at: str
+
+
+class BookingPageOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: list[BookingOut]
+    total: int
+    limit: int
+    offset: int
