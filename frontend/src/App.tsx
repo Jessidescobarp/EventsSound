@@ -3,6 +3,7 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { RequireRole } from "./auth/RequireRole";
 import { Layout } from "./components/Layout";
 import AboutPage from "./pages/AboutPage";
+import { AdminCatalogPage } from "./pages/AdminCatalogPage";
 import { AdminBookingsPage, AdminLayout, AdminQuotesPage } from "./pages/AdminPages";
 import ChatPage from "./pages/ChatPage";
 import HomePage from "./pages/HomePage";
@@ -30,6 +31,7 @@ export default function App() {
           <Route element={<AdminLayout />}>
             <Route index element={<Navigate to="cotizaciones" replace />} />
             <Route path="cotizaciones" element={<AdminQuotesPage />} />
+            <Route path="catalogo" element={<AdminCatalogPage />} />
             <Route path="reservas" element={<AdminBookingsPage />} />
           </Route>
         </Route>
