@@ -5,7 +5,13 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from eventssound.application.quote_chat import AgentOutcome
-from eventssound.domain.catalog import Catalog, EquipmentItem, ServicePackage
+from eventssound.domain.catalog import (
+    MAX_UNIT_PRICE,
+    Catalog,
+    EquipmentCategory,
+    EquipmentItem,
+    ServicePackage,
+)
 
 Code = Annotated[str, Field(description="Stable machine-readable identifier.")]
 
@@ -413,3 +419,40 @@ class BookingPageOut(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# --- Admin catalog edits --------------------------------------------------------------------
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+CodeIn = Annotated[str, Field(pattern=r"^[a-z0-9_]{3,64}$", description="Immutable identifier.")]
+NameIn = Annotated[str, Field(min_length=1, max_length=120)]
+
+
+class ItemFieldsIn(_Strict):
+    name: NameIn
+    category: EquipmentCategory
+    stock_quantity: int = Field(ge=0, le=100_000, description="Units owned; 0 stops offering it.")
+    unit_price_cop: int = Field(ge=0, le=MAX_UNIT_PRICE, description="Price per unit per day.")
+
+
+class ItemCreateIn(ItemFieldsIn):
+    code: CodeIn
+
+
+class PackageLineIn(_Strict):
+    item_code: CodeIn
+    quantity: int = Field(ge=1, le=1_000)
+
+
+class PackageFieldsIn(_Strict):
+    name: NameIn
+    discount_bps: int = Field(ge=0, le=10_000, description="500 = 5%.")
+    lines: list[PackageLineIn] = Field(min_length=1, max_length=30)
+
+
+class PackageCreateIn(PackageFieldsIn):
+    code: CodeIn

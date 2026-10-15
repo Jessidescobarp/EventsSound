@@ -102,6 +102,10 @@ Accounts: `admin@eventsounddr.example` (admin) and `cliente@eventsounddr.example
 
 Every `status=quote` answer of `POST /quote/chat` is saved by the server (validated quote and event fields only: no message text, reply, address, name or email) and the response carries its `quote_id` (null if saving failed; the chat never fails because of it). With a bearer token the quote belongs to that user. Reads, all newest first with `limit` (1 to 100, default 20) and `offset`, answering `{items, total, limit, offset}`: `GET /me/quotes` (any logged-in user, own quotes), `GET /admin/quotes` and `GET /admin/bookings` (admin only: 401 `not_authenticated`, 403 `forbidden`).
 
+### Catalog edits (admin)
+
+An admin can create and edit equipment, staff services and packages: `POST /admin/catalog/items`, `PUT /admin/catalog/items/{code}`, `POST /admin/catalog/packages`, `PUT /admin/catalog/packages/{code}` (401/403 as above, 409 `code_taken`, 404 `not_found`, 422 `invalid_catalog_entry` or `unknown_item`, 503 `storage_unavailable`). A code never changes after creation, and nothing is deleted (bookings and packages point at items): stock 0 stops offering an item. Prices stay deterministic: a changed price only affects quotes made afterwards, since saved quotes keep their own breakdown. After each write the server re-embeds the entries whose name, category or members changed and rebuilds the agent's search index, so the quote agent sees the edit on its next request without a restart (best effort: if embeddings fail, keyword search still works).
+
 ## Vector search (embeddings)
 
 Equipment search is keyword-only until embeddings are configured. Migration `0003` creates the `catalog_embeddings` table and runs `CREATE EXTENSION IF NOT EXISTS vector` (pgvector ships in the local `pgvector/pgvector:pg16` image and on Neon). To index the catalog into a LOCAL database for experiments (the `fake` provider is a deterministic hashing stand-in; a dry run without `--confirm` exits 2 and changes nothing):
