@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client";
+import { useAuth } from "../auth/authContext";
 import {
   buildHistory,
   checkDraft,
@@ -34,6 +35,8 @@ const DEFAULT_COOLDOWN_SECONDS = 10;
  * through `onRestore`, so it cannot poison every later request.
  */
 export function useChat({ onRestore }: { onRestore?: (text: string) => void } = {}) {
+  // A signed-in caller sends the token so the saved quote shows up under their account.
+  const token = useAuth().session?.token;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
@@ -61,7 +64,7 @@ export function useChat({ onRestore }: { onRestore?: (text: string) => void } = 
       setSending(true);
       setError(null);
       try {
-        const answer = await sendChat(buildHistory(thread), controller.signal);
+        const answer = await sendChat(buildHistory(thread), controller.signal, token);
         if (inFlight.current !== controller) return;
         const reply: ChatMessage = { id: nextId.current++, role: "assistant", content: answer.reply, response: answer };
         setMessages([...thread, reply]);
@@ -80,7 +83,7 @@ export function useChat({ onRestore }: { onRestore?: (text: string) => void } = 
       inFlight.current = null;
       setSending(false);
     },
-    [onRestore],
+    [onRestore, token],
   );
 
   /** Returns true when the text was accepted (the caller can clear its input). */

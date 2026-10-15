@@ -274,3 +274,30 @@ describe("apiFetch POST and error bodies", () => {
     expect([error.detail, error.serverMessage, error.retryAfterSeconds]).toEqual([detail, message, retry]);
   });
 });
+
+describe("apiFetch bearer token", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example/");
+  });
+
+  it("sends Authorization only when a token is given", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => json("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/x", { parse: asString });
+    await apiFetch("/x", { parse: asString, token: "abc.def.ghi" });
+
+    const [without, withToken] = fetchMock.mock.calls.map((c) => new Headers(c[1]?.headers));
+    expect(without?.has("Authorization")).toBe(false);
+    expect(withToken?.get("Authorization")).toBe("Bearer abc.def.ghi");
+  });
+
+  it("keeps cookies out even when authenticated", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => json("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/x", { parse: asString, token: "t" });
+
+    expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe("omit");
+  });
+});

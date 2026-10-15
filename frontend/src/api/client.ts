@@ -69,15 +69,17 @@ export interface ApiFetchOptions<T> {
   /** Defaults to GET. A POST sends `jsonBody` serialized as JSON. */
   method?: "GET" | "POST";
   jsonBody?: unknown;
+  /** Bearer token for protected routes. Never logged; cookies stay off either way. */
+  token?: string;
 }
 
 /**
  * GET (or POST) JSON from the backend with a timeout, cancellation, a size cap and a runtime
  * guard. Every failure is an ApiError with a stable code; nothing else is thrown.
- * No cookies are sent (the API uses bearer tokens, added later).
+ * No cookies are sent: protected routes take a bearer token (`token`).
  */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Promise<T> {
-  const { parse, signal, timeoutMs = DEFAULT_TIMEOUT_MS, method = "GET", jsonBody } = options;
+  const { parse, signal, timeoutMs = DEFAULT_TIMEOUT_MS, method = "GET", jsonBody, token } = options;
 
   if (!path.startsWith("/")) throw new ApiError("config", "API path must start with '/'.");
   let base: string;
@@ -102,10 +104,11 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions<T>): Pr
     try {
       response = await fetch(`${base}${path}`, {
         method,
-        headers:
-          method === "POST"
-            ? { Accept: "application/json", "Content-Type": "application/json" }
-            : { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: method === "POST" ? JSON.stringify(jsonBody) : undefined,
         credentials: "omit",
         signal: controller.signal,

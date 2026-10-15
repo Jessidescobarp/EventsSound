@@ -176,8 +176,86 @@ function chatRoute(init?: RequestInit): Response {
   return json(CHAT_QUOTE);
 }
 
-function route(pathname: string, init?: RequestInit): Response {
+// ---- auth and saved records (demo accounts; the "password" is public by design) ----
+
+export const DEMO_PASSWORD = "demo-password";
+const TOKENS = { admin: "demo.admin.token", client: "demo.client.token" } as const;
+const ACCOUNTS: Record<string, "admin" | "client"> = {
+  "admin@eventsounddr.example": "admin",
+  "cliente@eventsounddr.example": "client",
+};
+
+function loginRoute(init?: RequestInit): Response {
+  let body: { email?: unknown; password?: unknown };
+  try {
+    body = JSON.parse(String(init?.body)) as typeof body;
+  } catch {
+    return json({ detail: "invalid_request", message: "Solicitud no valida." }, 422);
+  }
+  const email = typeof body.email === "string" ? body.email.toLowerCase() : "";
+  if (email.startsWith("limite")) {
+    return json({ detail: "rate_limited", message: "Demasiados intentos." }, 429, { "Retry-After": "5" });
+  }
+  const role = ACCOUNTS[email];
+  if (!role || body.password !== DEMO_PASSWORD) {
+    return json({ detail: "invalid_credentials", message: "El correo o la contrasena no son correctos." }, 401);
+  }
+  return json({ access_token: TOKENS[role], token_type: "bearer", expires_in: 3600, role });
+}
+
+const callerRole = (init?: RequestInit): "admin" | "client" | null => {
+  const header = new Headers(init?.headers).get("Authorization") ?? "";
+  return header === `Bearer ${TOKENS.admin}` ? "admin" : header === `Bearer ${TOKENS.client}` ? "client" : null;
+};
+
+const DEMO_TYPES = ["wedding", "corporate", "birthday", "graduation", "concert"];
+const demoQuotes = Array.from({ length: 25 }, (_, n) => ({
+  id: `demo-quote-${String(n + 1).padStart(2, "0")}`,
+  created_at: new Date(Date.UTC(2026, 9, 15, 12, 0) - n * 3_600_000).toISOString(),
+  registered: n % 4 === 0,
+  event_type: DEMO_TYPES[n % DEMO_TYPES.length],
+  event_start: new Date(Date.UTC(2026, 10, 14 + (n % 20), 23, 0)).toISOString(),
+  event_end: new Date(Date.UTC(2026, 10, 15 + (n % 20), 3, 0)).toISOString(),
+  guest_count: 40 + n * 5,
+  total_cop: CHAT_QUOTE.quote?.total ?? 0,
+  available: n % 5 === 0 ? false : n % 7 === 0 ? null : true,
+  quote: CHAT_QUOTE.quote,
+}));
+const demoBookings = Array.from({ length: 12 }, (_, n) => ({
+  booking_code: `DEMO-${String(100 + Math.floor(n / 2))}`,
+  item_code: n % 2 === 0 ? "sound_speaker_active_15" : "lighting_led_par",
+  quantity: 2 + (n % 3),
+  starts_at: new Date(Date.UTC(2026, 10, 14 + n, 23, 0)).toISOString(),
+  ends_at: new Date(Date.UTC(2026, 10, 15 + n, 3, 0)).toISOString(),
+  status: ["pending", "confirmed", "cancelled"][n % 3],
+  created_at: new Date(Date.UTC(2026, 9, 14, 12, 0) - n * 3_600_000).toISOString(),
+}));
+
+function pageOf<T>(rows: T[], search: URLSearchParams): Response {
+  const limit = Number(search.get("limit") ?? 20);
+  const offset = Number(search.get("offset") ?? 0);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0) {
+    return json({ detail: "invalid_request", message: "Solicitud no valida." }, 422);
+  }
+  return json({ items: rows.slice(offset, offset + limit), total: rows.length, limit, offset });
+}
+
+function recordsRoute(pathname: string, init: RequestInit | undefined, search: URLSearchParams): Response {
+  const role = callerRole(init);
+  if (role === null) return json({ detail: "not_authenticated", message: "Debes iniciar sesion." }, 401);
+  if (pathname === "/me/quotes") return pageOf(demoQuotes.filter((q) => q.registered), search);
+  if (role !== "admin") return json({ detail: "forbidden", message: "No tienes permiso." }, 403);
+  return pathname === "/admin/quotes" ? pageOf(demoQuotes, search) : pageOf(demoBookings, search);
+}
+
+function route(pathname: string, init?: RequestInit, search = new URLSearchParams()): Response {
   switch (pathname) {
+    case "/auth/login":
+      return init?.method === "POST" ? loginRoute(init) : json({ detail: "Method Not Allowed" }, 405);
+    case "/me/quotes":
+    case "/admin/quotes":
+    case "/admin/bookings":
+      return recordsRoute(pathname, init, search);
     case "/quote/chat":
       return init?.method === "POST" ? chatRoute(init) : json({ detail: "Method Not Allowed" }, 405);
     case "/health":
@@ -197,7 +275,7 @@ export function createFakeFetch({ latencyMs = 350 }: { latencyMs?: number } = {}
     new Promise<Response>((resolve, reject) => {
       const signal = init?.signal;
       const url = new URL(input instanceof Request ? input.url : String(input));
-      const timer = setTimeout(() => resolve(route(url.pathname, init)), latencyMs);
+      const timer = setTimeout(() => resolve(route(url.pathname, init, url.searchParams)), latencyMs);
       signal?.addEventListener(
         "abort",
         () => {
