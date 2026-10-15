@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation, useNavigationType } from "react-router";
+import { useAuth } from "../auth/authContext";
 import { es } from "../copy/es";
 import { BackendStatusContext } from "../hooks/backendStatusContext";
 import { useBackendStatus } from "../hooks/useBackendStatus";
@@ -22,6 +23,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function Layout() {
   const backend = useBackendStatus();
+  const { session, signOut } = useAuth();
   const { pathname } = useLocation();
   const navigationType = useNavigationType();
   const mainRef = useRef<HTMLElement>(null);
@@ -67,6 +69,37 @@ export function Layout() {
                   </NavLink>
                 </li>
               ))}
+              {session ? (
+                <>
+                  <li>
+                    <NavLink to="/mis-cotizaciones" className={navLinkClass}>
+                      {es.nav.myQuotes}
+                    </NavLink>
+                  </li>
+                  {session.role === "admin" ? (
+                    <li>
+                      <NavLink to="/admin" className={navLinkClass}>
+                        {es.nav.admin}
+                      </NavLink>
+                    </li>
+                  ) : null}
+                  <li>
+                    <button
+                      type="button"
+                      onClick={signOut}
+                      className={`${navLinkClass({ isActive: false })} cursor-pointer`}
+                    >
+                      {es.nav.logout}
+                    </button>
+                  </li>
+                </>
+              ) : (
+                <li>
+                  <NavLink to="/ingresar" className={navLinkClass}>
+                    {es.nav.login}
+                  </NavLink>
+                </li>
+              )}
             </ul>
           </nav>
         </Container>

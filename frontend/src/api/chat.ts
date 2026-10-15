@@ -1,4 +1,5 @@
-import { ApiError, apiFetch, hasForbiddenChars, replaceForbiddenChars } from "./client";
+import { ApiError, apiFetch } from "./client";
+import { int, list, nullable, obj, str } from "./parse";
 
 /**
  * Contract of POST /quote/chat (openspec quote-agent / chat-endpoint). The server keeps no
@@ -121,7 +122,6 @@ export interface ChatResponse {
 // ---- runtime guards: the JSON is untrusted ----
 
 const MAX_REPLY_CHARS = 6000;
-const MAX_TEXT = 120;
 const MAX_LINES = 250;
 const MAX_LIST = 250;
 const MAX_PESOS = 1_000_000_000_000;
@@ -134,44 +134,6 @@ const SIGNED_KINDS: readonly string[] = ["package_discount", "rounding"];
 const KINDS: readonly string[] = [
   "item", "package", "package_discount", "guest_size", "weekend_holiday", "night", "distance", "rounding",
 ];
-
-/** Splits on line breaks and tabs, which the reply may keep (captured, so odd indexes). */
-const LAYOUT_SPLIT = /([\n\r\t])/;
-
-type Obj = Record<string, unknown>;
-
-function obj(value: unknown): Obj {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("object expected");
-  return value as Obj;
-}
-
-/**
- * Text field. Short fields with control or bidi characters are rejected. With `multiline`
- * (the free-text reply) line breaks and tabs stay and the other forbidden characters become
- * spaces instead: the backend lets them through and the reply is shown as plain text anyway.
- */
-function str(o: Obj, key: string, max = MAX_TEXT, multiline = false): string {
-  const v = o[key];
-  if (typeof v !== "string" || v.length > max) throw new Error(key + ": invalid text");
-  const text = multiline ? v.split(LAYOUT_SPLIT).map((p, i) => (i % 2 ? p : replaceForbiddenChars(p))).join("") : v;
-  if (text.trim().length === 0 || (!multiline && hasForbiddenChars(text))) throw new Error(key + ": invalid text");
-  return text;
-}
-
-function int(o: Obj, key: string, min: number, max: number): number {
-  const v = o[key];
-  if (typeof v !== "number" || !Number.isSafeInteger(v) || v < min || v > max) throw new Error(`${key}: invalid integer`);
-  return v;
-}
-
-function nullable<T>(value: unknown, read: (v: unknown) => T): T | null {
-  return value === null ? null : read(value);
-}
-
-function list<T>(value: unknown, max: number, read: (v: unknown) => T): T[] {
-  if (!Array.isArray(value) || value.length > max) throw new Error("array expected");
-  return value.map(read);
-}
 
 function parseLine(value: unknown): QuoteLine {
   const o = obj(value);
@@ -193,7 +155,7 @@ function parseLine(value: unknown): QuoteLine {
 }
 
 /** The pricing engine guarantees these identities; a payload that breaks them is not trusted. */
-function parseQuote(value: unknown): Quote {
+export function parseQuote(value: unknown): Quote {
   const o = obj(value);
   if (int(o, "version", 1, 1) !== 1 || o.currency !== "COP") throw new Error("unsupported quote");
   const lines = list(o.lines, MAX_LINES, parseLine);
@@ -241,7 +203,7 @@ export function parseChatResponse(json: unknown): ChatResponse {
 // ---- transport and error classes ----
 
 /** Throws ApiError. A body over the byte limit is refused here, before the network. */
-export function sendChat(history: ChatTurn[], signal?: AbortSignal): Promise<ChatResponse> {
+export function sendChat(history: ChatTurn[], signal?: AbortSignal, token?: string): Promise<ChatResponse> {
   if (history.length === 0 || bodyBytes(history) > MAX_BODY_BYTES) {
     return Promise.reject(new ApiError("http", "Request too large.", 413));
   }
@@ -251,6 +213,7 @@ export function sendChat(history: ChatTurn[], signal?: AbortSignal): Promise<Cha
     parse: parseChatResponse,
     signal,
     timeoutMs: CHAT_TIMEOUT_MS,
+    token,
   });
 }
 

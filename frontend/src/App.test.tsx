@@ -54,7 +54,7 @@ describe("layout", () => {
     renderApp("/");
     const nav = screen.getByRole("navigation", { name: es.a11y.mainNav });
     const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/", "/quienes-somos", "/portafolio", "/servicios", "/cotizar"]);
+    expect(hrefs).toEqual(["/", "/quienes-somos", "/portafolio", "/servicios", "/cotizar", "/ingresar"]);
   });
 
   it("marks only the current page with aria-current", () => {

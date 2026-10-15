@@ -50,7 +50,7 @@ export function QuoteDetails({ response }: { response: ChatResponse }) {
   );
 }
 
-function QuoteTable({ quote }: { quote: Quote }) {
+export function QuoteTable({ quote }: { quote: Quote }) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="overflow-x-auto">
