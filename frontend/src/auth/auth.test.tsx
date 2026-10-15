@@ -89,6 +89,8 @@ describe("admin area", () => {
     expect(await heading(es.records.adminTitle)).toBeInTheDocument();
     let table = await screen.findByRole("table", { name: es.records.quotesCaption });
     expect(within(table).getAllByRole("row")).toHaveLength(1 + 10);
+    expect(within(table).getAllByText(CLIENT).length).toBeGreaterThan(0); // who made the quote
+    expect(within(table).getAllByText(es.records.anonymous).length).toBeGreaterThan(0);
     expect(screen.getByText(es.records.pageOf(1, 3), { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: es.records.previous })).toBeDisabled();
 

@@ -24,6 +24,7 @@ export interface QuoteRecord {
   id: string;
   created_at: string;
   registered: boolean;
+  owner_email: string | null;
   event_type: string;
   event_start: string;
   event_end: string;
@@ -63,6 +64,7 @@ function parseQuoteRecord(value: unknown): QuoteRecord {
     id: str(o, "id", 64),
     created_at: str(o, "created_at", 40),
     registered: bool(o, "registered"),
+    owner_email: nullable(o.owner_email, () => str(o, "owner_email", 254)),
     event_type: str(o, "event_type", 32),
     event_start: str(o, "event_start", 40),
     event_end: str(o, "event_end", 40),

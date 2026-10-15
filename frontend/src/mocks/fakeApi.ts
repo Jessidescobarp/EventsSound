@@ -213,6 +213,7 @@ const demoQuotes = Array.from({ length: 25 }, (_, n) => ({
   id: `demo-quote-${String(n + 1).padStart(2, "0")}`,
   created_at: new Date(Date.UTC(2026, 9, 15, 12, 0) - n * 3_600_000).toISOString(),
   registered: n % 4 === 0,
+  owner_email: n % 4 === 0 ? "cliente@eventsounddr.example" : null,
   event_type: DEMO_TYPES[n % DEMO_TYPES.length],
   event_start: new Date(Date.UTC(2026, 10, 14 + (n % 20), 23, 0)).toISOString(),
   event_end: new Date(Date.UTC(2026, 10, 15 + (n % 20), 3, 0)).toISOString(),

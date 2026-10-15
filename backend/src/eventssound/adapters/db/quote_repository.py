@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from eventssound.application.errors import RepositoryUnavailable
 from eventssound.application.quotes import BookingRow, NewQuote, Page, StoredQuote
 
-from .models import BookingModel, QuoteModel
+from .models import BookingModel, QuoteModel, UserModel
 
 
 class SqlAlchemyQuoteStore:
@@ -37,7 +37,9 @@ class SqlAlchemyQuoteStore:
             raise RepositoryUnavailable from error
 
     def page(self, user_id: str | None, limit: int, offset: int) -> Page[StoredQuote]:
-        base = select(QuoteModel)
+        base = select(QuoteModel, UserModel.email).outerjoin(
+            UserModel, UserModel.id == QuoteModel.user_id
+        )
         count = select(func.count()).select_from(QuoteModel)
         if user_id is not None:
             owner = QuoteModel.user_id == uuid.UUID(user_id)
@@ -45,7 +47,7 @@ class SqlAlchemyQuoteStore:
         try:
             with self._factory() as session:
                 total = session.scalar(count) or 0
-                rows = session.scalars(
+                rows = session.execute(
                     base.order_by(QuoteModel.created_at.desc(), QuoteModel.id.desc())
                     .limit(limit)
                     .offset(offset)
@@ -55,6 +57,7 @@ class SqlAlchemyQuoteStore:
                         id=str(r.id),
                         created_at=r.created_at,
                         registered=r.user_id is not None,
+                        owner_email=email,
                         event_type=r.event_type,
                         event_start=r.event_start,
                         event_end=r.event_end,
@@ -64,7 +67,7 @@ class SqlAlchemyQuoteStore:
                         quote=r.quote,
                         event_request=r.event_request,
                     )
-                    for r in rows
+                    for r, email in rows
                 )
         except SQLAlchemyError as error:
             raise RepositoryUnavailable from error

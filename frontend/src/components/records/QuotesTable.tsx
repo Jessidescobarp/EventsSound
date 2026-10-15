@@ -47,7 +47,7 @@ export function QuotesTable({ rows, showOrigin }: { rows: QuoteRecord[]; showOri
               <td className="px-3 py-2 text-right whitespace-nowrap">{formatCop(row.total_cop)}</td>
               <td className="px-3 py-2">{availability(row.available)}</td>
               {showOrigin ? (
-                <td className="px-3 py-2">{row.registered ? t.registered : t.anonymous}</td>
+                <td className="px-3 py-2">{row.owner_email ?? (row.registered ? t.registered : t.anonymous)}</td>
               ) : null}
               <td className="py-2 pl-3">
                 <QuoteDetail quote={row.quote} />
