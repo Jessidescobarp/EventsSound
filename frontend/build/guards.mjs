@@ -4,7 +4,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** Distinctive strings that exist only in src/mocks/fakeApi.ts (the fake catalog and chat). */
-export const MOCK_MARKERS = ["dj_cdj_pair", "Par de reproductores CDJ", "pkg_basic_party", "demo-chat-fixture"];
+export const MOCK_MARKERS = [
+  "dj_cdj_pair",
+  "Par de reproductores CDJ",
+  "pkg_basic_party",
+  "demo-chat-fixture",
+  "demo-password", // the fake login (public demo password and tokens)
+  "demo.admin.token",
+];
 
 /** Throws when a production build would enable the fake API. */
 export function assertNoMocksInProduction(mode, env) {

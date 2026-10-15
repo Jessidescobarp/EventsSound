@@ -25,5 +25,11 @@ export function usePagedRecords<T>(fetcher: Fetcher<T>) {
     if (failure === "unauthenticated") expireSession();
   }, [failure, expireSession]);
 
+  // The list shrank under the reader: an empty page past the start sends them back to the start.
+  const stranded = state.status === "success" && state.data.items.length === 0 && offset > 0;
+  useEffect(() => {
+    if (stranded) setOffset(0);
+  }, [stranded]);
+
   return { state, failure, setOffset, reload };
 }

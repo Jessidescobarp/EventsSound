@@ -37,6 +37,10 @@ describe("findMockMarkers and the CI check script", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("covers the fake login fixtures too", () => {
+    expect(MOCK_MARKERS).toEqual(expect.arrayContaining(["demo-password", "demo.admin.token"]));
+  });
+
   it("uses a distinctive fake-catalog marker", () => {
     expect(MOCK_MARKERS).toContain("dj_cdj_pair");
   });
