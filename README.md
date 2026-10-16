@@ -8,16 +8,18 @@ Web app for a sound, lighting and DJ events company. Its core is an AI quote ass
 |---|---|
 | Health checks (`/health`, `/health/db`) | Working, deployed |
 | Catalog and packages API (`GET /catalog/items`, `/catalog/packages`) with public Swagger at `/docs` | Working, deployed. The deployed database has the tables but is empty until the guarded seed is run on purpose |
-| Persistence (Postgres tables `equipment_items`, `service_packages`, `package_items`, `bookings`, `catalog_embeddings`, `llm_usage_daily`; migrations 0001-0005; the catalog also has `staff` services: DJ, MC, sound technician, priced per event day) | Working |
+| Persistence (Postgres tables `equipment_items`, `service_packages`, `package_items`, `bookings`, `catalog_embeddings`, `llm_usage_daily`, `users`, `quotes`, `portfolio_events`; migrations 0001-0008; the catalog also has `staff` services: DJ, MC, sound technician, priced per event day) | Working, deployed |
 | Pure domain: money, pricing oracle (`calculate_price`), availability | Working, covered by tests |
-| Vector search over the catalog (pgvector, embedding CLI) | Working locally; needs an embedding provider key to be used for real |
-| Quote agent (LangGraph pipeline, Spanish proposal text verified against the computed quote) | Built and tested with replayed LLM responses |
-| Quote chat endpoint (`POST /quote/chat`) with per-IP rate limit, persistent daily budget (Postgres `llm_usage_daily`; in-memory only for the replay provider) and kill switch | Built and tested offline; disabled in production until an OpenRouter model and key are configured. The budget survives restarts |
-| Persistent usage cap (`llm_usage_daily`), evaluations | Not built yet |
-| Frontend: home, about, portfolio, service catalog | Working (an empty catalog shows "Aún no hay equipos publicados"; if the API is unreachable it shows a graceful "available soon" message; a demo-data mode exists for local use only) |
-| Frontend quote page (`/cotizar`) | Working chat against `POST /quote/chat`: plain-text replies, quote breakdown from the structured response, Spanish error messages. While the endpoint is disabled in production it shows "asistente no disponible por ahora". Demo scenarios exist for local use only (`scripts/dev.ps1 -Mocks`) |
-| Bookings (creating or managing reservations from the UI) | Not built; the `bookings` table only feeds availability |
-| Authentication, admin area, demo credentials | Not built |
+| RAG: hybrid search over the catalog (keyword + pgvector, fused with reciprocal rank fusion; `bge-m3` embeddings, 1024 dimensions, via OpenRouter) | Working, deployed. Admin edits re-embed the changed entries |
+| Quote agent (LangGraph pipeline; the LLM only extracts the request and writes the Spanish proposal text, which is verified against the quote computed by `calculate_price`) | Working, deployed. Model `mistralai/mistral-small-3.2-24b-instruct` (see "Choosing the LLM model") |
+| Quote chat endpoint (`POST /quote/chat`) with per-IP rate limit, persistent daily budget (Postgres `llm_usage_daily`) and kill switch | Working, deployed. Refuses off-topic requests (for example, asking for code) with a fixed text and no model call |
+| Offline evaluation (15 golden requests, 8 injection cases) | Working, runs in CI |
+| Authentication (JWT, argon2id, roles `client` and `admin`) | Working, deployed; two synthetic demo accounts (see "Demo accounts") |
+| Saved quotes (`status=quote` answers, no personal data) | Working; own quotes at `GET /me/quotes`, all quotes for admins |
+| Frontend: home, about, portfolio, services, quote chat, login | Working. Portfolio and catalog come from the API; if it is unreachable the pages show a graceful message. A demo-data mode exists for local use only (`scripts/dev.ps1 -Mocks`) |
+| Admin area (`/admin`): saved quotes, bookings, catalog edits (equipment, staff services, packages), portfolio edits | Working, deployed |
+| Admin users CRUD, editing a saved quote | Not built; see "Future work" |
+| Bookings (creating reservations from the UI) | Not built; the `bookings` table only feeds availability |
 | Payments, WhatsApp, voice | Out of scope |
 
 Deployment: Render (API and static site) with Neon Postgres, see `documentacion/deploy.md`. Plans and status: `documentacion/roadmap.md`, `documentacion/requirements.md`, `documentacion/architecture.md`.
@@ -96,7 +98,7 @@ The CLI refuses non-local hosts and `APP_ENV=production` unless the environment 
 SEED_ADMIN_PASSWORD=... SEED_CLIENT_PASSWORD=... uv run python -m eventssound.entrypoints.cli.seed_users --confirm
 ```
 
-Accounts: `admin@eventsounddr.example` (admin) and `cliente@eventsounddr.example` (client). The CLI has the same guard as the catalog seed (dry run without `--confirm`, remote or production targets need `ALLOW_REMOTE_SEED=1`) and stores only argon2id hashes.
+Accounts: `admin@eventsounddr.example` (admin) and `cliente@eventsounddr.example` (client). Passwords for the evaluators: see the delivery document (they protect synthetic accounts only and are not stored in the repo). The CLI has the same guard as the catalog seed (dry run without `--confirm`, remote or production targets need `ALLOW_REMOTE_SEED=1`) and stores only argon2id hashes.
 
 ### Saved quotes and admin lists
 
@@ -138,6 +140,22 @@ Never paste the key in a chat or a file. `LLM_MODEL` is not needed (the model co
 
 Free OpenRouter models are reported to allow 20 requests/minute and 50 requests/day (1,000/day after buying 10 USD of credit). UNVERIFIED on the official page: check it before relying on it. A 10-case trial uses about 20 to 30 requests.
 
+## Security
+
+- The LLM never computes prices: `calculate_price` is the oracle, and the proposal text is rejected if it does not match the computed quote.
+- The chat is scoped to quoting events: off-topic requests (including requests for code) get a fixed refusal before any model call. Injection cases are part of the offline evaluation.
+- Cost controls: per-IP rate limit, global window, persistent daily budget, 16 KiB body cap and a kill switch (`CHAT_ENABLED=false`).
+- Auth: argon2id hashes, HS256 JWT with expiry, role checks on every `/admin/*` route, login rate limit. Secrets live only in the Render dashboard.
+- Review process: changes to pricing, availability, LLM adapters, secrets, the seed guard, auth, the chat endpoint, migrations and admin write endpoints get an independent read-only audit by the `eventsound-security-auditor` agent (`.claude/agents/`) before merging. Accepted low-severity findings are listed in the PR discussions.
+- Known limits: admin writes are last-writer-wins and have no rate limit; the catalog hook that rebuilds the search index runs inside the request.
+
+## Future work
+
+- Users CRUD in the admin area (create, edit, deactivate).
+- Editing a saved quote. The design: every edit goes through `calculate_price` again and the server stores the recomputed breakdown; hand-written totals are never accepted.
+- Booking requests from the quote screen.
+- Image uploads for the portfolio.
+
 ## Tests
 
 ```bash
@@ -160,7 +178,7 @@ PowerShell: set the variable first with `$env:DATABASE_URL_TEST = "..."`.
 
 ## Deploy
 
-Backend (Docker) and frontend (static site) on Render via `render.yaml`; Postgres on Neon. Live URLs (smoke check passed 2026-10-12): frontend `https://eventsounddr-web.onrender.com`, backend `https://eventsounddr-api.onrender.com`. Required variable: `DATABASE_URL` (set in the Render dashboard only). Free instances sleep after 15 minutes idle and need about a minute to wake up. Deploy order, rollback and the manual setup steps are in [documentacion/deploy.md](documentacion/deploy.md).
+Backend (Docker) and frontend (static site) on Render via `render.yaml`; Postgres on Neon. Live URLs (smoke check passed 2026-10-12): frontend `https://eventsounddr-web.onrender.com`, backend `https://eventsounddr-api.onrender.com`. Variables set only in the Render dashboard: `DATABASE_URL`, `JWT_SECRET`, `OPENROUTER_API_KEY` (plus `LLM_PROVIDER`, `LLM_MODEL`, `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`). Migrations run on every start. Free instances sleep after 15 minutes idle and need about a minute to wake up. Deploy order, rollback and the manual setup steps are in [documentacion/deploy.md](documentacion/deploy.md).
 
 ## CI
 
