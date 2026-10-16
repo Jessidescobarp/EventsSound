@@ -105,7 +105,12 @@ class Users:
         return {u.email: u for u in (ANA, ROOT)}.get(email)
 
 
-def make_client(store: Store | None = None, agent: Agent | None = None) -> tuple[TestClient, Store]:
+def make_client(
+    store: Store | None = None,
+    agent: Agent | None = None,
+    trusted_hops: int = 0,
+    **app_args: object,
+) -> tuple[TestClient, Store]:
     store = store or Store()
     tokens = JwtTokenIssuer(SECRET, 60)
     kit = AuthKit(
@@ -119,16 +124,18 @@ def make_client(store: Store | None = None, agent: Agent | None = None) -> tuple
         DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:1/x",
         chat_enabled=True,
         llm_provider="replay",
+        trusted_proxy_hops=trusted_hops,
     )  # type: ignore[call-arg]
-    app = create_app(
-        settings,
-        quote_agent=agent or Agent(),
-        usage_budget=InMemoryUsageBudget(token_cap=1_000_000, cost_cap_micro_usd=10_000_000),
-        rate_limiter=InMemoryRateLimiter(100),
-        auth_kit=kit,
-        quote_store=store,
-        booking_lister=Bookings(),
-    )
+    args: dict[str, object] = {
+        "quote_agent": agent or Agent(),
+        "usage_budget": InMemoryUsageBudget(token_cap=1_000_000, cost_cap_micro_usd=10_000_000),
+        "rate_limiter": InMemoryRateLimiter(100),
+        "auth_kit": kit,
+        "quote_store": store,
+        "booking_lister": Bookings(),
+        **app_args,
+    }
+    app = create_app(settings, **args)  # type: ignore[arg-type]
     return TestClient(app), store
 
 

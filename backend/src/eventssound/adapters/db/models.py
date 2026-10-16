@@ -204,6 +204,21 @@ class QuoteModel(TimestampMixin, Base):
     event_request: Mapped[dict] = mapped_column(JSONB)
 
 
+class SecurityEventModel(Base):
+    """An abuse signal: kind, time and a hashed client key. Never an address, email or text."""
+
+    __tablename__ = "security_events"
+    __table_args__ = (
+        Index("ix_security_events_kind_client_at", "kind", "client", "at"),
+        Index("ix_security_events_at", "at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    kind: Mapped[str] = mapped_column(String(32))
+    client: Mapped[str] = mapped_column(String(32))
+
+
 class PortfolioEventModel(TimestampMixin, Base):
     """An illustrative past event on the public portfolio page, editable by an admin."""
 

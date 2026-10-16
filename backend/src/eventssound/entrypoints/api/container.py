@@ -9,6 +9,7 @@ import logging
 import secrets
 import threading
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from pydantic import SecretStr
@@ -23,6 +24,7 @@ from eventssound.adapters.db.embedding_store import SqlAlchemyEmbeddingStore
 from eventssound.adapters.db.health import SqlAlchemyDatabaseHealth
 from eventssound.adapters.db.portfolio_repository import SqlAlchemyPortfolioStore
 from eventssound.adapters.db.quote_repository import SqlAlchemyBookingLister, SqlAlchemyQuoteStore
+from eventssound.adapters.db.security_repository import SqlAlchemySecurityLog
 from eventssound.adapters.db.session import build_engine, build_session_factory
 from eventssound.adapters.db.user_repository import SqlAlchemyUserRepository
 from eventssound.adapters.embeddings.fake import FakeEmbeddingProvider
@@ -46,6 +48,7 @@ from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
 from eventssound.application.pricing import price_quote
 from eventssound.application.quote_chat import AgentInput, AgentOutcome, ChatLimits, QuoteAgent
 from eventssound.application.quotes import BookingLister, QuoteStore
+from eventssound.application.security import AbuseGate, SecurityLog
 from eventssound.application.usage import RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
@@ -275,6 +278,17 @@ def make_auth_kit(settings: Settings, factory: sessionmaker[Session]) -> AuthKit
 
 def make_quote_store(factory: sessionmaker[Session]) -> QuoteStore:
     return SqlAlchemyQuoteStore(factory)
+
+
+def make_security_log(factory: sessionmaker[Session]) -> SecurityLog:
+    return SqlAlchemySecurityLog(factory)
+
+
+def make_abuse_gate(settings: Settings, log: SecurityLog) -> AbuseGate:
+    """Salt for the client keys: the JWT secret when set, so keys differ per deployment."""
+    secret = settings.jwt_secret
+    salt = secret.get_secret_value() if secret else "eventssound"
+    return AbuseGate(log, salt, lambda: datetime.now(UTC))
 
 
 def make_booking_lister(factory: sessionmaker[Session]) -> BookingLister:

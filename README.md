@@ -147,6 +147,7 @@ Free OpenRouter models are reported to allow 20 requests/minute and 50 requests/
 - Cost controls: per-IP rate limit, global window, persistent daily budget, 16 KiB body cap and a kill switch (`CHAT_ENABLED=false`).
 - Auth: argon2id hashes, HS256 JWT with expiry, role checks on every `/admin/*` route, login rate limit. Secrets live only in the Render dashboard.
 - Review process: changes to pricing, availability, LLM adapters, secrets, the seed guard, auth, the chat endpoint, migrations and admin write endpoints get an independent read-only audit by the `eventsound-security-auditor` agent (`.claude/agents/`) before merging. Accepted low-severity findings are listed in the PR discussions.
+- Abuse detection: the API records security events (`chat_refused` for off-topic or injection attempts, `chat_rate_limited`, `login_failed`, `chat_blocked`) in `security_events`. A client with 5 refusals in 10 minutes gets `429 temporarily_blocked` (`Retry-After: 600`) before any model call or budget use; the block ends by itself as the window slides. Clients are stored as a salted hash of the address (never the address, email, password or message text). If the event table is unavailable the check fails open: the rate limiter and the daily budget stay the hard caps. Admins read the events and 24-hour counts per kind at `GET /admin/security` (`limit`, `offset`).
 - Known limits: admin writes are last-writer-wins and have no rate limit; the catalog hook that rebuilds the search index runs inside the request.
 
 ## Future work

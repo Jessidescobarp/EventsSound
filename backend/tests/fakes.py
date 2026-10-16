@@ -7,6 +7,8 @@ from datetime import datetime
 from eventssound.application.booking_query import ReservationQuery
 from eventssound.application.embedding_index import StoredEmbedding, VectorMatch
 from eventssound.application.errors import RepositoryUnavailable
+from eventssound.application.quotes import Page
+from eventssound.application.security import StoredEvent
 from eventssound.domain.availability import Booking
 from eventssound.domain.catalog import Catalog
 
@@ -99,3 +101,31 @@ class BrokenEmbeddingStore:
 
     def nearest(self, model: str, vector: Sequence[float], limit: int) -> tuple["VectorMatch", ...]:
         raise RepositoryUnavailable("embedding storage unavailable")
+
+
+class InMemorySecurityLog:
+    def __init__(self, broken: bool = False) -> None:
+        self.rows: list[tuple[str, str, datetime]] = []
+        self.broken = broken
+
+    def add(self, kind: str, client: str, at: datetime) -> None:
+        if self.broken:
+            raise RepositoryUnavailable
+        self.rows.append((kind, client, at))
+
+    def count_since(self, kind: str, client: str, since: datetime) -> int:
+        if self.broken:
+            raise RepositoryUnavailable
+        return sum(1 for k, c, at in self.rows if (k, c) == (kind, client) and at >= since)
+
+    def page(self, limit: int, offset: int) -> Page[StoredEvent]:
+        newest = sorted(self.rows, key=lambda r: r[2], reverse=True)
+        items = tuple(StoredEvent(i, at, k, c) for i, (k, c, at) in enumerate(newest, 1))
+        return Page(items[offset : offset + limit], len(items), limit, offset)
+
+    def summary(self, since: datetime) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for kind, _, at in self.rows:
+            if at >= since:
+                counts[kind] = counts.get(kind, 0) + 1
+        return counts
