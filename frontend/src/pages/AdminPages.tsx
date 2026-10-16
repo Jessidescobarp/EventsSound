@@ -38,6 +38,9 @@ export function AdminLayout() {
           <NavLink to="/admin/reservas" className={tabClass}>
             {t.tabBookings}
           </NavLink>
+          <NavLink to="/admin/seguridad" className={tabClass}>
+            {es.securityAdmin.tab}
+          </NavLink>
         </nav>
         <Outlet />
       </Container>

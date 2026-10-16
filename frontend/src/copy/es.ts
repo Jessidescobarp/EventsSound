@@ -364,6 +364,18 @@ export const es = {
     },
   },
 
+  securityAdmin: {
+    tab: "Seguridad",
+    lead: "Intentos rechazados en el sistema. El cliente es una clave cifrada, no una dirección IP. Con 5 mensajes fuera de tema en 10 minutos, el chat se bloquea para ese cliente.",
+    summary: "Últimas 24 horas",
+    caption: "Eventos de seguridad",
+    empty: "Todavía no hay eventos de seguridad.",
+    colDate: "Fecha",
+    colKind: "Tipo",
+    colClient: "Cliente",
+    kinds: { chat_refused: "Mensajes fuera de tema", login_failed: "Ingresos fallidos" } as Record<string, string>,
+  },
+
   records: {
     myTitle: "Mis cotizaciones",
     myLead: "Las cotizaciones que hiciste con el asistente mientras tenías la sesión iniciada.",

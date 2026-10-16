@@ -83,7 +83,7 @@ function parseBookingRecord(value: unknown): BookingRecord {
   };
 }
 
-function parsePage<T>(json: unknown, read: (value: unknown) => T): Page<T> {
+export function parsePage<T>(json: unknown, read: (value: unknown) => T): Page<T> {
   const o = obj(json);
   const items = list(o.items, MAX_ROWS, read);
   const limit = int(o, "limit", 1, MAX_ROWS);
@@ -92,7 +92,7 @@ function parsePage<T>(json: unknown, read: (value: unknown) => T): Page<T> {
   return { items, total, limit, offset: int(o, "offset", 0, MAX_OFFSET) };
 }
 
-const query = ({ limit, offset }: Paging) => `?limit=${limit}&offset=${offset}`;
+export const query = ({ limit, offset }: Paging) => `?limit=${limit}&offset=${offset}`;
 
 export const parseQuotePage = (json: unknown) => parsePage(json, parseQuoteRecord);
 export const parseBookingPage = (json: unknown) => parsePage(json, parseBookingRecord);
