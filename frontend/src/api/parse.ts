@@ -41,3 +41,9 @@ export function list<T>(value: unknown, max: number, read: (v: unknown) => T): T
   return value.map(read);
 }
 
+
+export function bool(o: Obj, key: string): boolean {
+  const v = o[key];
+  if (typeof v !== "boolean") throw new Error(`${key}: boolean expected`);
+  return v;
+}

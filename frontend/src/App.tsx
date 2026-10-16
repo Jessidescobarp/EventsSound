@@ -4,6 +4,7 @@ import { RequireRole } from "./auth/RequireRole";
 import { Layout } from "./components/Layout";
 import AboutPage from "./pages/AboutPage";
 import { AdminCatalogPage } from "./pages/AdminCatalogPage";
+import { AdminPortfolioPage } from "./pages/AdminPortfolioPage";
 import { AdminBookingsPage, AdminLayout, AdminQuotesPage } from "./pages/AdminPages";
 import ChatPage from "./pages/ChatPage";
 import HomePage from "./pages/HomePage";
@@ -32,6 +33,7 @@ export default function App() {
             <Route index element={<Navigate to="cotizaciones" replace />} />
             <Route path="cotizaciones" element={<AdminQuotesPage />} />
             <Route path="catalogo" element={<AdminCatalogPage />} />
+            <Route path="portafolio" element={<AdminPortfolioPage />} />
             <Route path="reservas" element={<AdminBookingsPage />} />
           </Route>
         </Route>
