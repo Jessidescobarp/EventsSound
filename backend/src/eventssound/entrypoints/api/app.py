@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from eventssound.application.catalog_admin import CatalogAdmin
+from eventssound.application.portfolio import PortfolioStore
 from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
 from eventssound.application.quote_chat import QuoteAgent
 from eventssound.application.quotes import BookingLister, QuoteStore
@@ -23,6 +24,7 @@ from eventssound.entrypoints.api.routes import (
     auth,
     catalog,
     health,
+    portfolio,
     quote,
     records,
 )
@@ -72,6 +74,7 @@ def create_app(
     quote_store: QuoteStore | None = None,
     booking_lister: BookingLister | None = None,
     catalog_admin: CatalogAdmin | None = None,
+    portfolio_store: PortfolioStore | None = None,
 ) -> FastAPI:
     """Build an isolated FastAPI app. Tests override settings and adapters."""
     settings = settings or Settings()  # type: ignore[call-arg]
@@ -110,6 +113,7 @@ def create_app(
     app.state.auth = auth_kit or container.make_auth_kit(settings, factory)
     app.state.quote_store = quote_store or container.make_quote_store(factory)
     app.state.booking_lister = booking_lister or container.make_booking_lister(factory)
+    app.state.portfolio_store = portfolio_store or container.make_portfolio_store(factory)
     app.state.catalog_admin = catalog_admin or container.make_catalog_admin(
         settings, factory, app.state.chat_agent
     )
@@ -134,4 +138,6 @@ def create_app(
     app.include_router(records.me_router)
     app.include_router(records.admin_router)
     app.include_router(admin_catalog.router)
+    app.include_router(portfolio.public_router)
+    app.include_router(portfolio.admin_router)
     return app

@@ -202,3 +202,17 @@ class QuoteModel(TimestampMixin, Base):
     available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     quote: Mapped[dict] = mapped_column(JSONB)
     event_request: Mapped[dict] = mapped_column(JSONB)
+
+
+class PortfolioEventModel(TimestampMixin, Base):
+    """An illustrative past event on the public portfolio page, editable by an admin."""
+
+    __tablename__ = "portfolio_events"
+    __table_args__ = (CheckConstraint("jsonb_typeof(equipment) = 'array'", name="equipment_array"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    title: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(40))
+    description: Mapped[str] = mapped_column(String(500))
+    equipment: Mapped[list[str]] = mapped_column(JSONB)
+    visible: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))

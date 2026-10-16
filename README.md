@@ -106,6 +106,10 @@ Every `status=quote` answer of `POST /quote/chat` is saved by the server (valida
 
 An admin can create and edit equipment, staff services and packages: `POST /admin/catalog/items`, `PUT /admin/catalog/items/{code}`, `POST /admin/catalog/packages`, `PUT /admin/catalog/packages/{code}` (401/403 as above, 409 `code_taken`, 404 `not_found`, 422 `invalid_catalog_entry` or `unknown_item`, 503 `storage_unavailable`). A code never changes after creation, and nothing is deleted (bookings and packages point at items): stock 0 stops offering an item. Prices stay deterministic: a changed price only affects quotes made afterwards, since saved quotes keep their own breakdown. After each write the server re-embeds the entries whose name, category or members changed and rebuilds the agent's search index, so the quote agent sees the edit on its next request without a restart (best effort: if embeddings fail, keyword search still works).
 
+### Portfolio (public page and admin edits)
+
+The portfolio page reads `GET /portfolio` (public, visible events only, oldest first). Migration `0008` creates `portfolio_events` and seeds the six illustrative events the site used to show as fixed text. An admin lists everything with `GET /admin/portfolio` and creates or edits with `POST /admin/portfolio` and `PUT /admin/portfolio/{id}` (title, kind, description, up to 12 equipment names, `visible`). Nothing is deleted: `visible: false` hides an event. Pictures are illustrative placeholders; uploading images is out of scope.
+
 ## Vector search (embeddings)
 
 Equipment search is keyword-only until embeddings are configured. Migration `0003` creates the `catalog_embeddings` table and runs `CREATE EXTENSION IF NOT EXISTS vector` (pgvector ships in the local `pgvector/pgvector:pg16` image and on Neon). To index the catalog into a LOCAL database for experiments (the `fake` provider is a deterministic hashing stand-in; a dry run without `--confirm` exits 2 and changes nothing):

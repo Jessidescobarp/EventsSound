@@ -456,3 +456,31 @@ class PackageFieldsIn(_Strict):
 
 class PackageCreateIn(PackageFieldsIn):
     code: CodeIn
+
+
+# --- Portfolio ------------------------------------------------------------------------------
+
+
+class PortfolioEventIn(_Strict):
+    title: str = Field(min_length=1, max_length=120)
+    kind: str = Field(min_length=1, max_length=40, description="Event type label, e.g. Boda.")
+    description: str = Field(min_length=1, max_length=500)
+    equipment: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(max_length=12)
+    visible: bool = Field(description="False hides the event from the public page.")
+
+
+class PortfolioEventOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: int
+    title: str
+    kind: str
+    description: str
+    equipment: list[str]
+    visible: bool
+
+
+class PortfolioOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    events: list[PortfolioEventOut]

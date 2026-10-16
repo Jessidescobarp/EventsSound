@@ -39,3 +39,7 @@ class InvalidAvailability(DomainError):
 
 class InvalidCatalog(DomainError):
     """A catalog entity or the catalog as a whole is inconsistent."""
+
+
+class InvalidPortfolioEvent(DomainError):
+    """A portfolio event violates its bounds."""
