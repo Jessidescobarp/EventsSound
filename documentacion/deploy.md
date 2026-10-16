@@ -18,12 +18,14 @@ If Render appends a suffix because a name is taken, update `CORS_ALLOWED_ORIGINS
 | Service | Variable | Where it is set |
 | ------- | -------- | --------------- |
 | api | `APP_ENV`, `LOG_LEVEL`, `CORS_ALLOWED_ORIGINS` | `render.yaml` (public values) |
-| api | `DATABASE_URL` | Render dashboard only (`sync: false`), never in the repo |
+| api | `DATABASE_URL`, `JWT_SECRET` | Render dashboard only (`sync: false`), never in the repo |
+| api | `OPENROUTER_API_KEY` | Render dashboard only |
+| api | `LLM_PROVIDER`, `LLM_MODEL`, `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `CHAT_ENABLED`, `TRUSTED_PROXY_HOPS` | Render dashboard (names in `backend/src/eventssound/config.py`) |
 | web | `VITE_API_BASE_URL`, `NODE_VERSION` | `render.yaml` (public values; `VITE_*` is baked in at build time) |
 
 `CORS_ALLOWED_ORIGINS` is the web URL with scheme and no trailing slash. `DATABASE_URL` is the Neon DIRECT (non-pooled, no `-pooler` in the host) string with the scheme rewritten to `postgresql+psycopg://` (the backend also rewrites `postgres://` and `postgresql://` itself).
 
-Quote chat (`POST /quote/chat`): `CHAT_ENABLED=false` is the kill switch (redeploy). In `APP_ENV=production` the chat answers 503 `chat_disabled` unless `LLM_PROVIDER=openrouter` with `LLM_MODEL` and `OPENROUTER_API_KEY` set (the replay provider never serves in production). `TRUSTED_PROXY_HOPS` is how many reverse proxies sit in front of the app: the default `0` ignores `X-Forwarded-For` (every client behind a proxy would share the proxy's address and one rate-limit bucket); behind Render set it to `1` (UNVERIFIED: confirm by checking that two different clients get different buckets, since a value too high lets a client choose its own key). Accepted limits of this first version: the rate limiter and the daily budget are in memory and reset on every restart, so the persistent usage cap table (`llm_usage_daily`) is still REQUIRED before a real public launch. The limiter tracks at most 10,000 client keys for up to 1 hour and fails closed (429) when full. The global window (30 requests per minute) can be exhausted by distributed abuse, which disables the chat for everyone until it slides. The request body is capped at 16 KiB (hardcoded). The uvicorn access log prints peer IPs; the chat code itself never logs them.
+Quote chat (`POST /quote/chat`): `CHAT_ENABLED=false` is the kill switch (redeploy). In `APP_ENV=production` the chat answers 503 `chat_disabled` unless `LLM_PROVIDER=openrouter` with `LLM_MODEL` and `OPENROUTER_API_KEY` set (the replay provider never serves in production). `TRUSTED_PROXY_HOPS` is how many reverse proxies sit in front of the app: the default `0` ignores `X-Forwarded-For` (every client behind a proxy would share the proxy's address and one rate-limit bucket); behind Render set it to `1` (UNVERIFIED: confirm by checking that two different clients get different buckets, since a value too high lets a client choose its own key). Accepted limits: the per-IP rate limiter is in memory and resets on every restart; the daily budget is persistent (`llm_usage_daily`). The limiter tracks at most 10,000 client keys for up to 1 hour and fails closed (429) when full. The global window (30 requests per minute) can be exhausted by distributed abuse, which disables the chat for everyone until it slides. The request body is capped at 16 KiB (hardcoded). The uvicorn access log prints peer IPs; the chat code itself never logs them.
 
 ## Deploy order
 
@@ -43,6 +45,10 @@ Deploying migration `0004` creates the empty `llm_usage_daily` table in Neon aut
 ## Migration 0003 (pgvector)
 
 Deploying `0003` runs `CREATE EXTENSION IF NOT EXISTS vector` and creates the empty `catalog_embeddings` table. The extension was confirmed on a throwaway Neon branch first; a failure there would block the deploy (the start script exits) without corrupting data. Embeddings stay empty (search is keyword-only) until the developer runs `embed_catalog` with `ALLOW_REMOTE_SEED=1` against Neon from their machine. `EMBEDDING_PROVIDER` defaults to `off`, so nothing changes at runtime until a later PR wires the search into the agent.
+
+## Migrations 0005 to 0008 and demo data
+
+`0005` adds the `staff` category, `0006` the `users` table, `0007` saved `quotes` and `0008` `portfolio_events` (seeded with six illustrative events). All run automatically from `start.sh`. Catalog, embeddings and the two demo accounts are loaded from the developer's machine with the guarded CLIs (`seed_catalog`, `embed_catalog`, `seed_users`, each needing `ALLOW_REMOTE_SEED=1` against Neon; see the README). After the first deploy of auth, `/admin/quotes` without a token must answer 401.
 
 ## Neon branch policy
 
