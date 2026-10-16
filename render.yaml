@@ -52,3 +52,18 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+    # Static-site response headers (Blueprint `headers`: path, name, value). The CSP allows only this site and the API;
+    # the app loads no third-party scripts, fonts or images. style-src needs 'unsafe-inline' for React inline styles.
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://eventsounddr-api.onrender.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
