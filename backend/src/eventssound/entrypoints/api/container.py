@@ -21,6 +21,7 @@ from eventssound.adapters.db.catalog_repository import SqlAlchemyCatalogReposito
 from eventssound.adapters.db.catalog_writer import SqlAlchemyCatalogWriter
 from eventssound.adapters.db.embedding_store import SqlAlchemyEmbeddingStore
 from eventssound.adapters.db.health import SqlAlchemyDatabaseHealth
+from eventssound.adapters.db.portfolio_repository import SqlAlchemyPortfolioStore
 from eventssound.adapters.db.quote_repository import SqlAlchemyBookingLister, SqlAlchemyQuoteStore
 from eventssound.adapters.db.session import build_engine, build_session_factory
 from eventssound.adapters.db.user_repository import SqlAlchemyUserRepository
@@ -40,6 +41,7 @@ from eventssound.application.catalog_admin import CatalogAdmin
 from eventssound.application.embedding_index import refresh_embeddings
 from eventssound.application.embeddings import EmbeddingProvider
 from eventssound.application.llm import LlmProvider
+from eventssound.application.portfolio import PortfolioStore
 from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
 from eventssound.application.pricing import price_quote
 from eventssound.application.quote_chat import AgentInput, AgentOutcome, ChatLimits, QuoteAgent
@@ -277,3 +279,7 @@ def make_quote_store(factory: sessionmaker[Session]) -> QuoteStore:
 
 def make_booking_lister(factory: sessionmaker[Session]) -> BookingLister:
     return SqlAlchemyBookingLister(factory)
+
+
+def make_portfolio_store(factory: sessionmaker[Session]) -> PortfolioStore:
+    return SqlAlchemyPortfolioStore(factory)

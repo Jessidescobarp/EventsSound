@@ -18,7 +18,14 @@ from eventssound.adapters.db.session import Base
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 TABLES = {"equipment_items", "service_packages", "package_items", "bookings"}
-ALL_TABLES = TABLES | {"catalog_embeddings", "llm_usage_daily", "users", "quotes"}
+ALL_TABLES = TABLES | {
+    "catalog_embeddings",
+    "llm_usage_daily",
+    "users",
+    "quotes",
+    "portfolio_events",
+}
+SEEDED = {"portfolio_events"}  # the one table a migration fills (six illustrative events)
 
 ITEM: dict[str, Any] = {
     "code": "sound_speaker",
@@ -87,7 +94,9 @@ def table_names(engine: Engine) -> set[str]:
 
 def test_upgrade_creates_exactly_the_catalog_tables_and_they_are_empty(engine: Engine) -> None:
     assert table_names(engine) == ALL_TABLES
-    assert [count(engine, table) for table in sorted(ALL_TABLES)] == [0] * len(ALL_TABLES)
+    empty = sorted(ALL_TABLES - SEEDED)
+    assert [count(engine, table) for table in empty] == [0] * len(empty)
+    assert count(engine, "portfolio_events") == 6
 
 
 def test_downgrade_to_the_baseline_and_to_base_removes_every_table(

@@ -8,6 +8,7 @@ AUTH_ERRORS = {
     "rate_limited": "Demasiados intentos. Intenta de nuevo en unos minutos.",
     "not_authenticated": "Debes iniciar sesion para continuar.",
     "forbidden": "No tienes permiso para ver esto.",
+    "invalid_portfolio_event": "Los datos del evento no son validos.",
     "auth_not_configured": "El inicio de sesion no esta disponible por ahora.",
     "auth_unavailable": "No pudimos validar tus datos. Intenta mas tarde.",
     "storage_unavailable": "No pudimos consultar los datos. Intenta mas tarde.",
