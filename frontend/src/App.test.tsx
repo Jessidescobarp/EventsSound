@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { es } from "./copy/es";
+import { MOCK_PORTFOLIO } from "./mocks/fakeApi";
 import { renderApp } from "./test/renderApp";
 
 const ROUTES = [
@@ -124,10 +125,10 @@ describe("pages", () => {
     }
   });
 
-  it("portfolio shows every event with its image", () => {
+  it("portfolio shows every event with its image", async () => {
     renderApp("/portafolio");
-    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(es.portfolio.events.length);
-    for (const event of es.portfolio.events) {
+    expect(await screen.findAllByRole("heading", { level: 2 })).toHaveLength(MOCK_PORTFOLIO.length);
+    for (const event of MOCK_PORTFOLIO) {
       expect(screen.getByRole("img", { name: es.portfolio.imageLabel(event.title) })).toBeInTheDocument();
     }
   });

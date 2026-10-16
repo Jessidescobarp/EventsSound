@@ -5,6 +5,7 @@
  * All data is synthetic.
  */
 import type { CatalogItem, ServicePackage } from "../api/catalog";
+import type { PortfolioEvent } from "../api/portfolio";
 import type { ChatResponse, QuoteLine } from "../api/chat";
 
 const item = (
@@ -258,8 +259,75 @@ let livePackages: ServicePackage[] = [];
 export function resetDemoCatalog(): void {
   liveItems = MOCK_ITEMS.map((i) => ({ ...i }));
   livePackages = MOCK_PACKAGES.map((p) => ({ ...p, items: p.items.map((m) => ({ ...m })) }));
+  livePortfolio = MOCK_PORTFOLIO.map((e) => ({ ...e, equipment: [...e.equipment] }));
 }
+
+// ---- portfolio: the six illustrative events the real database is seeded with ----
+
+const event = (id: number, title: string, kind: string, description: string, equipment: string[]) => ({
+  id,
+  title,
+  kind,
+  description,
+  equipment,
+  visible: true,
+});
+
+export const MOCK_PORTFOLIO: PortfolioEvent[] = [
+  event(1, "Boda en jardín", "Boda", "Ceremonia y recepción para 180 invitados con sonido ambiental y pista de baile iluminada.", ["Sonido", "Micrófonos inalámbricos", "Luces LED"]),
+  event(2, "Lanzamiento corporativo", "Corporativo", "Presentación de producto con pantalla LED, micrófonos de solapa y escenario modular.", ["Pantalla LED", "Consola de mezcla", "Tarima"]),
+  event(3, "Festival universitario", "Festival", "Dos escenarios con bandas en vivo y DJs durante un día completo.", ["Sistema de sonido", "Cabezas móviles", "Efectos"]),
+  event(4, "Noche de DJ en terraza", "DJ", "Sesión nocturna al aire libre con cabina de DJ, láser y máquina de humo.", ["Equipo de DJ", "Láser", "Humo"]),
+  event(5, "Fiesta de quince años", "Fiesta", "Vals, baile sorpresa y pista con efectos de chispas frías.", ["Sonido", "Chispas frías", "Luces LED"]),
+  event(6, "Concierto en teatro", "Concierto", "Montaje de sonido e iluminación para un concierto acústico con aforo de 400 personas.", ["Line array", "Monitores", "Iluminación escénica"]),
+];
+
+let livePortfolio: PortfolioEvent[] = [];
 resetDemoCatalog();
+
+function portfolioRoute(pathname: string, init?: RequestInit): Response {
+  if (pathname === "/portfolio") {
+    return init?.method === undefined || init.method === "GET"
+      ? json({ events: livePortfolio.filter((e) => e.visible) })
+      : json({ detail: "Method Not Allowed" }, 405);
+  }
+  const role = callerRole(init);
+  if (role === null) return json({ detail: "not_authenticated", message: "Debes iniciar sesion." }, 401);
+  if (role !== "admin") return json({ detail: "forbidden", message: "No tienes permiso." }, 403);
+  if (pathname === "/admin/portfolio" && (init?.method === undefined || init.method === "GET")) {
+    return json({ events: livePortfolio });
+  }
+  const match = /^\/admin\/portfolio(?:\/(\d+))?$/.exec(pathname);
+  const creating = init?.method === "POST" && match?.[1] === undefined;
+  const editing = init?.method === "PUT" && match?.[1] !== undefined;
+  if (!match || !(creating || editing)) return json({ detail: "Not Found" }, 404);
+  let body: Partial<PortfolioEvent>;
+  try {
+    body = JSON.parse(String(init?.body)) as Partial<PortfolioEvent>;
+  } catch {
+    return json({ detail: "invalid_portfolio_event", message: "Datos no validos." }, 422);
+  }
+  const next = {
+    title: String(body.title ?? "").trim(),
+    kind: String(body.kind ?? "").trim(),
+    description: String(body.description ?? "").trim(),
+    equipment: Array.isArray(body.equipment) ? body.equipment.map(String) : [],
+    visible: body.visible === true,
+  };
+  if (!next.title || !next.kind || !next.description) {
+    return json({ detail: "invalid_portfolio_event", message: "Datos no validos." }, 422);
+  }
+  if (creating) {
+    const id = Math.max(0, ...livePortfolio.map((e) => e.id)) + 1;
+    livePortfolio.push({ id, ...next });
+    return json({ id }, 201);
+  }
+  const id = Number(match[1]);
+  const at = livePortfolio.findIndex((e) => e.id === id);
+  if (at === -1) return json({ detail: "not_found", message: "No existe." }, 404);
+  livePortfolio[at] = { id, ...next };
+  return json({ id });
+}
 
 const withBasePrices = (): ServicePackage[] =>
   livePackages.map((p) => ({
@@ -328,6 +396,9 @@ function adminCatalogRoute(pathname: string, init?: RequestInit): Response {
 
 function route(pathname: string, init?: RequestInit, search = new URLSearchParams()): Response {
   if (pathname.startsWith("/admin/catalog/")) return adminCatalogRoute(pathname, init);
+  if (pathname === "/portfolio" || pathname.startsWith("/admin/portfolio")) {
+    return portfolioRoute(pathname, init);
+  }
   switch (pathname) {
     case "/auth/login":
       return init?.method === "POST" ? loginRoute(init) : json({ detail: "Method Not Allowed" }, 405);

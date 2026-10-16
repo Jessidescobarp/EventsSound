@@ -1,6 +1,6 @@
 import { ApiError, apiFetch } from "./client";
 import { parseQuote, type Quote } from "./chat";
-import { int, list, nullable, obj, str } from "./parse";
+import { bool, int, list, nullable, obj, str } from "./parse";
 
 /** Contract of GET /me/quotes, /admin/quotes and /admin/bookings (backend routes/records.py). */
 export const PAGE_SIZE = 10;
@@ -43,11 +43,6 @@ export interface BookingRecord {
   ends_at: string;
   status: string;
   created_at: string;
-}
-
-function bool(o: Record<string, unknown>, key: string): boolean {
-  if (typeof o[key] !== "boolean") throw new Error(`${key}: boolean expected`);
-  return o[key];
 }
 
 function readQuote(value: unknown): Quote | null {
