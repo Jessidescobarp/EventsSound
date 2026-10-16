@@ -24,6 +24,7 @@ ALL_TABLES = TABLES | {
     "users",
     "quotes",
     "portfolio_events",
+    "security_events",
 }
 SEEDED = {"portfolio_events"}  # the one table a migration fills (six illustrative events)
 

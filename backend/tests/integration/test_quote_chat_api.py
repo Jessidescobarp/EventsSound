@@ -20,6 +20,7 @@ from eventssound.entrypoints.api.app import create_app
 from eventssound.entrypoints.api.guards import MAX_BODY_BYTES
 from eventssound.entrypoints.api.routes.quote import RESPONSE_EXAMPLES
 from eventssound.entrypoints.api.schemas import ChatRequestIn, ChatResponseOut
+from fakes import InMemorySecurityLog
 
 URL = "/quote/chat"
 BODY = {"messages": [{"role": "user", "content": "Necesito sonido para 100 personas"}]}
@@ -73,6 +74,7 @@ def make_client(agent=None, **overrides):
     agent = agent or FakeAgent()
     values = {"DATABASE_URL": "postgresql+psycopg://u:p@127.0.0.1:1/x"}
     parts = {k: overrides.pop(k) for k in ("usage_budget", "rate_limiter") if k in overrides}
+    parts["security_log"] = InMemorySecurityLog()  # no database behind the abuse check
     values.update(overrides)
     settings = Settings(_env_file=None, **values)
     # Production settings would otherwise pick the Postgres budget and hit the unreachable URL.

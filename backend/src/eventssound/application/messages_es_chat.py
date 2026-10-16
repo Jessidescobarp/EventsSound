@@ -9,6 +9,10 @@ CHAT_ERRORS = {
     "payload_too_large": "El mensaje es demasiado grande.",
     "invalid_request": "La solicitud no es valida. Revisa el numero y el largo de los mensajes.",
     "rate_limited": "Has enviado demasiadas solicitudes. Intenta de nuevo en unos minutos.",
+    "temporarily_blocked": (
+        "Detectamos demasiadas solicitudes fuera de tema desde tu conexion. "
+        "Intenta de nuevo en unos minutos."
+    ),
     "daily_budget_exhausted": "El asistente alcanzo su limite diario. Intenta de nuevo manana.",
     "llm_unavailable": "El asistente no esta disponible en este momento. Intenta mas tarde.",
     "catalog_unavailable": "No pudimos consultar el catalogo. Intenta mas tarde.",

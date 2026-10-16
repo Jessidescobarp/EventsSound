@@ -9,6 +9,7 @@ import logging
 import secrets
 import threading
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from pydantic import SecretStr
@@ -23,6 +24,7 @@ from eventssound.adapters.db.embedding_store import SqlAlchemyEmbeddingStore
 from eventssound.adapters.db.health import SqlAlchemyDatabaseHealth
 from eventssound.adapters.db.portfolio_repository import SqlAlchemyPortfolioStore
 from eventssound.adapters.db.quote_repository import SqlAlchemyBookingLister, SqlAlchemyQuoteStore
+from eventssound.adapters.db.security_repository import SqlAlchemySecurityLog
 from eventssound.adapters.db.session import build_engine, build_session_factory
 from eventssound.adapters.db.user_repository import SqlAlchemyUserRepository
 from eventssound.adapters.embeddings.fake import FakeEmbeddingProvider
@@ -46,6 +48,7 @@ from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
 from eventssound.application.pricing import price_quote
 from eventssound.application.quote_chat import AgentInput, AgentOutcome, ChatLimits, QuoteAgent
 from eventssound.application.quotes import BookingLister, QuoteStore
+from eventssound.application.security import AbuseGate, SecurityLog, derive_key
 from eventssound.application.usage import RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
@@ -275,6 +278,23 @@ def make_auth_kit(settings: Settings, factory: sessionmaker[Session]) -> AuthKit
 
 def make_quote_store(factory: sessionmaker[Session]) -> QuoteStore:
     return SqlAlchemyQuoteStore(factory)
+
+
+def make_security_log(factory: sessionmaker[Session]) -> SecurityLog:
+    return SqlAlchemySecurityLog(factory)
+
+
+def make_abuse_gate(settings: Settings, log: SecurityLog) -> AbuseGate:
+    """Client pseudonyms are keyed by a purpose-bound key derived from the JWT secret, or by a
+    random per-process one when it is unset. The block needs a trustworthy client address:
+    in production with TRUSTED_PROXY_HOPS=0 every visitor shares the proxy's address, so the
+    block stays off rather than lock everyone out."""
+    secret = settings.jwt_secret
+    key = derive_key(secret.get_secret_value()) if secret else secrets.token_bytes(32)
+    enabled = not (settings.is_production and settings.trusted_proxy_hops == 0)
+    if not enabled:
+        logger.warning("abuse block disabled: set TRUSTED_PROXY_HOPS so clients can be told apart")
+    return AbuseGate(log, key, lambda: datetime.now(UTC), enabled=enabled)
 
 
 def make_booking_lister(factory: sessionmaker[Session]) -> BookingLister:

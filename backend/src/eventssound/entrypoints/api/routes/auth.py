@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from eventssound.application.auth import InvalidCredentials, normalize_email
 from eventssound.application.errors import RepositoryUnavailable
 from eventssound.application.quote_chat import RateLimited
+from eventssound.application.security import LOGIN_FAILED
 from eventssound.entrypoints.api.auth_kit import AuthKit, refusal_response
 from eventssound.entrypoints.api.client_ip import client_ip
 from eventssound.entrypoints.api.schemas import LoginIn, LoginOut
@@ -35,9 +36,10 @@ def login(body: LoginIn, request: Request) -> JSONResponse:
     if kit is None:
         return refusal_response(503, "auth_not_configured")
     email = normalize_email(body.email)
+    ip = client_ip(request, request.app.state.settings.trusted_proxy_hops)
     try:
         decisions = (
-            kit.ip_limiter.hit(client_ip(request, request.app.state.settings.trusted_proxy_hops)),
+            kit.ip_limiter.hit(ip),
             kit.email_limiter.hit(email),
         )
     except RateLimited as exc:  # a failing limiter refuses, like a denied one
@@ -51,6 +53,7 @@ def login(body: LoginIn, request: Request) -> JSONResponse:
     try:
         issued = kit.service.login(email, body.password)
     except InvalidCredentials:
+        request.app.state.abuse_gate.record(LOGIN_FAILED, ip)  # the address key only
         return refusal_response(401, "invalid_credentials")
     except RepositoryUnavailable:
         logger.warning("login storage unavailable")

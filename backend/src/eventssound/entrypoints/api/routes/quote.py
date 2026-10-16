@@ -19,6 +19,7 @@ from eventssound.application.quote_chat import (
     quote_chat,
 )
 from eventssound.application.quotes import NewQuote, record_quote
+from eventssound.application.security import CHAT_REFUSED
 from eventssound.entrypoints.api.auth_kit import optional_principal
 from eventssound.entrypoints.api.client_ip import client_ip
 from eventssound.entrypoints.api.guards import ChatRefusal, chat_guard
@@ -32,6 +33,8 @@ from eventssound.entrypoints.api.schemas import (
 router = APIRouter(prefix="/quote", tags=["Quote agent"], dependencies=[Depends(chat_guard)])
 
 logger = logging.getLogger(__name__)
+
+BLOCK_RETRY_SECONDS = 600  # the block window; the real end can be sooner
 
 _QUOTE_LINE = {"periods": 1, "rate_bps": None, "basis": None}
 RESPONSE_EXAMPLES: dict[str, dict[str, object]] = {
@@ -151,9 +154,10 @@ RESPONSES: dict[int | str, dict[str, object]] = {
     },
     429: {
         "model": ChatErrorOut,
-        "description": "Too many requests from this client. Wait `Retry-After` seconds.",
+        "description": "Too many requests from this client, or `temporarily_blocked` after "
+        "5 off-topic refusals in 10 minutes. Wait `Retry-After` seconds.",
         "headers": {"Retry-After": {"schema": {"type": "integer", "minimum": 1, "example": 37}}},
-        **_examples("rate_limited"),
+        **_examples("rate_limited", "temporarily_blocked"),
     },
     503: {
         "model": ChatErrorOut,
@@ -212,10 +216,18 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
     state = request.app.state
     request_id = uuid.uuid4().hex
     started = time.monotonic()
+    ip = client_ip(request, state.settings.trusted_proxy_hops)
+    gate = state.abuse_gate
+    if gate.is_blocked(ip):
+        # Before the limiter, the budget and the model: a blocked client costs nothing. Not stored
+        # (the _refuse log line below counts it), so a flood cannot grow the table.
+        return _refuse(
+            "temporarily_blocked", 429, request_id, **{"Retry-After": str(BLOCK_RETRY_SECONDS)}
+        )
     try:
         result = quote_chat(
             [ChatTurn(m.role, m.content) for m in body.messages],
-            client_ip(request, state.settings.trusted_proxy_hops),
+            ip,
             agent=state.chat_agent,
             budget=state.usage_budget,
             limiter=state.rate_limiter,
@@ -254,6 +266,8 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
         return _error("internal_error", 500, request_id)
 
     outcome, meter = result.outcome, result.meter
+    if outcome.status is AgentStatus.REFUSED:
+        gate.record(CHAT_REFUSED, ip)
     if outcome.status is AgentStatus.QUOTE and outcome.quote and outcome.event_request:
         try:
             who = optional_principal(request)

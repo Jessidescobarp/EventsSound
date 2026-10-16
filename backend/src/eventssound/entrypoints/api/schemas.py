@@ -400,6 +400,25 @@ class QuotePageOut(BaseModel):
     offset: int
 
 
+class SecurityEventOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: int
+    at: str
+    kind: str
+    client: str = Field(description="Salted hash of the client address; never the address.")
+
+
+class SecurityPageOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: list[SecurityEventOut]
+    total: int
+    limit: int
+    offset: int
+    last_24h: dict[str, int] = Field(description="Events per kind in the last 24 hours.")
+
+
 class BookingOut(BaseModel):
     model_config = ConfigDict(frozen=True)
 
