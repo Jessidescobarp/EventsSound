@@ -48,7 +48,7 @@ from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
 from eventssound.application.pricing import price_quote
 from eventssound.application.quote_chat import AgentInput, AgentOutcome, ChatLimits, QuoteAgent
 from eventssound.application.quotes import BookingLister, QuoteStore
-from eventssound.application.security import AbuseGate, SecurityLog
+from eventssound.application.security import AbuseGate, SecurityLog, derive_key
 from eventssound.application.usage import RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
@@ -285,10 +285,16 @@ def make_security_log(factory: sessionmaker[Session]) -> SecurityLog:
 
 
 def make_abuse_gate(settings: Settings, log: SecurityLog) -> AbuseGate:
-    """Salt for the client keys: the JWT secret when set, so keys differ per deployment."""
+    """Client pseudonyms are keyed by a purpose-bound key derived from the JWT secret, or by a
+    random per-process one when it is unset. The block needs a trustworthy client address:
+    in production with TRUSTED_PROXY_HOPS=0 every visitor shares the proxy's address, so the
+    block stays off rather than lock everyone out."""
     secret = settings.jwt_secret
-    salt = secret.get_secret_value() if secret else "eventssound"
-    return AbuseGate(log, salt, lambda: datetime.now(UTC))
+    key = derive_key(secret.get_secret_value()) if secret else secrets.token_bytes(32)
+    enabled = not (settings.is_production and settings.trusted_proxy_hops == 0)
+    if not enabled:
+        logger.warning("abuse block disabled: set TRUSTED_PROXY_HOPS so clients can be told apart")
+    return AbuseGate(log, key, lambda: datetime.now(UTC), enabled=enabled)
 
 
 def make_booking_lister(factory: sessionmaker[Session]) -> BookingLister:

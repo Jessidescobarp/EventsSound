@@ -47,3 +47,13 @@ def test_log_counts_pages_and_summarises(engine: Engine) -> None:
     page = log.page(2, 0)
     assert page.total == 4 and len(page.items) == 2 and page.items[0].at == NOW
     assert log.page(2, 3).items[0].kind == "login_failed"
+
+
+def test_adding_deletes_rows_older_than_thirty_days(engine: Engine) -> None:
+    log = SqlAlchemySecurityLog(sessionmaker(engine))
+    log.add("login_failed", "aaaa", NOW - timedelta(days=31))
+    log.add("login_failed", "bbbb", NOW - timedelta(days=29))
+
+    log.add("login_failed", "cccc", NOW)
+
+    assert {e.client for e in log.page(10, 0).items} == {"bbbb", "cccc"}

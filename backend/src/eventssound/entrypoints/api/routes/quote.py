@@ -19,7 +19,7 @@ from eventssound.application.quote_chat import (
     quote_chat,
 )
 from eventssound.application.quotes import NewQuote, record_quote
-from eventssound.application.security import CHAT_BLOCKED, CHAT_RATE_LIMITED, CHAT_REFUSED
+from eventssound.application.security import CHAT_REFUSED
 from eventssound.entrypoints.api.auth_kit import optional_principal
 from eventssound.entrypoints.api.client_ip import client_ip
 from eventssound.entrypoints.api.guards import ChatRefusal, chat_guard
@@ -219,8 +219,8 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
     ip = client_ip(request, state.settings.trusted_proxy_hops)
     gate = state.abuse_gate
     if gate.is_blocked(ip):
-        # Before the limiter, the budget and the model: a blocked client costs nothing.
-        gate.record(CHAT_BLOCKED, ip)
+        # Before the limiter, the budget and the model: a blocked client costs nothing. Not stored
+        # (the _refuse log line below counts it), so a flood cannot grow the table.
         return _refuse(
             "temporarily_blocked", 429, request_id, **{"Retry-After": str(BLOCK_RETRY_SECONDS)}
         )
@@ -238,7 +238,6 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
         # Serialized inside the try: a failure here is a safe 500 with the request id.
         payload = ChatResponseOut.from_outcome(request_id, result.outcome).model_dump(mode="json")
     except RateLimited as exc:
-        gate.record(CHAT_RATE_LIMITED, ip)
         retry = {"Retry-After": str(max(1, exc.retry_after_seconds))}
         return _refuse("rate_limited", 429, request_id, **retry)
     except BudgetExhausted:

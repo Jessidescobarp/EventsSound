@@ -1,20 +1,18 @@
 """Abuse block on the chat, login failure events and `/admin/security` (fakes, no database)."""
 
+import logging
+from datetime import UTC, datetime
+
+import pytest
 from fastapi.testclient import TestClient
 from test_quotes_api import ANA, CHAT, ROOT, Agent, make_client, token_for
 
 from eventssound.adapters.usage.rate_limit import InMemoryRateLimiter
 from eventssound.application.quote_chat import AgentOutcome, AgentStatus
-from eventssound.application.security import (
-    CHAT_BLOCKED,
-    CHAT_RATE_LIMITED,
-    CHAT_REFUSED,
-    LOGIN_FAILED,
-    client_key,
-)
+from eventssound.application.security import CHAT_REFUSED, LOGIN_FAILED, client_key, derive_key
+from eventssound.config import Settings
+from eventssound.entrypoints.api.container import make_abuse_gate
 from fakes import InMemorySecurityLog
-
-SALT = "eventssound"  # the gate salt when the app has no JWT secret
 
 
 class CountingAgent(Agent):
@@ -51,17 +49,47 @@ def test_five_refusals_block_the_sixth_without_calling_the_agent() -> None:
     assert agent.calls == 6  # five answered + the other client; the blocked one never got in
     assert blocked.status_code == 429 and blocked.json()["detail"] == "temporarily_blocked"
     assert blocked.headers["Retry-After"] == "600"
-    kinds = [k for k, _, _ in log.rows]
-    assert kinds.count(CHAT_REFUSED) == 6 and kinds.count(CHAT_BLOCKED) == 1
+    # Only refusals are stored: blocked and rate-limited requests add no rows.
+    assert [k for k, _, _ in log.rows] == [CHAT_REFUSED] * 6
 
 
-def test_rate_limited_requests_are_recorded() -> None:
+def test_rate_limited_requests_add_no_rows(caplog: pytest.LogCaptureFixture) -> None:
     client, log = build(Agent(), rate_limiter=InMemoryRateLimiter(1))
 
-    statuses = [chat(client).status_code for _ in range(2)]
+    with caplog.at_level(logging.INFO):
+        statuses = [chat(client).status_code for _ in range(2)]
 
-    assert statuses == [200, 429]
-    assert [k for k, _, _ in log.rows] == [CHAT_RATE_LIMITED]
+    assert statuses == [200, 429] and log.rows == []
+    assert "10.0.0.1" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("env", "hops", "active"),
+    [
+        ("production", 0, False),  # one shared key behind the proxy: a block would lock everyone
+        ("production", 1, True),
+        ("local", 0, True),
+    ],
+)
+def test_the_gate_needs_a_trustworthy_client_address_in_production(
+    env: str, hops: int, active: bool
+) -> None:
+    secret = "j" * 40
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:1/x",
+        app_env=env,
+        trusted_proxy_hops=hops,
+        jwt_secret=secret,
+    )  # type: ignore[call-arg]
+    log = InMemorySecurityLog()
+    for _ in range(5):
+        log.add(CHAT_REFUSED, client_key("1.1.1.1", derive_key(secret)), datetime.now(UTC))
+    gate = make_abuse_gate(settings, log)
+
+    assert gate.is_blocked("1.1.1.1") is active
+    gate.record(CHAT_REFUSED, "2.2.2.2")
+    assert len(log.rows) == 5 + int(active)
 
 
 def test_a_failed_login_records_one_event_without_the_email() -> None:
@@ -89,7 +117,3 @@ def test_admin_security_is_admin_only_and_summarises_the_last_day() -> None:
     assert (page["total"], len(page["items"]), page["limit"], page["offset"]) == (3, 2, 2, 0)
     assert page["last_24h"] == {LOGIN_FAILED: 2, CHAT_REFUSED: 1}
     assert set(page["items"][0]) == {"id", "at", "kind", "client"}
-    assert {i["client"] for i in page["items"]} <= {
-        client_key("testclient", SALT),
-        client_key("10.0.0.1", SALT),
-    }

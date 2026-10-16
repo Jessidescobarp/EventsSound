@@ -1,8 +1,8 @@
 """Security events in Postgres behind the `SecurityLog` port."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -12,6 +12,8 @@ from eventssound.application.security import StoredEvent
 
 from .models import SecurityEventModel as Event
 
+RETENTION = timedelta(days=30)  # older rows are deleted on write (indexed on `at`)
+
 
 class SqlAlchemySecurityLog:
     def __init__(self, factory: sessionmaker[Session]) -> None:
@@ -20,6 +22,7 @@ class SqlAlchemySecurityLog:
     def add(self, kind: str, client: str, at: datetime) -> None:
         try:
             with self._factory.begin() as session:
+                session.execute(delete(Event).where(Event.at < at - RETENTION))
                 session.add(Event(kind=kind, client=client, at=at))
         except SQLAlchemyError as error:
             raise RepositoryUnavailable from error
