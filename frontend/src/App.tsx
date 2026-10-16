@@ -6,6 +6,7 @@ import AboutPage from "./pages/AboutPage";
 import { AdminCatalogPage } from "./pages/AdminCatalogPage";
 import { AdminPortfolioPage } from "./pages/AdminPortfolioPage";
 import { AdminBookingsPage, AdminLayout, AdminQuotesPage } from "./pages/AdminPages";
+import { AdminSecurityPage } from "./pages/AdminSecurityPage";
 import ChatPage from "./pages/ChatPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="catalogo" element={<AdminCatalogPage />} />
             <Route path="portafolio" element={<AdminPortfolioPage />} />
             <Route path="reservas" element={<AdminBookingsPage />} />
+            <Route path="seguridad" element={<AdminSecurityPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />

@@ -3,13 +3,13 @@ import { classifyRecordsError, PAGE_SIZE, type Page, type Paging, type RecordsFa
 import { useAuth } from "../auth/authContext";
 import { useRequest } from "./useRequest";
 
-type Fetcher<T> = (token: string, paging: Paging, signal?: AbortSignal) => Promise<Page<T>>;
+type Fetcher<P> = (token: string, paging: Paging, signal?: AbortSignal) => Promise<P>;
 
 /**
  * One paginated, authenticated list. `fetcher` must be a module-level function. A 401 means the
  * server no longer accepts the token: the session ends and the guard sends the user to login.
  */
-export function usePagedRecords<T>(fetcher: Fetcher<T>) {
+export function usePagedRecords<P extends Page<unknown>>(fetcher: Fetcher<P>) {
   const { session, expireSession } = useAuth();
   const token = session?.token ?? "";
   const [offset, setOffset] = useState(0);
