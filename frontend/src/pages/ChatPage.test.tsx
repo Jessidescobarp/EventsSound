@@ -11,7 +11,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 const answer = (over: Partial<ChatResponse> = {}): ChatResponse => ({
   request_id: "r1", status: "refused", reply: "Hola, cuéntame de tu evento.", quote: null,
-  availability: null, missing_fields: [], reply_source: "static", ...over,
+  availability: null, missing_fields: [], reply_source: "static", options: [], ...over,
 });
 
 const quoteAnswer = answer({
@@ -81,6 +81,30 @@ describe("chat page", () => {
     send("Hola");
     expect(await screen.findByText(es.quote.missing.guest_count)).toBeInTheDocument();
     expect(within(log()).getAllByRole("listitem").some((li) => li.textContent === "made_up_field")).toBe(false);
+  });
+
+  it("offers options under the latest answer only and sends the clicked one as a message", async () => {
+    const asks = answer({ status: "clarification", options: ["Paquete DJ", "<b>Ver todo el catalogo</b>"] });
+    const bodies = setup((init) => (JSON.parse(String(init?.body)).messages.length === 1 ? json(asks) : json(answer())));
+    send("Quiero parlantes");
+    const group = await screen.findByRole("group", { name: es.chat.optionsLabel });
+    expect(within(group).getAllByRole("button")).toHaveLength(2);
+    expect(group.querySelector("b")).toBeNull(); // plain text, never markup
+    fireEvent.click(within(group).getByRole("button", { name: "Paquete DJ" }));
+    expect(bodies[1]?.messages.at(-1)).toEqual({ role: "user", content: "Paquete DJ" });
+    expect(await within(log()).findAllByRole("listitem")).toHaveLength(4);
+    expect(screen.queryByRole("group", { name: es.chat.optionsLabel })).toBeNull();
+  });
+
+  it("hides the options while a request is in flight", async () => {
+    let finish: (r: Response) => void = () => {};
+    let calls = 0;
+    setup(() => (++calls === 1 ? json(answer({ status: "clarification", options: ["Paquete DJ"] })) : new Promise<Response>((resolve) => (finish = resolve))));
+    send("Hola");
+    fireEvent.click(await screen.findByRole("button", { name: "Paquete DJ" }));
+    expect(await screen.findByText(es.chat.typing)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Paquete DJ" })).toBeNull();
+    await act(async () => finish(json(answer())));
   });
 
   it("renders model text as inert text: no markup, no links", async () => {

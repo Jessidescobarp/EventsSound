@@ -120,7 +120,7 @@ const DEMO_LINES: QuoteLine[] = [
 ];
 
 const sum = (lines: QuoteLine[]) => lines.reduce((total, l) => total + l.amount, 0);
-const base = { quote: null, availability: null, missing_fields: [] as string[], reply_source: "static" } as const;
+const base = { quote: null, availability: null, missing_fields: [] as string[], reply_source: "static", options: [] as string[] } as const;
 
 const CHAT_QUOTE: ChatResponse = {
   ...base,
@@ -156,6 +156,7 @@ const CHAT_CLARIFICATION: ChatResponse = {
   status: "clarification",
   reply: "Para armar tu cotización necesito algunos datos más (demostración):\n1.¿Cuántos invitados habrá?",
   missing_fields: ["guest_count", "event_date"],
+  options: ["Paquete Fiesta", "Paquete DJ", "Ver todo el catalogo"],
 };
 
 function chatRoute(init?: RequestInit): Response {

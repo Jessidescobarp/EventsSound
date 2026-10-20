@@ -117,6 +117,8 @@ export interface ChatResponse {
   availability: Availability | null;
   missing_fields: string[];
   reply_source: ReplySource;
+  /** Short suggested answers; each is sent back verbatim as the next user message. */
+  options: string[];
 }
 
 // ---- runtime guards: the JSON is untrusted ----
@@ -124,7 +126,8 @@ export interface ChatResponse {
 const MAX_REPLY_CHARS = 6000;
 const MAX_LINES = 250;
 const MAX_LIST = 250;
-const MAX_PESOS = 1_000_000_000_000;
+const MAX_OPTIONS = 12;
+const MAX_PESOS =1_000_000_000_000;
 const STATUSES: readonly string[] = ["clarification", "quote", "refused"];
 const SOURCES: readonly string[] = ["llm", "template", "static"];
 /** Only these lines may be negative: discounts and the signed rounding adjustment. */
@@ -197,6 +200,7 @@ export function parseChatResponse(json: unknown): ChatResponse {
     availability: nullable(o.availability, parseAvailability),
     missing_fields: list(o.missing_fields, MAX_LIST, (v) => str({ code: v }, "code", 64)),
     reply_source: source as ReplySource,
+    options: o.options === undefined ? [] : list(o.options, MAX_OPTIONS, (v) => str({ option: v }, "option")),
   };
 }
 
