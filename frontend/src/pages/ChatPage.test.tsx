@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { VIEW_ALL_OPTION, type ChatResponse } from "../api/chat";
 import { es } from "../copy/es";
@@ -91,8 +91,8 @@ describe("chat page", () => {
     expect(within(group).getAllByRole("button")).toHaveLength(2);
     expect(group.querySelector("b")).toBeNull(); // plain text, never markup
     fireEvent.click(within(group).getByRole("button", { name: "Paquete DJ" }));
-    expect(bodies[1]?.messages.at(-1)).toEqual({ role: "user", content: "Paquete DJ" });
-    expect(await within(log()).findAllByRole("listitem")).toHaveLength(4);
+    await waitFor(() => expect(bodies[1]?.messages.at(-1)).toEqual({ role: "user", content: "Paquete DJ" }));
+    await waitFor(() => expect(within(log()).getAllByRole("listitem")).toHaveLength(4));
     expect(screen.queryByRole("group", { name: es.chat.optionsLabel })).toBeNull();
   });
 
@@ -114,7 +114,9 @@ describe("chat page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Paquete DJ" }));
     expect(await screen.findByText(es.chat.typing)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Paquete DJ" })).toBeNull();
+    await waitFor(() => expect(calls).toBe(2));
     await act(async () => finish(json(answer())));
+    await waitFor(() => expect(screen.queryByText(es.chat.typing)).toBeNull());
   });
 
   it("renders model text as inert text: no markup, no links", async () => {
