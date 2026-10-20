@@ -233,20 +233,33 @@ const demoBookings = Array.from({ length: 12 }, (_, n) => ({
   created_at: new Date(Date.UTC(2026, 9, 14, 12, 0) - n * 3_600_000).toISOString(),
 }));
 
-function pageOf<T>(rows: T[], search: URLSearchParams): Response {
+function pageOf<T>(rows: T[], search: URLSearchParams, extra: object = {}): Response {
   const limit = Number(search.get("limit") ?? 20);
   const offset = Number(search.get("offset") ?? 0);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0) {
     return json({ detail: "invalid_request", message: "Solicitud no valida." }, 422);
   }
-  return json({ items: rows.slice(offset, offset + limit), total: rows.length, limit, offset });
+  return json({ items: rows.slice(offset, offset + limit), total: rows.length, limit, offset, ...extra });
 }
+
+const demoSecurity = Array.from({ length: 12 }, (_, n) => ({
+  id: 12 - n,
+  at: new Date(Date.UTC(2026, 9, 15, 12, 0) - n * 1_800_000).toISOString(),
+  kind: n % 3 === 0 ? "login_failed" : "chat_refused",
+  client: (0xa1b2c3d4e5f60 + (n % 3) * 0x1111111).toString(16).padStart(16, "0"),
+}));
 
 function recordsRoute(pathname: string, init: RequestInit | undefined, search: URLSearchParams): Response {
   const role = callerRole(init);
   if (role === null) return json({ detail: "not_authenticated", message: "Debes iniciar sesion." }, 401);
   if (pathname === "/me/quotes") return pageOf(demoQuotes.filter((q) => q.registered), search);
   if (role !== "admin") return json({ detail: "forbidden", message: "No tienes permiso." }, 403);
+  if (pathname === "/admin/security") {
+    const count = (kind: string) => demoSecurity.filter((e) => e.kind === kind).length;
+    return pageOf(demoSecurity, search, {
+      last_24h: { chat_refused: count("chat_refused"), login_failed: count("login_failed") },
+    });
+  }
   return pathname === "/admin/quotes" ? pageOf(demoQuotes, search) : pageOf(demoBookings, search);
 }
 
@@ -405,6 +418,7 @@ function route(pathname: string, init?: RequestInit, search = new URLSearchParam
     case "/me/quotes":
     case "/admin/quotes":
     case "/admin/bookings":
+    case "/admin/security":
       return recordsRoute(pathname, init, search);
     case "/quote/chat":
       return init?.method === "POST" ? chatRoute(init) : json({ detail: "Method Not Allowed" }, 405);
