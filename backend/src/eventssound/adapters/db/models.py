@@ -20,6 +20,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
@@ -231,3 +232,40 @@ class PortfolioEventModel(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(String(500))
     equipment: Mapped[list[str]] = mapped_column(JSONB)
     visible: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+
+
+class AgentSettingsModel(Base):
+    """One saved agent configuration version; the highest version is the active one."""
+
+    __tablename__ = "agent_settings"
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("char_length(note) <= 200", name="note_length"),
+    )
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    config: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AgentSettingsAuditModel(Base):
+    """Who changed the agent configuration and what changed (old and new values, no secrets)."""
+
+    __tablename__ = "agent_settings_audit"
+    __table_args__ = (
+        CheckConstraint("action IN ('save', 'rollback')", name="action_valid"),
+        Index("ix_agent_settings_audit_version", "version"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, ForeignKey("agent_settings.version"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    action: Mapped[str] = mapped_column(String(16))
+    diff: Mapped[dict] = mapped_column(JSONB)

@@ -142,3 +142,20 @@ def validate_config(config: AgentConfig, allowed_models: Collection[str] | None)
         ),
         **texts,
     )
+
+
+MAX_NOTE_CHARS = 200
+
+
+def validate_note(note: object) -> str | None:
+    """The optional change note: trimmed, at most 200 characters, one line, no invisible chars."""
+    if note is None:
+        return None
+    if not isinstance(note, str):
+        raise InvalidAgentConfig("note must be text")
+    text = unicodedata.normalize("NFKC", note).strip()
+    if len(text) > MAX_NOTE_CHARS or any(
+        unicodedata.category(c) in _FORBIDDEN_CATEGORIES for c in text
+    ):
+        raise InvalidAgentConfig(f"note must be one line of at most {MAX_NOTE_CHARS} characters")
+    return text or None
