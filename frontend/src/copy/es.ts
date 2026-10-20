@@ -167,6 +167,7 @@ export const es = {
     inputHelp: "Enter envía el mensaje; Mayús + Enter agrega una línea.",
     counter: (used: number, max: number) => `${used} de ${max} caracteres`,
     send: "Enviar",
+    optionsLabel: "Respuestas sugeridas",
     typing: "El asistente está escribiendo...",
     newConversation: "Nueva conversación",
     demoHint:

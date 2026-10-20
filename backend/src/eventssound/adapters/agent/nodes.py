@@ -32,6 +32,7 @@ from eventssound.application.messages_es import (
     CLARIFICATION_FIELD_ORDER,
     CLARIFICATION_REPHRASE,
     REFUSAL,
+    clarify_item_options,
     render_clarification,
     render_clarify_items,
 )
@@ -255,8 +256,17 @@ def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
 
 def clarify_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
-        reply = render_clarify_items(state.get("ambiguous", ()), state.get("unresolved", ()))
-        return {"status": "clarification", "reply": reply, "reply_source": "static"}
+        ambiguous, unresolved = state.get("ambiguous", ()), state.get("unresolved", ())
+        reply = render_clarify_items(ambiguous, unresolved)
+        # With no match at all, suggest the first catalog packages (deterministic and cheap).
+        suggestions = tuple(p.name for p in deps.load_catalog().packages[:MAX_OPTION_NAMES])
+        options = clarify_item_options(ambiguous, unresolved, suggestions)
+        return {
+            "status": "clarification",
+            "reply": reply,
+            "reply_source": "static",
+            "options": options,
+        }
 
     return node
 

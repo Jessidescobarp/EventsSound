@@ -302,6 +302,11 @@ class ChatResponseOut(BaseModel):
     quote_id: str | None = Field(
         default=None, description="Id of the saved quote; null when it could not be saved."
     )
+    options: list[str] = Field(
+        default_factory=list,
+        description="Suggested answers the customer can click; only for `clarification`. "
+        "Each one is the exact text to send back as the next message.",
+    )
 
     @classmethod
     def from_outcome(cls, request_id: str, outcome: AgentOutcome) -> "ChatResponseOut":
@@ -337,6 +342,7 @@ class ChatResponseOut(BaseModel):
             ),
             missing_fields=list(outcome.missing_fields),
             reply_source=outcome.reply_source,
+            options=list(outcome.options) if outcome.status.value == "clarification" else [],
         )
 
 

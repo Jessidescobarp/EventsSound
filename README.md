@@ -12,7 +12,7 @@ Web app for a sound, lighting and DJ events company. Its core is an AI quote ass
 | Pure domain: money, pricing oracle (`calculate_price`), availability | Working, covered by tests |
 | RAG: hybrid search over the catalog (keyword + pgvector, fused with reciprocal rank fusion; `bge-m3` embeddings, 1024 dimensions, via OpenRouter) | Working, deployed. Admin edits re-embed the changed entries |
 | Quote agent (LangGraph pipeline; the LLM only extracts the request and writes the Spanish proposal text, which is verified against the quote computed by `calculate_price`) | Working, deployed. Model `mistralai/mistral-small-3.2-24b-instruct` (see "Choosing the LLM model") |
-| Quote chat endpoint (`POST /quote/chat`) with per-IP rate limit, persistent daily budget (Postgres `llm_usage_daily`) and kill switch | Working, deployed. Refuses off-topic requests (for example, asking for code) with a fixed text and no model call |
+| Quote chat endpoint (`POST /quote/chat`) with per-IP rate limit, persistent daily budget (Postgres `llm_usage_daily`) and kill switch | Working, deployed. Refuses off-topic requests (for example, asking for code) with a fixed text and no model call. A clarification may carry `options` (catalog names) the UI shows as clickable answers |
 | Offline evaluation (15 golden requests, 8 injection cases) | Working, runs in CI |
 | Authentication (JWT, argon2id, roles `client` and `admin`) | Working, deployed; two synthetic demo accounts (see "Demo accounts") |
 | Saved quotes (`status=quote` answers, no personal data) | Working; own quotes at `GET /me/quotes`, all quotes for admins |

@@ -62,8 +62,22 @@ describe("parseChatResponse", () => {
     ["rounding not last", response({ quote: quoteBody({ lines: [line({ kind: "rounding", code: "rounding", label: null, amount: 100 }), line({})] }) })],
     ["shortage with float", response({ availability: { is_available: false, shortages: [{ item_code: "a", requested: 1.5, available: 0 }] } })],
     ["missing_fields not strings", response({ missing_fields: [1] })],
+    ["options not an array", response({ options: "Paquete DJ" })],
+    ["option not a string", response({ options: [1] })],
+    ["empty option", response({ options: [" "] })],
+    ["overlong option", response({ options: ["x".repeat(121)] })],
+    ["option with a line break", response({ options: ["a\nb"] })],
+    ["too many options", response({ options: Array.from({ length: 13 }, (_, i) => `o${i}`) })],
   ])("rejects %s", (_name, body) => {
     expect(() => parseChatResponse(body)).toThrow();
+  });
+
+  it.each([
+    ["absent", response(), []],
+    ["empty", response({ options: [] }), []],
+    ["present", response({ options: ["Paquete DJ", "Ver todo el catalogo"] }), ["Paquete DJ", "Ver todo el catalogo"]],
+  ])("reads options when %s", (_name, body, expected) => {
+    expect(parseChatResponse(body).options).toEqual(expected);
   });
 
   it("accepts 250 lines and 250 shortages", () => {

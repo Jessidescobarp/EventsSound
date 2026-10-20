@@ -48,6 +48,7 @@ class AgentState(TypedDict):
     reply: NotRequired[str]
     reply_source: NotRequired[str]
     status: NotRequired[str]
+    options: NotRequired[tuple[str, ...]]
 
     # Shared, append-only.
     degraded: Annotated[list[str], _append]

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { countChars, MAX_MESSAGE_CHARS } from "../api/chat";
+import { countChars, MAX_MESSAGE_CHARS, VIEW_ALL_OPTION } from "../api/chat";
 import { QuoteDetails } from "../components/chat/QuoteBreakdown";
 import { Alert } from "../components/ui/Alert";
 import { Badge } from "../components/ui/Badge";
@@ -38,6 +38,11 @@ export default function ChatPage() {
     if (send(draft)) setDraft("");
     inputRef.current?.focus();
   };
+  // A clicked option goes through the normal send path, as if the customer had typed it.
+  const pick = (option: string) => {
+    send(option);
+    inputRef.current?.focus();
+  };
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     submit();
@@ -69,8 +74,13 @@ export default function ChatPage() {
         >
           {messages.length === 0 ? <p className="text-ink-muted">{t.empty}</p> : null}
           <ul className="space-y-4">
-            {messages.map((message) => (
-              <MessageItem key={message.id} message={message} />
+            {messages.map((message, index) => (
+              <MessageItem
+                key={message.id}
+                message={message}
+                onPick={index === messages.length - 1 && !sending ? pick : undefined}
+                pickDisabled={cooldown > 0}
+              />
             ))}
             {sending ? (
               <li className="flex items-center gap-2 text-ink-muted">
@@ -140,8 +150,18 @@ export default function ChatPage() {
   );
 }
 
-function MessageItem({ message }: { message: ChatMessage }) {
+function MessageItem({
+  message,
+  onPick,
+  pickDisabled,
+}: {
+  message: ChatMessage;
+  /** Set only on the latest message while no request is in flight; options stay hidden otherwise. */
+  onPick?: (option: string) => void;
+  pickDisabled?: boolean;
+}) {
   const mine = message.role === "user";
+  const options = onPick ? (message.response?.options ?? []) : [];
   return (
     <li className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div className={`max-w-[90%] rounded-card px-4 py-3 ${mine ? "bg-brand-600 text-white" : "border border-line bg-surface"}`}>
@@ -155,6 +175,22 @@ function MessageItem({ message }: { message: ChatMessage }) {
               <Badge>{t.source[message.response.reply_source]}</Badge>
             </p>
           </>
+        ) : null}
+        {options.length > 0 && onPick ? (
+          // Option texts come from the catalog but are still rendered as plain text.
+          <div role="group" aria-label={t.optionsLabel} className="mt-3 flex flex-wrap gap-2">
+            {options.map((option) =>
+              option === VIEW_ALL_OPTION ? (
+                <ButtonLink key={option} to="/servicios" variant="secondary">
+                  {option}
+                </ButtonLink>
+              ) : (
+                <Button key={option} variant="secondary" disabled={pickDisabled} onClick={() => onPick(option)}>
+                  {option}
+                </Button>
+              ),
+            )}
+          </div>
         ) : null}
       </div>
     </li>

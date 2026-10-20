@@ -94,6 +94,8 @@ class AgentOutcome:
     availability: AvailabilityReport | None
     missing_fields: tuple[str, ...]
     degraded: tuple[str, ...]
+    # Clickable answers for a clarification; built only from catalog names and fixed labels.
+    options: tuple[str, ...] = ()
 
 
 class QuoteAgent(Protocol):
