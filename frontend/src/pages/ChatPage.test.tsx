@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ChatResponse } from "../api/chat";
+import { VIEW_ALL_OPTION, type ChatResponse } from "../api/chat";
 import { es } from "../copy/es";
 import { renderApp } from "../test/renderApp";
 import { normalizeSpaces } from "../test/text";
@@ -94,6 +94,16 @@ describe("chat page", () => {
     expect(bodies[1]?.messages.at(-1)).toEqual({ role: "user", content: "Paquete DJ" });
     expect(await within(log()).findAllByRole("listitem")).toHaveLength(4);
     expect(screen.queryByRole("group", { name: es.chat.optionsLabel })).toBeNull();
+  });
+
+  it("renders the view-all option as a link to the catalog and does not send it", async () => {
+    const bodies = setup(() => json(answer({ status: "clarification", options: ["Paquete DJ", VIEW_ALL_OPTION] })));
+    send("Hola");
+    const link = await screen.findByRole("link", { name: VIEW_ALL_OPTION });
+    expect(link).toHaveAttribute("href", "/servicios");
+    expect(screen.getByRole("button", { name: "Paquete DJ" })).toBeInTheDocument();
+    fireEvent.click(link);
+    expect(bodies).toHaveLength(1);
   });
 
   it("hides the options while a request is in flight", async () => {

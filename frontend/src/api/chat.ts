@@ -127,6 +127,8 @@ const MAX_REPLY_CHARS = 6000;
 const MAX_LINES = 250;
 const MAX_LIST = 250;
 const MAX_OPTIONS = 12;
+/** Wire value of the backend's VIEW_ALL_OPTION (messages_es.py): the UI links to the catalog instead of sending it. */
+export const VIEW_ALL_OPTION = "Ver todo el catalogo";
 const MAX_PESOS =1_000_000_000_000;
 const STATUSES: readonly string[] = ["clarification", "quote", "refused"];
 const SOURCES: readonly string[] = ["llm", "template", "static"];

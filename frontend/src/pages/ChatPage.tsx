@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { countChars, MAX_MESSAGE_CHARS } from "../api/chat";
+import { countChars, MAX_MESSAGE_CHARS, VIEW_ALL_OPTION } from "../api/chat";
 import { QuoteDetails } from "../components/chat/QuoteBreakdown";
 import { Alert } from "../components/ui/Alert";
 import { Badge } from "../components/ui/Badge";
@@ -179,11 +179,17 @@ function MessageItem({
         {options.length > 0 && onPick ? (
           // Option texts come from the catalog but are still rendered as plain text.
           <div role="group" aria-label={t.optionsLabel} className="mt-3 flex flex-wrap gap-2">
-            {options.map((option) => (
-              <Button key={option} variant="secondary" disabled={pickDisabled} onClick={() => onPick(option)}>
-                {option}
-              </Button>
-            ))}
+            {options.map((option) =>
+              option === VIEW_ALL_OPTION ? (
+                <ButtonLink key={option} to="/servicios" variant="secondary">
+                  {option}
+                </ButtonLink>
+              ) : (
+                <Button key={option} variant="secondary" disabled={pickDisabled} onClick={() => onPick(option)}>
+                  {option}
+                </Button>
+              ),
+            )}
           </div>
         ) : null}
       </div>
