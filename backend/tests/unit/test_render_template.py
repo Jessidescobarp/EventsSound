@@ -3,6 +3,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from eventssound.application.messages_es import (
     CLARIFICATION_FIELD_ORDER,
     REFUSAL,
@@ -249,3 +251,19 @@ class TestFactsPayload:
         texts = [line["text"] for line in payload["lines"]]
         assert texts == [bullet[2:] for bullet in _line_bullets(facts)]
         assert all("None" not in text for text in texts)
+
+
+@pytest.mark.parametrize(
+    ("ambiguous", "unresolved", "expected"),
+    [
+        ((), (), ()),
+        ((("a", ("X", "Y")), ("b", ("Y", "Z"))), (), ("X", "Y", "Z")),
+        ((("a", tuple("ABCDEF")), ("b", ("G",))), (), tuple("ABCDEF")),
+        ((), ("q",), ("P1", "P2", "P3", "Ver todo el catalogo")),
+    ],
+    ids=["nothing", "deduplicated", "capped", "unresolved"],
+)
+def test_clarify_item_options(ambiguous, unresolved, expected) -> None:
+    from eventssound.application.messages_es import clarify_item_options
+
+    assert clarify_item_options(ambiguous, unresolved, ("P1", "P2", "P3", "P4")) == expected

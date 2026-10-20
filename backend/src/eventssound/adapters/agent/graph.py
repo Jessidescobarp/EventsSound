@@ -102,4 +102,5 @@ class GraphQuoteAgent:
             availability=final.get("availability"),
             missing_fields=final.get("missing_fields", ()),
             degraded=tuple(final.get("degraded", ())),
+            options=tuple(final.get("options", ())),
         )

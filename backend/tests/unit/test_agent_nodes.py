@@ -26,6 +26,7 @@ from eventssound.adapters.agent.nodes import (
 from eventssound.adapters.agent.schemas import Extraction
 from eventssound.adapters.llm.replay import ScriptedProvider
 from eventssound.application.llm import LlmResponse, LlmTimeout, TokenUsage
+from eventssound.application.messages_es import VIEW_ALL_OPTION
 from eventssound.application.quote_chat import ChatTurn, UsageMeter
 from eventssound.domain.availability import AvailabilityReport
 from eventssound.domain.event_request import EventRequest, EventType, RequestedLine, VenueType
@@ -376,6 +377,21 @@ class TestResolveItems:
         assert out["reply_source"] == "static"
         assert "Parlante activo de 15 pulgadas" in out["reply"]
         assert "tarima gigante" in out["reply"]
+        assert out["options"] == ("Parlante activo de 15 pulgadas", "Paquete DJ")
+
+    def test_clarify_items_without_matches_suggests_first_packages(self) -> None:
+        out = clarify_items(make_deps(ScriptedProvider([])))(state(unresolved=("tarima gigante",)))
+        assert out["options"] == ("Paquete Fiesta", "Paquete DJ", VIEW_ALL_OPTION)
+
+    def test_options_round_trip_through_search(self) -> None:
+        # What a chip sends as the next user message must find the same catalog entry.
+        deps = make_deps(ScriptedProvider([]))
+        catalog = deps.load_catalog()
+        entries = {i.name: i.code for i in catalog.items} | {
+            p.name: p.code for p in catalog.packages
+        }
+        for name, code in entries.items():
+            assert deps.search.search([name], None, 5)[0].hits[0].code == code
 
 
 class TestBuildRequest:

@@ -142,6 +142,7 @@ class TestClarification:
         )
         assert meter.llm_calls == 1
         assert outcome.quote is None
+        assert outcome.options == ()
         provider.assert_all_consumed()
 
     def test_ambiguous_item_clarifies_with_options(self) -> None:
@@ -151,6 +152,7 @@ class TestClarification:
         outcome, _ = run(agent, "quiero parlantes")
         assert outcome.status is AgentStatus.CLARIFICATION
         assert "Parlante activo de 15 pulgadas" in outcome.reply
+        assert "Parlante activo de 15 pulgadas" in outcome.options
         assert outcome.reply_source == "static"
         provider.assert_all_consumed()
 

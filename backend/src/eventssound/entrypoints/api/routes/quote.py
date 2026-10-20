@@ -108,6 +108,7 @@ RESPONSE_EXAMPLES: dict[str, dict[str, object]] = {
         "availability": None,
         "missing_fields": ["guest_count"],
         "reply_source": "static",
+        "options": [],
     },
     "refused": {
         "request_id": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",

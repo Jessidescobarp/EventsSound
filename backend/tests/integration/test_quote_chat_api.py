@@ -1,5 +1,6 @@
 """POST /quote/chat: guards, error shapes, schemas and OpenAPI, without a database or network."""
 
+import dataclasses
 import json
 import logging
 from datetime import UTC, datetime
@@ -325,3 +326,20 @@ def test_openapi_documents_the_endpoint_and_its_examples_validate() -> None:
     schema = client.get("/openapi.json").json()["components"]["schemas"]["ChatRequestIn"]
     for example in schema["examples"]:
         ChatRequestIn.model_validate(example)
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (AgentStatus.CLARIFICATION, ["Paquete DJ", "Ver todo el catalogo"]),
+        (AgentStatus.REFUSED, []),
+        (AgentStatus.QUOTE, []),
+    ],
+)
+def test_options_are_returned_only_for_a_clarification(status, expected) -> None:
+    quote, request = (QUOTE, REQUEST) if status is AgentStatus.QUOTE else (None, None)
+    result = dataclasses.replace(
+        outcome(status, quote, request), options=("Paquete DJ", "Ver todo el catalogo")
+    )
+    client, _ = make_client(FakeAgent(result))
+    assert client.post(URL, json=BODY).json()["options"] == expected

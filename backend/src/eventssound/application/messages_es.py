@@ -45,6 +45,8 @@ CLARIFY_ITEMS_INTRO = (
     "Hay algunos equipos que no supe ubicar en el catalogo. A cual te refieres exactamente:"
 )
 _MAX_ITEM_OPTIONS = 3
+MAX_OPTIONS = 6
+VIEW_ALL_OPTION = "Ver todo el catalogo"
 
 SHORTAGE_INTRO = "No pudimos garantizar todo el equipo:"
 _SHORTAGE_LINE = "- {name}: pediste {requested}, hay {available}."
@@ -100,6 +102,23 @@ def render_clarify_items(
     if not lines:
         raise ValueError("nothing to clarify")
     return f"{CLARIFY_ITEMS_INTRO}\n" + "\n".join(lines)
+
+
+def clarify_item_options(
+    ambiguous: tuple, unresolved: tuple, suggestions: tuple[str, ...] = ()
+) -> tuple[str, ...]:
+    """Clickable answers for `render_clarify_items`: exactly the text the customer would type.
+
+    Ambiguous mentions offer their catalog names (deduplicated, stable order, capped). When
+    nothing matched at all, offer the suggested catalog names plus a "see everything" option.
+    Never built from user or model text.
+    """
+    names = tuple(dict.fromkeys(name for _, candidates in ambiguous for name in candidates))
+    if names:
+        return names[:MAX_OPTIONS]
+    if unresolved:
+        return (*dict.fromkeys(suggestions[:_MAX_ITEM_OPTIONS]), VIEW_ALL_OPTION)
+    return ()
 
 
 def render_shortage_lines(shortages) -> list[str]:
