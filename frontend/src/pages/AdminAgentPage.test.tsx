@@ -75,9 +75,10 @@ describe("free models", () => {
   });
 
   it("marks free models in the model select", async () => {
-    renderApp("/admin/agente", withView({ ...VIEW, allowed_models: ["vendor/model-a", "vendor/model-b:free"] }));
+    renderApp("/admin/agente", withView({ ...VIEW, allowed_models: ["vendor/model-a", "vendor/model-b:free", "vendor/env:free"], free_models: ["vendor/model-b:free"] }));
     await card();
     expect(screen.getByRole("option", { name: t.freeModelOption("vendor/model-b:free") })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "vendor/model-a" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "vendor/env:free" })).toBeInTheDocument(); // the server says it is not free
   });
 });

@@ -22,8 +22,6 @@ export interface AgentDraft {
 
 export type FieldProblem = "required" | "too_long" | "url" | "markup" | "digits" | "money" | "range" | "number" | "model";
 
-/** A free model is an OpenRouter id ending in `:free` (the server enforces the same rule). */
-export const isFreeModel = (model: string): boolean => model.endsWith(":free");
 
 /** USD text for a micro-USD amount: 2500000 -> "2.5". */
 export function microToUsd(micro: number): string {

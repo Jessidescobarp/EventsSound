@@ -51,6 +51,7 @@ class AgentConfigViewOut(BaseModel):
     config: AgentConfigOut
     ceilings: CeilingsOut
     allowed_models: list[str]
+    free_models: list[str] = Field(description="The allowed models that cost nothing (a subset).")
     model_in_use: ModelInUseOut
     defaults_out_of_bounds: list[str] = Field(
         description="Fields of the active config outside the validation bounds (version 0 can "

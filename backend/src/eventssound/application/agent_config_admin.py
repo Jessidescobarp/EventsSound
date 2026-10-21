@@ -158,6 +158,12 @@ class AgentConfigAdmin:
     def allowed_models(self) -> Collection[str]:
         return self._settings.allowed_llm_models
 
+    @property
+    def free_models(self) -> list[str]:
+        """The allowed models that cost nothing, by the price table (not by the id alone)."""
+        prices = ((m, price_for(m, self._settings)) for m in self.allowed_models)
+        return [m for m, price in prices if price is not None and price.free]
+
     def current(self) -> CurrentConfig:
         """Fresh from storage (RepositoryUnavailable / InvalidStoredData propagate)."""
         stored = self._repository.get_active()

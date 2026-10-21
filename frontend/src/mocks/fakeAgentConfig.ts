@@ -112,6 +112,7 @@ function view() {
     config,
     ceilings: CEILINGS,
     allowed_models: MODELS,
+    free_models: MODELS.filter(isFree),
     model_in_use: MODEL_IN_USE,
     defaults_out_of_bounds: [],
     updated_at: history[0]?.at ?? null,

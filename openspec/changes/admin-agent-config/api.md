@@ -12,6 +12,7 @@ token). Error bodies are `{detail: <code>, message: <Spanish>}`; 422 `invalid_co
             llm_model, daily_token_cap, daily_cost_cap_micro_usd, chat_rate_limit_per_minute },
   ceilings: { max_daily_tokens, max_daily_cost_micro_usd, max_rate_limit_per_minute },
   allowed_models: [...],
+  free_models: [...],            // the allowed models that cost nothing (subset; may be absent in old servers)
   model_in_use: { provider, model, status: "active"|"disabled"|"replay",
                   input_price_per_mtok, output_price_per_mtok, cost_cap_applies,
                   free /* bool: a `:free` model; absent from older servers */ },

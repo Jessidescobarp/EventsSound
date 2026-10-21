@@ -418,3 +418,33 @@ def test_an_environment_model_that_is_free_is_flagged_free_with_a_zero_estimate(
     assert (card["free"], card["cost_cap_applies"]) == (True, False)
     assert body["max_daily_cost_estimate_micro_usd"] == 0
     assert "free_model_limits" in {w["code"] for w in body["warnings"]}
+
+
+@pytest.mark.parametrize(
+    ("model", "allowlist", "free"),
+    [
+        ("vendor/model-a", "vendor/model-a,vendor/model-b:free", ["vendor/model-b:free"]),
+        ("vendor/model-a", "", []),
+        ("vendor/env:free", "vendor/env:free,vendor/x:free", ["vendor/env:free", "vendor/x:free"]),
+    ],
+)
+def test_get_lists_which_allowed_models_are_free(
+    model: str, allowlist: str, free: list[str]
+) -> None:
+    client, _, _ = build(llm_model=model, llm_model_allowlist=allowlist)
+
+    body = client.get(GET, headers=as_user(client, ROOT)).json()
+
+    assert body["free_models"] == free and set(free) <= set(body["allowed_models"])
+
+
+def test_an_env_model_with_the_free_suffix_but_a_price_is_not_listed_free() -> None:
+    client, _, _ = build(
+        llm_model="vendor/env:free",
+        llm_model_allowlist="vendor/env:free,vendor/x:free",
+        llm_input_price_micro_usd_per_mtok=5,
+    )
+
+    body = client.get(GET, headers=as_user(client, ROOT)).json()
+
+    assert body["free_models"] == ["vendor/x:free"]

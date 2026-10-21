@@ -132,6 +132,7 @@ def get_agent_config(request: Request, who: AdminOnly) -> AgentConfigViewOut | J
             "config": current.config.to_dict(),
             "ceilings": CEILINGS,
             "allowed_models": list(service.allowed_models),
+            "free_models": service.free_models,
             "model_in_use": asdict(service.model_in_use(current.config)),
             "defaults_out_of_bounds": service.out_of_bounds(current.config),
             "updated_at": current.updated_at.isoformat() if current.updated_at else None,
