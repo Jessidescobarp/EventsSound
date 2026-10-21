@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from eventssound.adapters.usage.memory import InMemoryUsageBudget
 from eventssound.application.agent_config import defaults_from_settings
 from eventssound.application.quote_chat import AgentOutcome, AgentStatus
 from eventssound.config import Settings
@@ -24,12 +25,15 @@ class FakeAgent:
         return AgentOutcome(AgentStatus.CLARIFICATION, "Hola", "static", None, None, None, (), ())
 
 
-def make(repo: InMemoryAgentConfigRepository, **parts: Any) -> tuple[TestClient, Settings]:
+def make(
+    repo: InMemoryAgentConfigRepository, over: dict[str, Any] | None = None, **parts: Any
+) -> tuple[TestClient, Settings]:
     settings = Settings(  # type: ignore[call-arg]
         _env_file=None,
         DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:1/x",  # type: ignore[arg-type]
         llm_model="vendor/model-a",
         llm_model_allowlist="vendor/model-a,vendor/model-b:free",  # type: ignore[arg-type]
+        **(over or {}),
     )
     app = create_app(
         settings,
@@ -226,3 +230,30 @@ def test_a_failing_first_build_still_propagates() -> None:
     lazy = container.LazyQuoteAgent(build, lambda: "vendor/a")
     with pytest.raises(RuntimeError):
         lazy.run(None)  # type: ignore[arg-type]
+
+
+class RecordingBudget(InMemoryUsageBudget):
+    def __init__(self) -> None:
+        super().__init__(token_cap=0, cost_cap_micro_usd=0)
+        self.reserved: list[tuple[int, int]] = []
+
+    def reserve(self, tokens: int, cost_micro_usd: int) -> Any:
+        self.reserved.append((tokens, cost_micro_usd))
+        return super().reserve(tokens, cost_micro_usd)
+
+
+def test_the_active_model_price_prices_the_next_reservation() -> None:
+    repo, budget = InMemoryAgentConfigRepository(), RecordingBudget()
+    settings_pair = {"llm_input_price_micro_usd_per_mtok": 300_000}
+    client, settings = make(repo, settings_pair, usage_budget=budget)
+    provider = client.app.state.agent_config  # type: ignore[attr-defined]
+
+    client.post(URL, json=BODY)  # env model: priced with the env pair
+    stored(repo, settings, llm_model="vendor/model-b:free")
+    provider.invalidate()
+    client.post(URL, json=BODY)  # free model: cost 0, the token reservation is unchanged
+    stored(repo, settings, llm_model="vendor/model-a")
+    provider.invalidate()
+    client.post(URL, json=BODY)
+
+    assert budget.reserved == [(8000, 300_000), (8000, 0), (8000, 300_000)]

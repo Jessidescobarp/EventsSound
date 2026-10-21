@@ -239,7 +239,7 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
             budget=state.usage_budget,
             limiter=state.rate_limiter,
             clock=lambda: datetime.now(UTC),
-            limits=state.chat_limits,
+            limits=state.chat_limits_source(),
             request_id=request_id,
         )
         # Serialized inside the try: a failure here is a safe 500 with the request id.

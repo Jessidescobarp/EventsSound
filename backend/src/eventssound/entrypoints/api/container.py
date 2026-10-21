@@ -5,6 +5,7 @@ database at import or startup: the agent (which needs the catalog) is built on i
 request, and a configuration that cannot serve chat simply leaves the endpoint disabled.
 """
 
+import dataclasses
 import logging
 import secrets
 import threading
@@ -65,6 +66,7 @@ from eventssound.application.usage import CapsSource, RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
 from eventssound.domain.catalog import Catalog
+from eventssound.domain.model_prices import price_for
 from eventssound.domain.pricing_rules import default_pricing_rules
 from eventssound.entrypoints.api.auth_kit import AuthKit
 from eventssound.entrypoints.api.guards import FailClosedLimiter
@@ -132,6 +134,35 @@ def make_chat_limits(settings: Settings) -> ChatLimits:
         input_price_micro_usd=settings.llm_input_price_micro_usd_per_mtok,
         output_price_micro_usd=settings.llm_output_price_micro_usd_per_mtok,
     )
+
+
+def make_chat_limits_source(
+    settings: Settings, active: ActiveConfigProvider | None = None
+) -> Callable[[], ChatLimits]:
+    """The limits of the next request, priced for the ACTIVE model (an admin may switch it).
+
+    A free model costs 0, so the daily cost cap does not bind for it (the token cap still does).
+    A model without a price or any failure resolving it keeps the environment pair (today's
+    behavior), never a made-up one.
+    """
+    base = make_chat_limits(settings)
+    if active is None:
+        return lambda: base
+
+    def limits() -> ChatLimits:
+        try:
+            price = price_for(active.current().config.llm_model, settings)
+        except Exception:  # noqa: BLE001  (pricing must never fail a chat request)
+            return base
+        if price is None:
+            return base
+        return dataclasses.replace(
+            base,
+            input_price_micro_usd=price.input_micro_usd_per_mtok,
+            output_price_micro_usd=price.output_micro_usd_per_mtok,
+        )
+
+    return limits
 
 
 def make_rate_limiter(
