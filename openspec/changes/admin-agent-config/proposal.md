@@ -19,7 +19,7 @@ Out: changing provider or keys, per-user configs, editing prompts or pricing rul
 - Admin edits BOTH behavior/text and technical params, bounded by ceilings: `HARD_MAX_DAILY_TOKENS` = 1,000,000 and `HARD_MAX_DAILY_COST_MICRO_USD` = 10,000,000 (10x the Settings defaults), `HARD_MAX_RATE_LIMIT_PER_MINUTE` = 60.
 - Model allowlist comes from the optional `LLM_MODEL_ALLOWLIST` (comma-separated); empty means only `LLM_MODEL`.
 - The model-id pattern has one definition in the domain; the OpenRouter adapter imports it.
-- Loading never raises: any failure logs the error class and serves the defaults.
+- Loading never raises: any failure logs the error class and serves the defaults. At runtime the cached snapshot is refreshed every 15 s; if the database is unreachable at startup the env defaults apply until it returns, and a stored config that stops validating (for example the allowlist shrinks) keeps the last good snapshot until a valid config is stored or the process restarts.
 - Technical params need password re-auth; every change needs a confirmation token (PR 3 onward).
 
 ## Delivery (chained PRs, each under 400 changed lines)
