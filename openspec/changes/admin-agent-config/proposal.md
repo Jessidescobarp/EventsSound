@@ -20,6 +20,7 @@ Out: changing provider or keys, per-user configs, editing prompts or pricing rul
 - Model allowlist comes from the optional `LLM_MODEL_ALLOWLIST` (comma-separated); empty means only `LLM_MODEL`.
 - The model-id pattern has one definition in the domain; the OpenRouter adapter imports it.
 - Loading never raises: any failure logs the error class and serves the defaults. At runtime the cached snapshot is refreshed every 15 s; if the database is unreachable at startup the env defaults apply until it returns, and a stored config that stops validating (for example the allowlist shrinks) keeps the last good snapshot until a valid config is stored or the process restarts.
+- The custom closing message is shown only on the deterministic template path (shortages, LLM failure or failed verification), not on the LLM-draft path. Refusal and closing texts reject digits, `$` and `%` so they cannot read as part of a quote.
 - Technical params need password re-auth; every change needs a confirmation token (PR 3 onward).
 
 ## Delivery (chained PRs, each under 400 changed lines)

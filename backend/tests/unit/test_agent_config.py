@@ -219,3 +219,22 @@ def test_settings_allowlist_parsing(raw: str, expected: tuple[str, ...]) -> None
     assert settings.allowed_llm_models == expected
     only_default = Settings(DATABASE_URL="postgresql://u:p@127.0.0.1/x", llm_model="v/m")
     assert only_default.allowed_llm_models == ("v/m",)
+
+
+@pytest.mark.parametrize("field", ["closing_message", "refusal_message", "welcome_message"])
+@pytest.mark.parametrize("text", ["total $1.000 COP", "descuento 100%", "solo $"])
+def test_every_text_rejects_money_and_percent_symbols(field: str, text: str) -> None:
+    with pytest.raises(InvalidAgentConfig, match=field):
+        parse(**{field: text})
+
+
+@pytest.mark.parametrize("field", ["closing_message", "refusal_message"])
+@pytest.mark.parametrize("text", ["total 5", "ciento １２", "Cotiza ya 2x1"])
+def test_closing_and_refusal_reject_any_digit(field: str, text: str) -> None:
+    with pytest.raises(InvalidAgentConfig, match=field) as raised:
+        parse(**{field: text})
+    assert text not in str(raised.value)
+
+
+def test_welcome_keeps_digits_for_opening_hours() -> None:
+    assert parse(welcome_message="Atendemos de 8 a 18 h").welcome_message == "Atendemos de 8 a 18 h"

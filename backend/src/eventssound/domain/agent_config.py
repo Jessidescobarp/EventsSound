@@ -32,7 +32,16 @@ MAX_TEXT_CHARS = 400
 # The single definition of a provider model id; the OpenRouter adapter imports it.
 MODEL_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/~+-]{0,119}")
 
-_TEXT_FIELDS = ("refusal_message", "closing_message", "welcome_message")
+# Extra per-field rule on top of _FORBIDDEN_TEXT. The closing is appended to quotes without
+# verification and the refusal is shown as-is, so neither may carry a number, price or percent
+# (a price-like string would read as part of the quote). The welcome keeps digits (opening hours).
+_MONEY_SYMBOLS = re.compile(r"[$%]")
+_ANY_NUMBER = re.compile(r"[\d$%]")
+_TEXT_FIELDS = {
+    "refusal_message": _ANY_NUMBER,
+    "closing_message": _ANY_NUMBER,
+    "welcome_message": _MONEY_SYMBOLS,
+}
 MAX_TEXT_LINES = 3
 _FORBIDDEN_CATEGORIES = frozenset(
     {"Cc", "Cf", "Zl", "Zp"}
@@ -90,7 +99,7 @@ def _normalize_text(text: str) -> str:
     return "\n".join(kept).strip()
 
 
-def _check_text(name: str, value: object) -> str:
+def _check_text(name: str, value: object, extra: re.Pattern[str]) -> str:
     if not isinstance(value, str):
         raise InvalidAgentConfig(f"{name} must be text")
     text = _normalize_text(value)
@@ -100,6 +109,8 @@ def _check_text(name: str, value: object) -> str:
         )
     if any(c != "\n" and unicodedata.category(c) in _FORBIDDEN_CATEGORIES for c in text):
         raise InvalidAgentConfig(f"{name} has control or invisible characters")
+    if extra.search(text):
+        raise InvalidAgentConfig(f"{name} must not contain numbers, prices or percentages")
     if any(pattern.search(text) for pattern in _FORBIDDEN_TEXT):
         raise InvalidAgentConfig(f"{name} has forbidden content (markup, links, e-mail or phone)")
     return text
@@ -122,7 +133,9 @@ def validate_config(config: AgentConfig, allowed_models: Collection[str] | None)
         raise InvalidAgentConfig("llm_model must be a provider model id such as vendor/name")
     if allowed_models is not None and model not in allowed_models:
         raise InvalidAgentConfig("llm_model is not in the allowed list")
-    texts = {name: _check_text(name, getattr(config, name)) for name in _TEXT_FIELDS}
+    texts = {
+        name: _check_text(name, getattr(config, name), rule) for name, rule in _TEXT_FIELDS.items()
+    }
     return AgentConfig(
         tone=config.tone,
         off_topic_policy=config.off_topic_policy,

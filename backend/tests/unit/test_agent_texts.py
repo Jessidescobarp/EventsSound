@@ -14,7 +14,7 @@ from eventssound.adapters.llm.replay import ScriptedProvider
 from eventssound.application.agent_config import defaults_from_settings
 from eventssound.application.llm import LlmResponse, TokenUsage
 from eventssound.application.messages_es import REFUSAL, TEMPLATE_CLOSING, WELCOME
-from eventssound.application.proposal_check import render_template, verify_proposal
+from eventssound.application.proposal_check import render_template
 from eventssound.application.security import (
     CHAT_REFUSED,
     REFUSED_LIMIT,
@@ -22,6 +22,8 @@ from eventssound.application.security import (
     AbuseGate,
     client_key,
 )
+from eventssound.domain.agent_config import validate_config
+from eventssound.domain.errors import InvalidAgentConfig
 from fakes import InMemorySecurityLog
 
 SETTINGS = SimpleNamespace(
@@ -99,11 +101,15 @@ class TestStoredTextsAreUsed:
         reply = render_template_node(deps)(s)["reply"]
         assert reply.endswith("\nGracias") and TEMPLATE_CLOSING not in reply
 
-    def test_a_custom_closing_still_passes_the_verification(self) -> None:
+    def test_a_price_like_closing_is_rejected_before_it_can_reach_a_quote(self) -> None:
         facts = TestVerifyAndRender().good_facts_state()["facts"]
-        text = render_template(facts, "Gracias por confiar en nosotros")
-        assert verify_proposal(text, facts).ok
+        with pytest.raises(InvalidAgentConfig):
+            config_from("closing_message", "Descuento especial: total $1.000 COP")
         assert render_template(facts) == render_template(facts, TEMPLATE_CLOSING)
+
+
+def config_from(field: str, text: str):
+    return validate_config(replace(DEFAULTS, **{field: text}), None)
 
 
 class TestTone:
