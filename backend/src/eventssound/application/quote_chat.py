@@ -82,6 +82,7 @@ class AgentInput:
     request_id: str
     meter: UsageMeter
     deadline_monotonic: float
+    model: str | None = None  # the model the request was priced for; None = the agent decides
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +121,7 @@ class ChatLimits:
     deadline_seconds: float = 40
     input_price_micro_usd: int = 0
     output_price_micro_usd: int = 0
+    model: str | None = None  # the active model the prices belong to (pinned for the run)
 
 
 def quote_chat(
@@ -172,6 +174,7 @@ def quote_chat(
         request_id=request_id or uuid.uuid4().hex,
         meter=meter,
         deadline_monotonic=time.monotonic() + limits.deadline_seconds,
+        model=limits.model,
     )
     try:
         outcome = agent.run(data)

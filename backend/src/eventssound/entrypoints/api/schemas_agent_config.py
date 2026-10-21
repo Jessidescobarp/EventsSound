@@ -43,6 +43,7 @@ class ModelInUseOut(BaseModel):
     input_price_per_mtok: int
     output_price_per_mtok: int
     cost_cap_applies: bool = Field(description="False when the cost cap cannot bind (prices 0).")
+    free: bool = Field(description="True for a free model (`:free` suffix, no cost).")
 
 
 class AgentConfigViewOut(BaseModel):
@@ -50,6 +51,7 @@ class AgentConfigViewOut(BaseModel):
     config: AgentConfigOut
     ceilings: CeilingsOut
     allowed_models: list[str]
+    free_models: list[str] = Field(description="The allowed models that cost nothing (a subset).")
     model_in_use: ModelInUseOut
     defaults_out_of_bounds: list[str] = Field(
         description="Fields of the active config outside the validation bounds (version 0 can "

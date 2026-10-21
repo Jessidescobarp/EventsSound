@@ -19,7 +19,7 @@ def build(repo: InMemoryAgentConfigRepository, **over: Any) -> tuple[TestClient,
         _env_file=None,
         DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:1/x",  # type: ignore[arg-type]
         llm_model="vendor/model-a",
-        llm_model_allowlist="vendor/model-a,vendor/model-b",  # type: ignore[arg-type]
+        llm_model_allowlist="vendor/model-a,vendor/model-b:free",  # type: ignore[arg-type]
         **over,
     )
     app = create_app(

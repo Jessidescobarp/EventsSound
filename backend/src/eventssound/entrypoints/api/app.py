@@ -132,7 +132,9 @@ def create_app(
     app.state.rate_limiter = FailClosedLimiter(
         rate_limiter or container.make_rate_limiter(settings, app.state.agent_config)
     )
-    app.state.chat_limits = container.make_chat_limits(settings)
+    app.state.chat_limits_source = container.make_chat_limits_source(
+        settings, app.state.agent_config
+    )
     # Login. None means auth is not configured (production without JWT_SECRET): its routes
     # answer 503 and the rest of the app keeps serving.
     app.state.auth = auth_kit or container.make_auth_kit(settings, factory)

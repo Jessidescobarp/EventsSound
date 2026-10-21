@@ -29,6 +29,8 @@ export interface ModelInUse {
   input_price_per_mtok: number;
   output_price_per_mtok: number;
   cost_cap_applies: boolean;
+  /** A free model (`:free` id). Absent from older servers, so it defaults to false. */
+  free: boolean;
 }
 
 export interface AgentConfigView {
@@ -36,6 +38,8 @@ export interface AgentConfigView {
   config: AgentConfig;
   ceilings: { max_daily_tokens: number; max_daily_cost_micro_usd: number; max_rate_limit_per_minute: number };
   allowed_models: string[];
+  /** Allowed models that cost nothing, as the server prices them; [] from an older server. */
+  free_models: string[];
   model_in_use: ModelInUse;
   defaults_out_of_bounds: string[];
   updated_at: string | null;
@@ -110,6 +114,7 @@ function parseModel(value: unknown): ModelInUse {
     input_price_per_mtok: int(o, "input_price_per_mtok", 0, MAX_INT),
     output_price_per_mtok: int(o, "output_price_per_mtok", 0, MAX_INT),
     cost_cap_applies: bool(o, "cost_cap_applies"),
+    free: o.free === undefined ? false : bool(o, "free"),
   };
 }
 
@@ -127,6 +132,7 @@ export function parseConfigView(json: unknown): AgentConfigView {
       max_rate_limit_per_minute: int(ceilings, "max_rate_limit_per_minute", 1, MAX_INT),
     },
     allowed_models: list(o.allowed_models, 50, item),
+    free_models: o.free_models === undefined ? [] : list(o.free_models, 50, item),
     model_in_use: parseModel(o.model_in_use),
     defaults_out_of_bounds: list(o.defaults_out_of_bounds, 12, item),
     updated_at: nullable(o.updated_at, (v) => str({ v }, "v", 40)),

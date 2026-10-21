@@ -84,7 +84,7 @@ export function AgentConfigForm({
         {(p) => (
           <select {...fieldProps(p)} value={draft.llm_model} onChange={set("llm_model")} className={inputClass}>
             {(view.allowed_models.includes(draft.llm_model) ? view.allowed_models : [draft.llm_model, ...view.allowed_models]).map((m) => (
-              <option key={m} value={m}>{m}</option>
+              <option key={m} value={m}>{view.free_models.includes(m) ? t.freeModelOption(m) : m}</option>
             ))}
           </select>
         )}

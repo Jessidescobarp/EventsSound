@@ -396,8 +396,10 @@ export const es = {
       perMillion: (usd: string) => `${usd} USD por millón de tokens`,
       capNotApplied: "El tope de costo no aplica",
       capNotAppliedHint: "Con precios en 0 solo limita el tope de tokens.",
+      free: "Gratuito",
     },
     version: (n: number) => (n === 0 ? "Valores iniciales del entorno" : `Versión ${n}`),
+    freeModelOption: (model: string) => `${model} (gratuito)`,
     outOfBounds: (labels: string) => `Estos valores iniciales están fuera de los límites y debes corregirlos todos a la vez: ${labels}.`,
     fields: {
       tone: "Tono",

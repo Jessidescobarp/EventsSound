@@ -228,7 +228,7 @@ def test_a_rollback_applies_the_old_version_as_a_new_one_and_shows_in_history() 
     client, repo, settings = build()
     base = defaults_from_settings(settings)
     repo.put(dataclasses.replace(base, tone="formal"))
-    repo.put(dataclasses.replace(base, tone="cercano", llm_model="vendor/model-b"))
+    repo.put(dataclasses.replace(base, tone="cercano", llm_model="vendor/model-b:free"))
     headers, body = sign_off(client, base=2, rollback_to_version=1)
 
     response = apply(client, headers, body)

@@ -5,6 +5,7 @@ database at import or startup: the agent (which needs the catalog) is built on i
 request, and a configuration that cannot serve chat simply leaves the endpoint disabled.
 """
 
+import dataclasses
 import logging
 import secrets
 import threading
@@ -65,6 +66,7 @@ from eventssound.application.usage import CapsSource, RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
 from eventssound.domain.catalog import Catalog
+from eventssound.domain.model_prices import price_for
 from eventssound.domain.pricing_rules import default_pricing_rules
 from eventssound.entrypoints.api.auth_kit import AuthKit
 from eventssound.entrypoints.api.guards import FailClosedLimiter
@@ -132,6 +134,49 @@ def make_chat_limits(settings: Settings) -> ChatLimits:
         input_price_micro_usd=settings.llm_input_price_micro_usd_per_mtok,
         output_price_micro_usd=settings.llm_output_price_micro_usd_per_mtok,
     )
+
+
+def _active_model(settings: Settings, active: ActiveConfigProvider) -> str:
+    # Replay never calls a model, so an edit of the model must not change what it runs.
+    if settings.llm_provider != "openrouter":
+        return settings.llm_model
+    return active.current().config.llm_model
+
+
+def make_chat_limits_source(
+    settings: Settings, active: ActiveConfigProvider | None = None
+) -> Callable[[], ChatLimits]:
+    """The limits of the next request, priced for the ACTIVE model (an admin may switch it).
+
+    A free model costs 0, so the daily cost cap does not bind for it (the token cap still does).
+    A model without a price or any failure resolving it keeps the environment pair (today's
+    behavior), never a made-up one.
+    """
+    base = make_chat_limits(settings)
+    if active is None:
+        return lambda: base
+
+    def limits() -> ChatLimits:
+        # ONE read of the active model per request: the same model is priced here and pinned
+        # for the agent run, so a refresh in between cannot run a model priced as another.
+        try:
+            model = _active_model(settings, active)
+            price = price_for(model, settings)
+        except Exception as error:  # noqa: BLE001  (pricing must never fail a chat request)
+            logger.warning(
+                "model price unavailable, using the environment prices: %s", type(error).__name__
+            )
+            return base
+        pinned = dataclasses.replace(base, model=model)
+        if price is None:
+            return pinned
+        return dataclasses.replace(
+            pinned,
+            input_price_micro_usd=price.input_micro_usd_per_mtok,
+            output_price_micro_usd=price.output_micro_usd_per_mtok,
+        )
+
+    return limits
 
 
 def make_rate_limiter(
@@ -284,7 +329,9 @@ class LazyQuoteAgent:
         with self._lock:
             self._built = None
 
-    def _wanted_model(self) -> str | None:
+    def _wanted_model(self, pinned: str | None = None) -> str | None:
+        if pinned is not None:  # the model the request was priced for always wins
+            return pinned
         if self._model_source is not None:
             try:
                 return self._model_source()
@@ -294,17 +341,19 @@ class LazyQuoteAgent:
         return None
 
     def run(self, data: AgentInput) -> AgentOutcome:
-        model = self._wanted_model()
+        pinned = getattr(data, "model", None)
+        model = self._wanted_model(pinned)
         built = self._built
         if built is None or built[1] != model:
-            built = self._rebuild()
+            built = self._rebuild(pinned)
         return built[0].run(data)
 
-    def _rebuild(self) -> tuple[QuoteAgent, str | None]:
+    def _rebuild(self, pinned: str | None = None) -> tuple[QuoteAgent, str | None]:
         with self._lock:
             # Re-read inside the lock: a request that read the model before a switch must not
-            # rebuild the old model over the newer one.
-            model = self._wanted_model()
+            # rebuild the old model over the newer one (a pinned model is the exception: it is
+            # what the request was priced for).
+            model = self._wanted_model(pinned)
             built = self._built
             if built is not None and built[1] == model:
                 return built
@@ -331,10 +380,7 @@ def make_quote_agent(
         return LazyQuoteAgent(lambda: _build_agent(settings, factory))
 
     def model_source() -> str:
-        # Replay never calls a model, so an edit of the model must not rebuild its agent.
-        if settings.llm_provider != "openrouter":
-            return settings.llm_model
-        return active.current().config.llm_model
+        return _active_model(settings, active)
 
     return LazyQuoteAgent(
         lambda model: _build_agent(settings, factory, model, active), model_source

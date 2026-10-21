@@ -14,6 +14,12 @@ const bad = (value: unknown, patch: Record<string, unknown>) => ({ ...(value as 
 describe("agent config parsers", () => {
   it("accepts valid payloads and tolerates extra fields", () => {
     expect(parseConfigView(VIEW).config).toEqual(CONFIG);
+    const legacy: Record<string, unknown> = { ...VIEW.model_in_use }; // an older server sends no `free`
+    delete legacy.free;
+    expect(parseConfigView({ ...VIEW, model_in_use: legacy }).model_in_use.free).toBe(false);
+    expect(parseConfigView({ ...VIEW, model_in_use: { ...legacy, free: true } }).model_in_use.free).toBe(true);
+    expect(parseConfigView(VIEW).free_models).toEqual([]); // absent from an older server
+    expect(parseConfigView({ ...VIEW, free_models: ["vendor/model-b:free"] }).free_models).toEqual(["vendor/model-b:free"]);
     expect(parsePreview(bad(PREVIEW, { more: 1 })).max_daily_cost_estimate_micro_usd).toBeNull();
     expect(parseApplied({ version: 4, config: CONFIG, applied_at: "2026-10-21T10:00:00Z" }).version).toBe(4);
     expect(parseHistory([ITEM])[0]!.diff).toEqual({ tone: [null, "formal"] });
@@ -24,6 +30,8 @@ describe("agent config parsers", () => {
     ["view unknown tone", () => parseConfigView(bad(VIEW, { config: { ...CONFIG, tone: "rude" } }))],
     ["view string cap", () => parseConfigView(bad(VIEW, { config: { ...CONFIG, daily_token_cap: "9" } }))],
     ["view bad status", () => parseConfigView(bad(VIEW, { model_in_use: { ...VIEW.model_in_use, status: "on" } }))],
+    ["view free not a boolean", () => parseConfigView(bad(VIEW, { model_in_use: { ...VIEW.model_in_use, free: "yes" } }))],
+    ["view free_models not a list", () => parseConfigView(bad(VIEW, { free_models: "x" }))],
     ["view models not a list", () => parseConfigView(bad(VIEW, { allowed_models: "x" }))],
     ["preview unknown severity", () => parsePreview(bad(PREVIEW, { warnings: [{ code: "a", severity: "loud", message_es: "x" }] }))],
     ["preview diff not a pair", () => parsePreview(bad(PREVIEW, { diff: { tone: ["a"] } }))],

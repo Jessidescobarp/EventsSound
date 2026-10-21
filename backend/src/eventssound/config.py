@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from eventssound.domain.model_prices import FREE_SUFFIX, is_free_model
+
 
 def root_env_file(module: Path | None = None) -> Path | None:
     """Path of the repo-root `.env`, independent of the current working directory.
@@ -142,6 +144,18 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [part for part in (p.strip() for p in value.split(",")) if part]
         return value
+
+    @model_validator(mode="after")
+    def _allowlist_extras_must_be_free(self) -> "Settings":
+        # Fail closed: only the environment model has a configured price, every other selectable
+        # model must be free, so a model switch can never spend money the cost cap cannot see.
+        for model in self.llm_model_allowlist:
+            if model != self.llm_model and not is_free_model(model):
+                raise ValueError(
+                    f"LLM_MODEL_ALLOWLIST entry {model!r} must be LLM_MODEL or end with "
+                    f"{FREE_SUFFIX!r}"
+                )
+        return self
 
     @property
     def allowed_llm_models(self) -> tuple[str, ...]:

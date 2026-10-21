@@ -22,6 +22,7 @@ export interface AgentDraft {
 
 export type FieldProblem = "required" | "too_long" | "url" | "markup" | "digits" | "money" | "range" | "number" | "model";
 
+
 /** USD text for a micro-USD amount: 2500000 -> "2.5". */
 export function microToUsd(micro: number): string {
   const whole = Math.floor(micro / MICRO_PER_USD);

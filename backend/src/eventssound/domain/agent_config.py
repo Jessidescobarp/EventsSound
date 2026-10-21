@@ -29,8 +29,9 @@ HARD_MAX_DAILY_COST_MICRO_USD = 10_000_000
 HARD_MAX_RATE_LIMIT_PER_MINUTE = 60
 MAX_TEXT_CHARS = 400
 
-# The single definition of a provider model id; the OpenRouter adapter imports it.
-MODEL_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/~+-]{0,119}")
+# The single definition of a provider model id; the OpenRouter adapter imports it. It admits the
+# OpenRouter `:free` suffix (":" is allowed) but no "//", so a URL-like string is never an id.
+MODEL_ID_PATTERN = re.compile(r"(?!.*//)[A-Za-z0-9][A-Za-z0-9._:/~+-]{0,119}")
 
 # Extra per-field rule on top of _FORBIDDEN_TEXT. The closing is appended to quotes without
 # verification and the refusal is shown as-is, so neither may carry a number, price or percent

@@ -29,7 +29,7 @@ def settings_for(**over: Any) -> Settings:
     values: dict[str, Any] = {
         "DATABASE_URL": "postgresql+psycopg://u:p@127.0.0.1:1/x",
         "llm_model": "vendor/model-a",
-        "llm_model_allowlist": "vendor/model-a,vendor/model-b",
+        "llm_model_allowlist": "vendor/model-a,vendor/model-b:free",
         "jwt_secret": JWT,
         **over,
     }
@@ -103,7 +103,7 @@ def test_get_shows_the_defaults_then_the_stored_version() -> None:
         "max_daily_cost_micro_usd": 10_000_000,
         "max_rate_limit_per_minute": 60,
     }
-    assert first["allowed_models"] == ["vendor/model-a", "vendor/model-b"]
+    assert first["allowed_models"] == ["vendor/model-a", "vendor/model-b:free"]
     assert second["version"] == 1 and second["config"]["tone"] == "formal"
     assert second["updated_by"] == ROOT.id and second["updated_at"].startswith("2026-10-20")
 
@@ -145,8 +145,32 @@ def test_the_model_in_use_card_and_it_never_leaks_keys(
         "input_price_per_mtok",
         "output_price_per_mtok",
         "cost_cap_applies",
+        "free",
     }
+    assert card["free"] is False  # the env model has no `:free` suffix
     assert API_KEY not in response.text and JWT not in response.text
+
+
+def test_the_card_prices_the_active_model_from_the_table_not_the_env_pair() -> None:
+    priced = {
+        "llm_provider": "openrouter",
+        "openrouter_api_key": API_KEY,
+        "llm_input_price_micro_usd_per_mtok": 300_000,
+        "llm_output_price_micro_usd_per_mtok": 900_000,
+    }
+    client, repo, settings = build(**priced)
+    admin = as_user(client, ROOT)
+
+    env_card = client.get(GET, headers=admin).json()["model_in_use"]
+    repo.put(dataclasses.replace(defaults_from_settings(settings), llm_model="vendor/model-b:free"))
+    client.app.state.agent_config.invalidate()  # type: ignore[attr-defined]
+    free_card = client.get(GET, headers=admin).json()["model_in_use"]
+
+    assert (env_card["input_price_per_mtok"], env_card["cost_cap_applies"]) == (300_000, True)
+    assert env_card["free"] is False
+    assert free_card["model"] == "vendor/model-b:free" and free_card["free"] is True
+    assert (free_card["input_price_per_mtok"], free_card["output_price_per_mtok"]) == (0, 0)
+    assert free_card["cost_cap_applies"] is False
 
 
 @pytest.mark.parametrize(
@@ -224,7 +248,7 @@ def test_a_stale_base_version_is_409_and_no_change_is_422() -> None:
         ({"daily_token_cap": 150_000}, {"cap_raised"}, True),
         ({"daily_cost_cap_micro_usd": 2_500_000}, {"cap_raised_2x"}, True),
         ({"daily_token_cap": 50_000}, set(), True),  # lowering is not a risk warning
-        ({"llm_model": "vendor/model-b"}, {"model_changed"}, True),
+        ({"llm_model": "vendor/model-b:free"}, {"model_changed"}, True),
         ({"chat_rate_limit_per_minute": 30}, {"rate_limit_raised"}, True),
         ({"chat_rate_limit_per_minute": 2}, set(), True),
     ],
@@ -264,9 +288,39 @@ def test_preview_flags_a_cost_cap_that_cannot_bind_and_estimates_the_worst_day()
     assert "cost_cap_not_binding" not in {w["code"] for w in paid_body["warnings"]}
     assert paid_body["max_daily_cost_estimate_micro_usd"] == 300_000  # 150k tokens at 2 USD/Mtok
 
-    other = preview(paid, {"llm_model": "vendor/model-b"}).json()  # price belongs to model-a
-    assert other["max_daily_cost_estimate_micro_usd"] is None
-    assert {w["code"]: w["severity"] for w in other["warnings"]}["cost_unknown"] == "danger"
+
+def test_switching_to_a_free_model_is_a_known_zero_cost_with_an_info_notice() -> None:
+    paid, _, _ = build(
+        llm_provider="openrouter",
+        openrouter_api_key=API_KEY,
+        llm_input_price_micro_usd_per_mtok=1_000_000,
+        llm_output_price_micro_usd_per_mtok=2_000_000,
+    )
+
+    body = preview(paid, {"llm_model": "vendor/model-b:free"}).json()
+
+    severities = {w["code"]: w["severity"] for w in body["warnings"]}
+    assert body["max_daily_cost_estimate_micro_usd"] == 0  # known: free, never unknown
+    assert "cost_unknown" not in severities and "cost_cap_not_binding" not in severities
+    assert severities["free_model_limits"] == "info" and severities["model_changed"] == "warning"
+    message = next(w for w in body["warnings"] if w["code"] == "free_model_limits")["message_es"]
+    assert "gratuitos" in message and "tope de tokens" in message
+
+
+def test_a_model_without_a_price_stays_cost_unknown() -> None:
+    from eventssound.application.agent_config_admin import AgentConfigAdmin, Plan, risk_warnings
+    from eventssound.domain.model_prices import price_for
+
+    _, repo, settings = build(llm_provider="openrouter", openrouter_api_key=API_KEY)
+    admin = AgentConfigAdmin(repo, settings)  # type: ignore[arg-type]
+    config = dataclasses.replace(defaults_from_settings(settings), llm_model="vendor/paid-extra")
+    plan = Plan("save", 0, defaults_from_settings(settings), config, {"llm_model": ["a", "b"]})
+
+    assert price_for(config.llm_model, settings) is None  # unreachable through Settings
+    estimate = admin.max_daily_cost_estimate(config)
+    found = {w.code: w.severity for w in risk_warnings(plan, admin.model_in_use(config), estimate)}
+    assert estimate is None and found["cost_unknown"] == "danger"
+    assert "free_model_limits" not in found
 
 
 def test_success_bodies_are_not_cacheable_and_oversized_changes_are_refused() -> None:
@@ -296,14 +350,14 @@ def test_a_rollback_previews_the_difference_to_that_version() -> None:
     client, repo, settings = build()
     base = defaults_from_settings(settings)
     repo.put(dataclasses.replace(base, tone="formal"))
-    repo.put(dataclasses.replace(base, tone="cercano", llm_model="vendor/model-b"))
+    repo.put(dataclasses.replace(base, tone="cercano", llm_model="vendor/model-b:free"))
 
     body = preview(client, base=2, rollback_to_version=1).json()
 
     assert body["action"] == "rollback"
     assert body["diff"] == {
         "tone": ["cercano", "formal"],
-        "llm_model": ["vendor/model-b", "vendor/model-a"],
+        "llm_model": ["vendor/model-b:free", "vendor/model-a"],
     }
     assert body["requires_password"] is True
     assert preview(client, base=2, rollback_to_version=2).json()["detail"] == "no_changes"
@@ -348,3 +402,49 @@ def test_preview_is_rate_limited_per_admin_user() -> None:
 
     assert statuses == [200] * 10 + [429]
     assert int(client.post(PREVIEW, json=body, headers=admin).headers["Retry-After"]) >= 1
+
+
+def test_an_environment_model_that_is_free_is_flagged_free_with_a_zero_estimate() -> None:
+    client, _, _ = build(
+        llm_provider="openrouter",
+        openrouter_api_key=API_KEY,
+        llm_model="vendor/env:free",
+        llm_model_allowlist="vendor/env:free",
+    )
+
+    card = client.get(GET, headers=as_user(client, ROOT)).json()["model_in_use"]
+    body = preview(client, {"daily_token_cap": 150_000}).json()
+
+    assert (card["free"], card["cost_cap_applies"]) == (True, False)
+    assert body["max_daily_cost_estimate_micro_usd"] == 0
+    assert "free_model_limits" in {w["code"] for w in body["warnings"]}
+
+
+@pytest.mark.parametrize(
+    ("model", "allowlist", "free"),
+    [
+        ("vendor/model-a", "vendor/model-a,vendor/model-b:free", ["vendor/model-b:free"]),
+        ("vendor/model-a", "", []),
+        ("vendor/env:free", "vendor/env:free,vendor/x:free", ["vendor/env:free", "vendor/x:free"]),
+    ],
+)
+def test_get_lists_which_allowed_models_are_free(
+    model: str, allowlist: str, free: list[str]
+) -> None:
+    client, _, _ = build(llm_model=model, llm_model_allowlist=allowlist)
+
+    body = client.get(GET, headers=as_user(client, ROOT)).json()
+
+    assert body["free_models"] == free and set(free) <= set(body["allowed_models"])
+
+
+def test_an_env_model_with_the_free_suffix_but_a_price_is_not_listed_free() -> None:
+    client, _, _ = build(
+        llm_model="vendor/env:free",
+        llm_model_allowlist="vendor/env:free,vendor/x:free",
+        llm_input_price_micro_usd_per_mtok=5,
+    )
+
+    body = client.get(GET, headers=as_user(client, ROOT)).json()
+
+    assert body["free_models"] == ["vendor/x:free"]
