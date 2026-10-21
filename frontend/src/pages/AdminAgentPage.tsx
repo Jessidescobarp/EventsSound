@@ -9,6 +9,7 @@ import {
 } from "../api/adminAgentConfig";
 import { AgentConfigForm } from "../components/admin/AgentConfigForm";
 import { ConfirmFlow } from "../components/admin/ConfirmFlow";
+import { HistoryList } from "../components/admin/HistoryList";
 import { ModelInUseCard } from "../components/admin/ModelInUseCard";
 import { failureText, useConfigCall } from "../components/admin/useConfigCall";
 import { Alert } from "../components/ui/Alert";
@@ -67,13 +68,14 @@ export function AdminAgentPage() {
   }
 
   const view = state.data;
-  const review = async (changes: Partial<AgentConfig>) => {
+  const start = async (change: ConfigChange) => {
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const change: ConfigChange = { changes, base_version: view.version };
     setNotice(null);
     const preview = await run((tk, signal) => previewAgentConfig(change, tk, signal));
     if (preview) setFlow({ change, preview, trigger });
   };
+  const review = (changes: Partial<AgentConfig>) => start({ changes, base_version: view.version });
+  const restore = (version: number) => start({ rollback_to_version: version, base_version: view.version });
   const finish = (next: { tone: "info" | "warn"; text: string }) => {
     setFlow(null);
     setNotice(next);
@@ -94,6 +96,7 @@ export function AdminAgentPage() {
       <ModelInUseCard model={view.model_in_use} version={view.version} />
       {failure ? <Alert tone="danger" title={failureText(failure)} role="alert" /> : null}
       <AgentConfigForm key={view.version} view={view} busy={busy} onReview={(changes) => void review(changes)} />
+      <HistoryList currentVersion={view.version} busy={busy} onRestore={(version) => void restore(version)} />
       {flow ? (
         <ConfirmFlow
           change={flow.change}
