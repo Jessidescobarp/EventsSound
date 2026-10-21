@@ -28,12 +28,14 @@ export function useConfigCall(onFailure?: (error: ConfigError) => void) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<ConfigError | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const inFlight = useRef(false);
 
   useEffect(() => () => controller.current?.abort(), []);
 
   /** Resolves with the result, or undefined after a failure (stored in `failure`). */
   async function run<T>(call: (token: string, signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
-    controller.current?.abort();
+    if (inFlight.current) return undefined; // a second submit while one is running is ignored
+    inFlight.current = true;
     const mine = new AbortController();
     controller.current = mine;
     setBusy(true);
@@ -53,6 +55,7 @@ export function useConfigCall(onFailure?: (error: ConfigError) => void) {
       onFailure?.(failed);
       return undefined;
     } finally {
+      inFlight.current = false;
       if (controller.current === mine) setBusy(false);
     }
   }

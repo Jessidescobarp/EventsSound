@@ -472,6 +472,7 @@ export const es = {
       apply: "Aplicar cambios",
       applying: "Aplicando...",
       applied: (version: number) => `Cambios aplicados. La versión ${version} ya está activa para las conversaciones nuevas.`,
+      maybeApplied: "No pudimos confirmar si el cambio se aplicó. Revisa el historial antes de intentarlo de nuevo y vuelve a revisar los cambios.",
       conflict: "Otra persona cambió la configuración mientras la editabas. Cargamos los valores actuales; revisa y vuelve a intentar.",
     },
     history: {

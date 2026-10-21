@@ -11,6 +11,8 @@ export const MOCK_MARKERS = [
   "demo-chat-fixture",
   "demo-password", // the fake login (public demo password and tokens)
   "demo.admin.token",
+  "demo-confirm-", // fake agent-config confirmation tokens
+  "Error de demostración", // fake agent-config error message
 ];
 
 /** Throws when a production build would enable the fake API. */

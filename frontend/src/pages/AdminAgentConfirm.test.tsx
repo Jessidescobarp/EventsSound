@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stepAfterFailure } from "../components/admin/ConfirmFlow";
 import { es } from "../copy/es";
 import { createFakeFetch, DEMO_PASSWORD, resetDemoCatalog } from "../mocks/fakeApi";
@@ -22,6 +22,21 @@ const withApply = (apply?: Response): typeof fetch => {
   const fake = createFakeFetch({ latencyMs: 0 });
   return (input, init) => (apply && String(input).endsWith("/apply") ? Promise.resolve(apply.clone()) : fake(input, init));
 };
+/** Fake API where PUT /apply waits until `release` is called, then answers `answer` (or the fake). */
+function gatedApply(answer?: Response | Error) {
+  const fake = createFakeFetch({ latencyMs: 0 });
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let applies = 0;
+  const impl: typeof fetch = async (input, init) => {
+    if (!String(input).endsWith("/apply")) return fake(input, init);
+    applies += 1;
+    await gate;
+    if (answer instanceof Error) throw answer;
+    return answer ? answer.clone() : fake(input, init);
+  };
+  return { impl, release, applies: () => applies };
+}
 const fill = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label, { exact: false }), { target: { value } });
 const dialog = (name: string) => screen.findByRole("dialog", { name });
@@ -97,7 +112,7 @@ describe("double confirmation", () => {
     [403, { detail: "token_mismatch" }, {}, t.errors.token_stale, c.reviewAgain],
     [403, { detail: "reauth_failed" }, {}, t.errors.reauth_failed, c.apply],
     [429, { detail: "rate_limited" }, { "Retry-After": "30" }, `${t.errors.rate_limited} ${t.retryIn(30)}`, c.apply],
-    [503, { detail: "confirmation_unavailable" }, {}, t.errors.confirmation_unavailable, c.apply],
+    [503, { detail: "confirmation_unavailable" }, {}, c.maybeApplied, c.reviewAgain],
   ])("maps a %i %j answer to a step and a Spanish message", async (status, body, headers, text, expectedButton) => {
     renderApp("/admin/agente", withApply(Response.json(body, { status, headers })));
     await toConfirm();
@@ -138,6 +153,50 @@ describe("double confirmation", () => {
     ["typed_confirmation", "confirm"],
   ] as const)("stepAfterFailure(%s) = %s", (kind, step) => {
     expect(stepAfterFailure(kind)).toBe(step);
+  });
+});
+
+describe("in-flight and unknown outcomes", () => {
+  it("ignores Escape and a second submit while an apply is running, then closes normally", async () => {
+    const api = gatedApply(Response.json({ detail: "reauth_failed" }, { status: 403 }));
+    renderApp("/admin/agente", api.impl);
+    await toConfirm();
+    type("APLICAR");
+    const form = screen.getByRole("dialog").querySelector("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: c.confirmTitle })).toBeInTheDocument();
+    expect(api.applies()).toBe(1);
+
+    api.release();
+    await screen.findByRole("alert");
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it.each([
+    ["a network error", new TypeError("offline")],
+    ["a 503", Response.json({ detail: "storage_unavailable" }, { status: 503 })],
+    ["confirmation unavailable", Response.json({ detail: "confirmation_unavailable" }, { status: 503 })],
+  ])("after %s on apply says the change may be applied, reloads and asks for a new preview", async (_name, answer) => {
+    const api = gatedApply(answer);
+    api.release();
+    renderApp("/admin/agente", api.impl);
+    await toConfirm();
+    const loads = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/admin/agent-config")).length;
+    const before = loads();
+    type("APLICAR");
+    fireEvent.click(button(c.apply));
+
+    expect(await screen.findByText(c.maybeApplied)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: c.reviewTitle })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: c.continue })).toBeNull();
+    await waitFor(() => expect(loads()).toBeGreaterThan(before));
+
+    fireEvent.click(await screen.findByRole("button", { name: c.reviewAgain }));
+    expect(await screen.findByRole("button", { name: c.continue })).toBeInTheDocument();
+    expect(screen.queryByText(c.maybeApplied)).toBeNull();
   });
 });
 

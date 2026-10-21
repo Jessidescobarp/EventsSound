@@ -12,6 +12,7 @@ export function Modal({
   step,
   onClose,
   returnFocus,
+  dismissible = true,
   children,
 }: {
   title: string;
@@ -19,6 +20,8 @@ export function Modal({
   step: string;
   onClose: () => void;
   returnFocus: HTMLElement | null;
+  /** False while work is in flight: Escape is ignored so the outcome is not left unknown. */
+  dismissible?: boolean;
   children: ReactNode;
 }) {
   const titleId = useId();
@@ -35,7 +38,7 @@ export function Modal({
   function onKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       event.stopPropagation();
-      onClose();
+      if (dismissible) onClose();
       return;
     }
     if (event.key !== "Tab") return;

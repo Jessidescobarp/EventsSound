@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import {
   applyAgentConfig,
   MAX_NOTE_CHARS,
@@ -18,6 +18,9 @@ import { failureText, useConfigCall } from "./useConfigCall";
 const t = es.agentAdmin;
 const c = t.confirm;
 export const CONFIRM_WORD = "APLICAR";
+
+/** After these the outcome of an apply is unknown: the change may or may not have been saved. */
+const UNKNOWN_OUTCOME: readonly ConfigFailure[] = ["transient", "unavailable", "confirmation_unavailable"];
 
 export type NextStep = "review" | "confirm" | "conflict";
 
@@ -40,6 +43,7 @@ export function ConfirmFlow({
   onClose,
   onApplied,
   onConflict,
+  onUnknown,
 }: {
   change: ConfigChange;
   initial: Preview;
@@ -47,13 +51,25 @@ export function ConfirmFlow({
   onClose: () => void;
   onApplied: (version: number) => void;
   onConflict: () => void;
+  /** Apply ended without a known outcome: the page reloads the stored configuration. */
+  onUnknown: () => void;
 }) {
   const [preview, setPreview] = useState<Preview | null>(initial); // null: the token is spent, review again
   const [step, setStep] = useState<"review" | "confirm">("review");
   const [typed, setTyped] = useState("");
   const [password, setPassword] = useState("");
   const [note, setNote] = useState("");
+  const applying = useRef(false);
+  const [maybeApplied, setMaybeApplied] = useState(false);
   const { busy, failure, run } = useConfigCall((e) => {
+    if (applying.current && UNKNOWN_OUTCOME.includes(e.kind)) {
+      // The token may be spent and the change saved: show the stored state and ask for a new preview.
+      setMaybeApplied(true);
+      setPreview(null);
+      setStep("review");
+      onUnknown();
+      return;
+    }
     const next = stepAfterFailure(e.kind);
     if (next === "conflict") onConflict();
     else if (next === "review") {
@@ -65,6 +81,7 @@ export function ConfirmFlow({
   async function reviewAgain() {
     const fresh = await run((token, signal) => previewAgentConfig(change, token, signal));
     if (fresh) {
+      setMaybeApplied(false);
       setPreview(fresh);
       setTyped("");
     }
@@ -79,15 +96,17 @@ export function ConfirmFlow({
       ...(preview.requires_password ? { password } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
     };
+    applying.current = true;
     const result = await run((token, signal) => applyAgentConfig(change, confirmation, token, signal));
+    applying.current = false;
     setPassword("");
     if (result) onApplied(result.version);
   }
 
-  const alert = failure ? <Alert tone="danger" title={failureText(failure)} role="alert" /> : null;
+  const alert = failure ? <Alert tone="danger" title={maybeApplied ? c.maybeApplied : failureText(failure)} role="alert" /> : null;
   if (step === "review" || !preview) {
     return (
-      <Modal title={c.reviewTitle} step="review" onClose={onClose} returnFocus={returnFocus}>
+      <Modal title={c.reviewTitle} step="review" onClose={onClose} dismissible={!busy} returnFocus={returnFocus}>
         {alert}
         {preview ? (
           <>
@@ -96,7 +115,7 @@ export function ConfirmFlow({
           </>
         ) : null}
         <div className="flex flex-wrap gap-3">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
             {c.cancel}
           </Button>
           {preview ? (
@@ -112,7 +131,7 @@ export function ConfirmFlow({
   }
   const ready = typed === CONFIRM_WORD && (!preview.requires_password || password.length > 0);
   return (
-    <Modal title={c.confirmTitle} step="confirm" onClose={onClose} returnFocus={returnFocus}>
+    <Modal title={c.confirmTitle} step="confirm" onClose={onClose} dismissible={!busy} returnFocus={returnFocus}>
       <form onSubmit={(event) => void submit(event)} className="space-y-4">
         {alert}
         <Field id="confirm-typed" label={c.typeLabel(CONFIRM_WORD)}>
