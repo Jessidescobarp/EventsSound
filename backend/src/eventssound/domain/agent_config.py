@@ -159,3 +159,15 @@ def validate_note(note: object) -> str | None:
     ):
         raise InvalidAgentConfig(f"note must be one line of at most {MAX_NOTE_CHARS} characters")
     return text or None
+
+
+@dataclass(frozen=True)
+class AuditEntry:
+    """One applied change: who, when, what (`field -> [old, new]`) and whether a rollback."""
+
+    version: int
+    at: datetime
+    user_id: UUID | None
+    action: str  # "save" or "rollback"
+    diff: dict[str, Any]
+    note: str | None

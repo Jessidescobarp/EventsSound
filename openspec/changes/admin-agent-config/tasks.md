@@ -35,7 +35,9 @@ API contract: `api.md`.
 
 ### PR 3b: apply, history, rollback (feat/agent-config-api-write)
 
-- [ ] PUT apply (recomputed diff, token, typed confirmation, password re-auth for technical params), history, rejected-attempt logging.
+- [x] PUT apply (recomputed diff, token, typed confirmation, password re-auth for technical params); rollback through the same flow (audit action `rollback`).
+- [x] GET history from the audit table; rejected attempts recorded as security events (`config_rejected`, `config_reauth_failed`; no migration needed, `kind` is free text).
+- [x] `AuthService.verify_password` and `UserRepository.by_id` for the re-auth.
 
 ## PR 4: frontend Agent tab
 

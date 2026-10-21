@@ -59,3 +59,34 @@ Valid 5 minutes, bound to the user, the base version and the exact change, accep
 used-nonce set is per process (single instance); the repository's `base_version` check is the
 cross-instance backstop. Refusal codes: `token_invalid`, `token_expired`, `token_used`,
 `token_mismatch`.
+
+## PUT /admin/agent-config/apply
+
+Body: the same change as the preview (`changes` or `rollback_to_version`, `base_version`) plus
+`confirmation_token`, `typed_confirmation` (exactly `APLICAR`), `password` (required when the
+preview said `requires_password`) and an optional `note` (at most 200 characters, one line).
+The server recomputes the diff from the request and checks it against the token. Order of checks:
+rate limit, typed confirmation, plan (409 / 422), token, password, token spent, save.
+
+Returns `{ version, config, applied_at }`; the new version is active for every new conversation
+at once. Rollbacks are saved as a NEW version with action `rollback`.
+
+Apply re-reads the caller's account first (a JWT keeps its role until it expires): a deleted or
+demoted user gets 403 `reauth_failed`, the same answer as a wrong password. A bad `note` is
+refused (422) before the token is checked, so it is not spent.
+
+Errors: 403 `token_invalid` / `token_expired` / `token_used` / `token_mismatch` / `reauth_failed`,
+409 `version_conflict`, 422 `typed_confirmation_invalid` / `password_required` / `invalid_config`
+(`fields` may include `note`) / `no_changes` / `unknown_version` / `invalid_request`, 429
+`rate_limited` (also for password attempts, limited like login), 503 `confirmation_unavailable`
+/ `storage_unavailable` / `auth_unavailable`. A wrong password never says whether the user exists.
+
+Rejected attempts (token, typed confirmation, conflict, invalid change) are stored as security
+events of kind `config_rejected`; wrong passwords as `config_reauth_failed`. The token is spent
+before the save: after a 503 the admin previews again.
+
+## GET /admin/agent-config/history?limit=20
+
+`limit` 1..100. Newest first: `[{ version, created_at, created_by, note, action: "save"|"rollback",
+diff: { <field>: [old, new] } }]`. The first stored version lists every field with `null` as
+the old value (the audit diffs against an empty config, not the environment defaults).

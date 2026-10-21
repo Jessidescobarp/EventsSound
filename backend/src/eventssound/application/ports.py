@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from eventssound.domain.agent_config import AgentConfig, StoredAgentConfig
+from eventssound.domain.agent_config import AgentConfig, AuditEntry, StoredAgentConfig
 from eventssound.domain.availability import Booking
 from eventssound.domain.catalog import Catalog
 
@@ -51,9 +51,16 @@ class AgentConfigRepository(Protocol):
         ...
 
     def save(
-        self, config: AgentConfig, *, base_version: int, user_id: UUID | None, note: str | None
+        self,
+        config: AgentConfig,
+        *,
+        base_version: int,
+        user_id: UUID | None,
+        note: str | None,
+        action: str = "save",
     ) -> StoredAgentConfig:
-        """Append a new version and one audit row in the same transaction.
+        """Append a new version and one audit row (`action`: "save" or "rollback") in the same
+        transaction.
 
         `base_version` is the version the caller read (0 when none existed). Raises
         VersionConflict when it is not the current maximum, InvalidAgentConfig when the config
@@ -63,4 +70,8 @@ class AgentConfigRepository(Protocol):
 
     def history(self, limit: int) -> list[StoredAgentConfig]:
         """The newest `limit` versions, newest first; a row that no longer parses is skipped."""
+        ...
+
+    def audit(self, limit: int) -> list[AuditEntry]:
+        """The newest `limit` audit entries (with their version's note), newest first."""
         ...
