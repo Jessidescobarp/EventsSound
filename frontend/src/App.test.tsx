@@ -99,8 +99,7 @@ describe("layout", () => {
 describe("images", () => {
   it("every image has an accessible name", async () => {
     renderApp("/portafolio");
-    await screen.findByRole("heading", { level: 1 });
-    const images = screen.getAllByRole("img");
+    const images = await screen.findAllByRole("img");
     expect(images.length).toBeGreaterThan(0);
     for (const image of images) expect(image).toHaveAccessibleName();
   });
