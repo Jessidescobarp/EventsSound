@@ -140,7 +140,9 @@ def create_app(
     app.state.booking_lister = booking_lister or container.make_booking_lister(factory)
     app.state.portfolio_store = portfolio_store or container.make_portfolio_store(factory)
     app.state.security_log = security_log or container.make_security_log(factory)
-    app.state.abuse_gate = container.make_abuse_gate(settings, app.state.security_log)
+    app.state.abuse_gate = container.make_abuse_gate(
+        settings, app.state.security_log, app.state.agent_config
+    )
     app.state.catalog_admin = catalog_admin or container.make_catalog_admin(
         settings, factory, app.state.chat_agent
     )

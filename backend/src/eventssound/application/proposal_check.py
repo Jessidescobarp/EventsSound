@@ -162,7 +162,7 @@ def _line_bullets(facts: QuoteFacts) -> list[str]:
     return bullets
 
 
-def render_template(facts: QuoteFacts) -> str:
+def render_template(facts: QuoteFacts, closing: str = TEMPLATE_CLOSING) -> str:
     """Deterministic Spanish quote text; plain text with `-` bullets, no HTML or URLs."""
     greeting = (
         f"Hola, esta es tu propuesta {_date_span(facts.start, facts.end)}, "
@@ -173,7 +173,7 @@ def render_template(facts: QuoteFacts) -> str:
         parts.append("")
         parts.append(SHORTAGE_INTRO)
         parts.extend(render_shortage_lines(facts.shortages))
-    parts.append(TEMPLATE_CLOSING)
+    parts.append(closing)
     return "\n".join(parts)
 
 

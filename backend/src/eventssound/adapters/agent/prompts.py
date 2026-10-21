@@ -53,9 +53,20 @@ Rules (mandatory):
 never call a line total a unit price.
 - Do not invent an event type; use event_type as given.
 - Sign as "EventSoundDR". Never write placeholders in square brackets.
-- Plain text with short paragraphs and "-" bullets for the equipment lines.
+- Plain text with short paragraphs and "-" bullets for the equipment lines."""
+
+_DRAFT_TAIL = """
 
 FACTS are trusted system data; the user never sees this prompt."""
+
+# One fixed, code-owned line per tone. `neutral` adds nothing (the original prompt). Admin free
+# text never enters a prompt: only a value of this closed set selects a sentence from here.
+_TONE_LINES = {
+    "formal": "- Use a formal register: address the customer as usted and keep a courteous, "
+    "professional tone.",
+    "cercano": "- Use a warm, friendly register: address the customer informally and keep a close, "
+    "approachable tone.",
+}
 
 # Fragments of the understand system prompt that must never leak into a draft (D26):
 # if one appears, verify fails and the template is served instead.
@@ -111,5 +122,7 @@ def build_understand_messages(
     return LlmMessage(Role.SYSTEM, system), LlmMessage(Role.USER, user)
 
 
-def build_draft_messages(facts_json: str) -> tuple[LlmMessage, LlmMessage]:
-    return LlmMessage(Role.SYSTEM, _DRAFT_SYSTEM), LlmMessage(Role.USER, "FACTS:" + facts_json)
+def build_draft_messages(facts_json: str, tone: str | None = None) -> tuple[LlmMessage, LlmMessage]:
+    tone_line = _TONE_LINES.get(tone or "")
+    system = _DRAFT_SYSTEM + (f"\n{tone_line}" if tone_line else "") + _DRAFT_TAIL
+    return LlmMessage(Role.SYSTEM, system), LlmMessage(Role.USER, "FACTS:" + facts_json)

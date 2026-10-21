@@ -21,7 +21,7 @@
 - [x] Chat per-minute rate limit read per hit (limiter state is kept on a change).
 - [x] LLM model: the agent is rebuilt once when the active model changes.
 
-- [ ] Refusal and closing texts, `tone` (fixed prompt sentence per value) and `off_topic_policy` (fixed block limit per value): deferred to a follow-up PR (size budget).
+- [x] Refusal and closing texts, `tone` (fixed prompt sentence per value) and `off_topic_policy` (fixed block limit per value): PR 2d.
 
 ## PR 3: admin endpoints
 
