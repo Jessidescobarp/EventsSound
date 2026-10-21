@@ -275,6 +275,23 @@ describe("apiFetch POST and error bodies", () => {
   });
 });
 
+describe("apiFetch error fields", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example/");
+  });
+
+  it.each([
+    [["tone", "daily_token_cap"], ["tone", "daily_token_cap"]],
+    [["Bad<Field>"], undefined],
+    ["tone", undefined],
+    [Array.from({ length: 13 }, () => "tone"), undefined],
+  ])("keeps only short identifiers of a 422 body: %#", async (fields, expected) => {
+    vi.stubGlobal("fetch", vi.fn(() => json({ detail: "invalid_config", fields }, 422)));
+    const error = await apiFetch("/x", { parse: asString }).catch((e: unknown) => e);
+    expect((error as ApiError).fields).toEqual(expected);
+  });
+});
+
 describe("apiFetch bearer token", () => {
   beforeEach(() => {
     vi.stubEnv("VITE_API_BASE_URL", "https://api.example/");

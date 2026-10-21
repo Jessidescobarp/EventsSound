@@ -21,6 +21,8 @@ export class ApiError extends Error {
   readonly serverMessage?: string;
   /** Bounded `Retry-After` seconds (1 to MAX_RETRY_AFTER_SECONDS) when the header is usable. */
   readonly retryAfterSeconds?: number;
+  /** Field names from a validated 422 body (`fields`): short lowercase identifiers only. */
+  readonly fields?: readonly string[];
 
   constructor(code: ApiErrorCode, message: string, status?: number, extra: ErrorExtra = {}) {
     super(message);
@@ -30,6 +32,7 @@ export class ApiError extends Error {
     this.detail = extra.detail;
     this.serverMessage = extra.serverMessage;
     this.retryAfterSeconds = extra.retryAfterSeconds;
+    this.fields = extra.fields;
   }
 }
 
@@ -37,6 +40,7 @@ interface ErrorExtra {
   detail?: string;
   serverMessage?: string;
   retryAfterSeconds?: number;
+  fields?: string[];
 }
 
 // C0/C1 controls (incl. newline, tab, NUL, DEL) and bidirectional overrides/isolates.
@@ -167,7 +171,14 @@ async function readErrorInfo(response: Response, signal: AbortSignal): Promise<E
   try {
     const body: unknown = JSON.parse(await readCapped(response, signal));
     if (typeof body === "object" && body !== null) {
-      const { detail, message } = body as Record<string, unknown>;
+      const { detail, message, fields } = body as Record<string, unknown>;
+      if (
+        Array.isArray(fields) &&
+        fields.length <= 12 &&
+        fields.every((f) => typeof f === "string" && /^[a-z_]{1,48}$/.test(f))
+      ) {
+        info.fields = fields as string[];
+      }
       if (typeof detail === "string" && /^[a-z_]{1,48}$/.test(detail)) info.detail = detail;
       if (
         typeof message === "string" &&
