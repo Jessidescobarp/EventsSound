@@ -111,7 +111,10 @@ def failing_field(error: InvalidAgentConfig) -> str | None:
     return word if word in (*FIELDS, "note") else None
 
 
-def risk_warnings(plan: Plan, model: ModelInUse) -> list[RiskWarning]:
+_VALID = AgentConfig("neutral", "normal", "Hola.", "Gracias.", "Hola.", "vendor/model", 1, 1, 1)
+
+
+def risk_warnings(plan: Plan, model: ModelInUse, estimate: int | None) -> list[RiskWarning]:
     found: list[tuple[str, Literal["info", "warning", "danger"]]] = []
     for name in ("daily_token_cap", "daily_cost_cap_micro_usd"):
         if name in plan.diff:
@@ -132,6 +135,8 @@ def risk_warnings(plan: Plan, model: ModelInUse) -> list[RiskWarning]:
         found.append(("behavior_changed", "info"))
     if plan.requires_password and not model.cost_cap_applies and model.status != "replay":
         found.append(("cost_cap_not_binding", "warning"))
+    if plan.requires_password and estimate is None:
+        found.append(("cost_unknown", "danger" if "llm_model" in plan.diff else "warning"))
     found.append(("immediate_effect", "warning" if plan.requires_password else "info"))
     unique: dict[str, Any] = {}
     for code, severity in found:  # a cap raise may appear for both caps: one entry per code
@@ -170,14 +175,41 @@ class AgentConfigAdmin:
         applies = s.llm_provider == "openrouter" and any(prices)
         return ModelInUse(s.llm_provider, model, status, *prices, applies)
 
-    def max_daily_cost_estimate(self, config: AgentConfig) -> int:
-        """Worst case per day in micro-USD: the cost cap, or what the token cap can cost."""
-        price = max(
-            self._settings.llm_input_price_micro_usd_per_mtok,
-            self._settings.llm_output_price_micro_usd_per_mtok,
-        )
+    def max_daily_cost_estimate(self, config: AgentConfig) -> int | None:
+        """Worst case per day in micro-USD: the cost cap, or what the token cap can cost.
+
+        None when it is unknown: the only configured prices belong to the environment model, so
+        another model (or prices left at 0 on a real provider) has no trustworthy price. The
+        replay provider spends nothing, so 0 is its real answer.
+        """
+        s = self._settings
+        if s.llm_provider == "replay":
+            return 0
+        price = max(s.llm_input_price_micro_usd_per_mtok, s.llm_output_price_micro_usd_per_mtok)
+        if price == 0 or config.llm_model != s.llm_model:
+            return None
         by_tokens = math.ceil(config.daily_token_cap * price / 1_000_000)
         return min(config.daily_cost_cap_micro_usd, by_tokens)
+
+    def out_of_bounds(self, config: AgentConfig) -> list[str]:
+        """Every field that would fail validation (the environment defaults may be outside the
+        bounds); each is swapped for a valid placeholder to find the next one."""
+        bad: list[str] = []
+        current = config
+        for _ in FIELDS:
+            try:
+                validate_config(current, self.allowed_models)
+                break
+            except InvalidAgentConfig as error:
+                name = failing_field(error)
+                if name is None or name in bad:
+                    break
+                bad.append(name)
+                fill = next(iter(self.allowed_models), config.llm_model)
+                current = dataclasses.replace(
+                    current, **{name: fill if name == "llm_model" else getattr(_VALID, name)}
+                )
+        return bad
 
     def plan(
         self,

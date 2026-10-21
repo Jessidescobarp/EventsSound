@@ -155,7 +155,7 @@ def test_the_model_in_use_card_and_it_never_leaks_keys(
         ({"tone": "casual"}, ["tone"]),
         ({"off_topic_policy": "lax"}, ["off_topic_policy"]),
         ({"welcome_message": f"Visita https://{SENTINEL}.example"}, ["welcome_message"]),
-        ({"closing_message": SENTINEL * 80}, ["closing_message"]),
+        ({"closing_message": SENTINEL * 30}, ["closing_message"]),
         ({"refusal_message": 5}, ["refusal_message"]),
         ({"llm_model": f"other/{SENTINEL}"}, ["llm_model"]),  # not in the allowlist
         ({"llm_model": f"bad model {SENTINEL}"}, ["llm_model"]),
@@ -259,9 +259,37 @@ def test_preview_flags_a_cost_cap_that_cannot_bind_and_estimates_the_worst_day()
     free_body, paid_body = preview(free, change).json(), preview(paid, change).json()
 
     assert "cost_cap_not_binding" in {w["code"] for w in free_body["warnings"]}
-    assert free_body["max_daily_cost_estimate_micro_usd"] == 0
+    assert free_body["max_daily_cost_estimate_micro_usd"] is None  # unknown, never 0
+    assert "cost_unknown" in {w["code"] for w in free_body["warnings"]}
     assert "cost_cap_not_binding" not in {w["code"] for w in paid_body["warnings"]}
     assert paid_body["max_daily_cost_estimate_micro_usd"] == 300_000  # 150k tokens at 2 USD/Mtok
+
+    other = preview(paid, {"llm_model": "vendor/model-b"}).json()  # price belongs to model-a
+    assert other["max_daily_cost_estimate_micro_usd"] is None
+    assert {w["code"]: w["severity"] for w in other["warnings"]}["cost_unknown"] == "danger"
+
+
+def test_success_bodies_are_not_cacheable_and_oversized_changes_are_refused() -> None:
+    client, _, _ = build()
+    headers = as_user(client, ROOT)
+
+    ok = [client.get(GET, headers=headers), preview(client, {"tone": "formal"})]
+    too_long = preview(client, {"welcome_message": "a" * 1001})
+    too_many = preview(client, {f"k{i}": 1 for i in range(13)})
+
+    assert [r.status_code for r in ok] == [200, 200]
+    assert {r.headers["Cache-Control"] for r in ok} == {"no-store"}
+    assert [r.json()["detail"] for r in (too_long, too_many)] == ["invalid_request"] * 2
+
+
+def test_get_lists_the_default_fields_that_are_out_of_bounds() -> None:
+    client, _, _ = build(llm_daily_token_cap=0, chat_rate_limit_per_minute=100)
+    healthy, _, _ = build()
+
+    body = client.get(GET, headers=as_user(client, ROOT)).json()
+
+    assert body["defaults_out_of_bounds"] == ["daily_token_cap", "chat_rate_limit_per_minute"]
+    assert healthy.get(GET, headers=as_user(healthy, ROOT)).json()["defaults_out_of_bounds"] == []
 
 
 def test_a_rollback_previews_the_difference_to_that_version() -> None:
