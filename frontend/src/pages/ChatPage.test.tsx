@@ -29,10 +29,11 @@ const quoteAnswer = answer({
 
 type Chat = (init: RequestInit | undefined) => Response | Promise<Response>;
 /** /health is always ok; POST /quote/chat goes to `chat`. Returns the recorded chat bodies. */
-function setup(chat: Chat) {
+function setup(chat: Chat, welcome: () => Response | Promise<Response> = () => json({}, 503)) {
   const bodies: Array<{ messages: Array<{ role: string; content: string }> }> = [];
   const impl = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     if (new URL(String(input)).pathname === "/health") return Promise.resolve(json({ status: "ok" }));
+    if (new URL(String(input)).pathname === "/quote/config") return Promise.resolve(welcome());
     bodies.push(JSON.parse(String(init?.body)));
     return Promise.resolve(chat(init));
   };
@@ -56,6 +57,41 @@ describe("chat page", () => {
     expect(log()).toHaveAttribute("aria-live", "polite");
     expect(screen.getByRole("button", { name: es.chat.newConversation })).toBeDisabled();
     expect(screen.queryByText(es.chat.demoHint)).toBeNull();
+  });
+
+  it("opens with the configured welcome message", async () => {
+    setup(() => json(answer()), () => json({ welcome_message: "Bienvenido al chat" }));
+    expect(await within(log()).findByText("Bienvenido al chat")).toBeInTheDocument();
+    expect(screen.queryByText(es.chat.empty)).toBeNull();
+  });
+
+  it.each([
+    ["a server error", () => json({}, 500)],
+    ["a network failure", () => Promise.reject(new TypeError("down"))],
+    ["a payload that is not the contract", () => json({ welcome_message: 7 })],
+    ["an empty message", () => json({ welcome_message: "  " })],
+    ["a message over 400 characters", () => json({ welcome_message: "a".repeat(401) })],
+    ["a line-break flood", () => json({ welcome_message: "a\n".repeat(20) })],
+  ])("keeps the built-in copy on %s, with no error UI", async (_, welcome) => {
+    setup(() => json(answer()), welcome as () => Response);
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/quote/config"), expect.anything()));
+    expect(within(log()).getByText(es.chat.empty)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("never brings the welcome back over a conversation already started", async () => {
+    let release: (r: Response) => void = () => {};
+    setup(() => json(answer()), () => new Promise<Response>((resolve) => (release = resolve)));
+    send("Uno");
+    expect(await within(log()).findByText(answer().reply)).toBeInTheDocument();
+    await act(async () => release(json({ welcome_message: "Llego tarde" })));
+    expect(screen.queryByText("Llego tarde")).toBeNull();
+  });
+
+  it("renders the welcome as text, never as markup", async () => {
+    setup(() => json(answer()), () => json({ welcome_message: "<b>hola</b> <img src=x onerror=alert(1)>" }));
+    const text = await within(log()).findByText(/<b>hola<\/b>/);
+    expect(text.querySelector("b, img")).toBeNull();
   });
 
   it("sends the history, shows the structured breakdown and returns focus to the input", async () => {

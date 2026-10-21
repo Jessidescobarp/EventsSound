@@ -49,4 +49,4 @@ API contract: `api.md`.
 
 ## PR 6 (optional): public welcome message endpoint
 
-- [ ] Unauthenticated read of the welcome message.
+- [x] Unauthenticated read of the welcome message (`GET /quote/config`; the chat page shows it, with the built-in copy as fallback).

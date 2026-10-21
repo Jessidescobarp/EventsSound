@@ -159,6 +159,9 @@ const CHAT_CLARIFICATION: ChatResponse = {
   options: ["Paquete Fiesta", "Paquete DJ", "Ver todo el catalogo"],
 };
 
+const DEMO_WELCOME =
+  "Hola, soy el asistente de EventSoundDR (demo). Cuentame tu evento y te armo una cotizacion.";
+
 function chatRoute(init?: RequestInit): Response {
   let last: string;
   try {
@@ -423,6 +426,8 @@ function route(pathname: string, init?: RequestInit, search = new URLSearchParam
       return recordsRoute(pathname, init, search);
     case "/quote/chat":
       return init?.method === "POST" ? chatRoute(init) : json({ detail: "Method Not Allowed" }, 405);
+    case "/quote/config":
+      return json({ welcome_message: DEMO_WELCOME });
     case "/health":
       return json({ status: "ok" });
     case "/catalog/items":
