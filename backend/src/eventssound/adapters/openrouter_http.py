@@ -26,12 +26,12 @@ from eventssound.application.llm import (
     LlmValidationError,
     is_finite_number,
 )
+from eventssound.domain.agent_config import MODEL_ID_PATTERN
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 MAX_RETRY_AFTER_S = 5  # longest wait we accept before retrying
 MAX_REPORTED_RETRY_AFTER_S = 86_400  # LlmRateLimited accepts 0..86400
 _RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
-_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/~+-]{0,119}")
 _BASE_URL = re.compile(r"https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?")
 _DIGITS = re.compile(r"[0-9]{1,6}")
 
@@ -39,7 +39,7 @@ logger = logging.getLogger("eventssound.openrouter")
 
 
 def check_model_id(value: object) -> str:
-    if not isinstance(value, str) or not _MODEL.fullmatch(value):
+    if not isinstance(value, str) or not MODEL_ID_PATTERN.fullmatch(value):
         raise LlmValidationError("model must be a provider model id such as vendor/name")
     return value
 

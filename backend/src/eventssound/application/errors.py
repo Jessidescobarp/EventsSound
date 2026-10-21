@@ -27,3 +27,7 @@ class CodeTaken(Exception):
 
 class NotFound(Exception):
     """The catalog entry to update does not exist."""
+
+
+class VersionConflict(Exception):
+    """The agent config changed since the caller read it (`base_version` is not the current one)."""

@@ -43,3 +43,7 @@ class InvalidCatalog(DomainError):
 
 class InvalidPortfolioEvent(DomainError):
     """A portfolio event violates its bounds."""
+
+
+class InvalidAgentConfig(DomainError):
+    """An agent configuration violates its bounds. The message never carries the offending value."""

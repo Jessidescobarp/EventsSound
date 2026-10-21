@@ -53,6 +53,12 @@ _SHORTAGE_LINE = "- {name}: pediste {requested}, hay {available}."
 
 TEMPLATE_CLOSING = "Los valores los calcula nuestro sistema de precios."
 
+# Default greeting; admin-editable through AgentConfig.
+WELCOME = (
+    "Hola, soy el asistente de EventSoundDR. Cuentame tu evento (tipo, fecha, invitados y lugar)"
+    " y te armo una cotizacion de sonido, luces y DJ."
+)
+
 
 def render_clarification(missing_fields: object) -> str:
     """Numbered Spanish questions for the missing fields, at most 3, in priority order."""

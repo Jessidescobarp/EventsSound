@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     chat_enabled: bool = True
     llm_provider: Literal["replay", "openrouter"] = "replay"
     llm_model: str = ""
+    # Models an admin may select, comma-separated. Empty means only `llm_model`.
+    llm_model_allowlist: Annotated[list[str], NoDecode] = []
     llm_input_price_micro_usd_per_mtok: Annotated[int, Field(ge=0)] = 0
     llm_output_price_micro_usd_per_mtok: Annotated[int, Field(ge=0)] = 0
     llm_daily_token_cap: Annotated[int, Field(ge=0)] = 100_000
@@ -133,6 +135,20 @@ class Settings(BaseSettings):
         if self.is_production and "*" in self.cors_allowed_origins:
             raise ValueError("CORS_ALLOWED_ORIGINS must not contain '*' in production")
         return self
+
+    @field_validator("llm_model_allowlist", mode="before")
+    @classmethod
+    def _split_models(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [part for part in (p.strip() for p in value.split(",")) if part]
+        return value
+
+    @property
+    def allowed_llm_models(self) -> tuple[str, ...]:
+        """Models an admin may pick: the allowlist, or just the configured one when it is empty."""
+        if self.llm_model_allowlist:
+            return tuple(dict.fromkeys(self.llm_model_allowlist))
+        return (self.llm_model,) if self.llm_model else ()
 
     @property
     def is_production(self) -> bool:
