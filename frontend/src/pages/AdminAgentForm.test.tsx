@@ -71,14 +71,14 @@ describe("agent form", () => {
     expect(previewBody()).toBeNull();
   });
 
-  it("sends only the changed fields (cost in micro-USD) and shows the preview read-only", async () => {
+  it("sends only the changed fields (cost in micro-USD) and opens the review dialog", async () => {
     renderApp("/admin/agente");
     await form();
     fill(t.fields.tone!, "formal");
     fill(t.fields.daily_cost_cap_usd!, "3.5");
     review();
 
-    expect(await screen.findByText(t.summaryTitle)).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: t.confirm.reviewTitle })).toBeInTheDocument();
     expect(previewBody()).toEqual({ changes: { tone: "formal", daily_cost_cap_micro_usd: 3_500_000 }, base_version: 0 });
     expect(screen.getByText(`${t.diffTo}: 3.5 USD`)).toBeInTheDocument();
     expect(screen.getByText(`${t.diffTo}: ${t.tones.formal}`)).toBeInTheDocument();
@@ -113,6 +113,6 @@ describe("agent form", () => {
     fill(t.fields.tone!, "formal");
     review();
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(text));
-    expect(screen.queryByText(t.summaryTitle)).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

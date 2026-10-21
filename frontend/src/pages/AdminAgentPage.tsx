@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   classifyConfigError,
   fetchAgentConfig,
   previewAgentConfig,
   type AgentConfig,
+  type ConfigChange,
   type Preview,
 } from "../api/adminAgentConfig";
 import { AgentConfigForm } from "../components/admin/AgentConfigForm";
+import { ConfirmFlow } from "../components/admin/ConfirmFlow";
 import { ModelInUseCard } from "../components/admin/ModelInUseCard";
-import { PreviewDetails } from "../components/admin/PreviewDetails";
 import { failureText, useConfigCall } from "../components/admin/useConfigCall";
 import { Alert } from "../components/ui/Alert";
 import { Button } from "../components/ui/Button";
@@ -28,7 +29,14 @@ export function AdminAgentPage() {
   const { busy, failure, run } = useConfigCall((e) => {
     if (e.kind === "version_conflict") reload();
   });
-  const [preview, setPreview] = useState<Preview | null>(null);
+  const [flow, setFlow] = useState<{ change: ConfigChange; preview: Preview; trigger: HTMLElement | null } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "info" | "warn"; text: string } | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const loaded = state.status === "success";
+  // The reload after an apply replaces the page, so the trigger is gone: focus lands on the notice.
+  useEffect(() => {
+    if (notice && loaded) noticeRef.current?.focus();
+  }, [notice, loaded]);
 
   const unauthenticated = state.status === "error" && classifyConfigError(state.error) === "unauthenticated";
   useEffect(() => {
@@ -60,9 +68,16 @@ export function AdminAgentPage() {
 
   const view = state.data;
   const review = async (changes: Partial<AgentConfig>) => {
-    setPreview(null);
-    const result = await run((tk, signal) => previewAgentConfig({ changes, base_version: view.version }, tk, signal));
-    if (result) setPreview(result);
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const change: ConfigChange = { changes, base_version: view.version };
+    setNotice(null);
+    const preview = await run((tk, signal) => previewAgentConfig(change, tk, signal));
+    if (preview) setFlow({ change, preview, trigger });
+  };
+  const finish = (next: { tone: "info" | "warn"; text: string }) => {
+    setFlow(null);
+    setNotice(next);
+    reload();
   };
 
   return (
@@ -71,16 +86,23 @@ export function AdminAgentPage() {
       <Alert tone="warn" title={t.warningTitle} role="note">
         {t.warningBody}
       </Alert>
+      {notice ? (
+        <div ref={noticeRef} tabIndex={-1}>
+          <Alert tone={notice.tone} title={notice.text} role="status" />
+        </div>
+      ) : null}
       <ModelInUseCard model={view.model_in_use} version={view.version} />
       {failure ? <Alert tone="danger" title={failureText(failure)} role="alert" /> : null}
       <AgentConfigForm key={view.version} view={view} busy={busy} onReview={(changes) => void review(changes)} />
-      {preview ? (
-        <section aria-labelledby="agent-summary" className="space-y-3 rounded-card border border-line p-5">
-          <h2 id="agent-summary" className="text-xl font-semibold">
-            {t.summaryTitle}
-          </h2>
-          <PreviewDetails preview={preview} />
-        </section>
+      {flow ? (
+        <ConfirmFlow
+          change={flow.change}
+          initial={flow.preview}
+          returnFocus={flow.trigger}
+          onClose={() => setFlow(null)}
+          onApplied={(version) => finish({ tone: "info", text: t.confirm.applied(version) })}
+          onConflict={() => finish({ tone: "warn", text: t.confirm.conflict })}
+        />
       ) : null}
     </div>
   );
