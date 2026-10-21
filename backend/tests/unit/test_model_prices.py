@@ -22,6 +22,11 @@ def env(model: str = "vendor/paid", inp: int = 300_000, out: int = 900_000) -> S
         ("vendor/paid", env(inp=0, out=0), ModelPrice(0, 0, False)),  # even 0, not "free"
         ("vendor/x:free", env("vendor/x:free", 0, 0), ModelPrice(0, 0, True)),
         ("vendor/other:free", env(), ModelPrice(0, 0, True)),  # free suffix: 0 whatever the env
+        (
+            "vendor/x:free",
+            env("vendor/x:free"),
+            ModelPrice(300_000, 900_000, False),
+        ),  # env pair wins
         ("vendor/other", env(), None),  # a paid extra has no price
         ("", env(), None),
         *[
