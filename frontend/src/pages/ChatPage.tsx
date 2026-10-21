@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { countChars, MAX_MESSAGE_CHARS, VIEW_ALL_OPTION } from "../api/chat";
+import { countChars, fetchWelcome, MAX_MESSAGE_CHARS, VIEW_ALL_OPTION } from "../api/chat";
 import { QuoteDetails } from "../components/chat/QuoteBreakdown";
 import { Alert } from "../components/ui/Alert";
 import { Badge } from "../components/ui/Badge";
@@ -22,6 +22,7 @@ export default function ChatPage() {
   const { messages, sending, error, cooldown, send, retry, reset } = useChat({
     onRestore: (text) => setDraft((current) => current || text),
   });
+  const welcome = useWelcome();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
@@ -72,7 +73,7 @@ export default function ChatPage() {
           aria-labelledby={listHeadingId}
           className="max-h-[60vh] min-h-40 overflow-y-auto rounded-card border border-line bg-surface-alt p-4"
         >
-          {messages.length === 0 ? <p className="text-ink-muted">{t.empty}</p> : null}
+          {messages.length === 0 ? <p className="whitespace-pre-wrap text-ink-muted">{welcome ?? t.empty}</p> : null}
           <ul className="space-y-4">
             {messages.map((message, index) => (
               <MessageItem
@@ -148,6 +149,21 @@ export default function ChatPage() {
       </Container>
     </>
   );
+}
+
+/**
+ * The admin-editable greeting, fetched once. Null until it loads and on any failure, so the page
+ * shows the built-in copy meanwhile and never an error. It is only displayed while the
+ * conversation is empty, so a late answer can never replace anything the user already started.
+ */
+function useWelcome(): string | null {
+  const [welcome, setWelcome] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchWelcome(controller.signal).then(setWelcome, () => {});
+    return () => controller.abort();
+  }, []);
+  return welcome;
 }
 
 function MessageItem({

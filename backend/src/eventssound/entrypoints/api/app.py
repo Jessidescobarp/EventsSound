@@ -163,6 +163,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(catalog.router)
     app.include_router(quote.router)
+    app.include_router(quote.config_router)
     app.include_router(auth.router)
     app.include_router(records.me_router)
     app.include_router(records.admin_router)

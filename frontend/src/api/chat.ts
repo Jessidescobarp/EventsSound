@@ -206,6 +206,23 @@ export function parseChatResponse(json: unknown): ChatResponse {
   };
 }
 
+// ---- welcome message (GET /quote/config, public) ----
+
+export const MAX_WELCOME_CHARS = 400;
+const MAX_WELCOME_LINE_BREAKS = 6;
+
+/** Strict: an object with a 1..400 char string and no line-break flood, else it is a failure. */
+export function parseWelcome(json: unknown): string {
+  const text = str(obj(json), "welcome_message", MAX_WELCOME_CHARS, true).trim();
+  if (text.split("\n").length - 1 > MAX_WELCOME_LINE_BREAKS) throw new Error("welcome_message: too many lines");
+  return text;
+}
+
+/** Throws ApiError. The caller falls back to the built-in greeting on any failure. */
+export function fetchWelcome(signal?: AbortSignal): Promise<string> {
+  return apiFetch("/quote/config", { parse: parseWelcome, signal });
+}
+
 // ---- transport and error classes ----
 
 /** Throws ApiError. A body over the byte limit is refused here, before the network. */

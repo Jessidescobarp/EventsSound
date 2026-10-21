@@ -509,3 +509,11 @@ class PortfolioOut(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     events: list[PortfolioEventOut]
+
+
+class QuoteConfigOut(BaseModel):
+    """The only part of the agent config that is public: the greeting the chat opens with."""
+
+    model_config = ConfigDict(frozen=True)
+
+    welcome_message: str = Field(examples=["Hola, soy el asistente de cotizacion."])
