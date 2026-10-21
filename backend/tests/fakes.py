@@ -132,23 +132,34 @@ class InMemorySecurityLog:
 
 
 class InMemoryAgentConfigRepository:
-    """Only the read side the runtime uses; `put` stores the active version (1, 2, ...)."""
+    """`put` stores the next version (1, 2, ...); reads follow the port (newest first)."""
 
     def __init__(self, broken: bool = False) -> None:
-        self.active = None
+        self.versions: list = []
         self.broken = broken
         self.reads = 0
 
-    def put(self, config) -> None:
+    @property
+    def active(self):
+        return self.versions[-1] if self.versions else None
+
+    def put(self, config, user_id=None) -> None:
         from datetime import UTC
 
         from eventssound.domain.agent_config import StoredAgentConfig
 
-        version = self.active.version + 1 if self.active else 1
-        self.active = StoredAgentConfig(config, version, datetime(2026, 10, 20, tzinfo=UTC), None)
+        stored = StoredAgentConfig(
+            config, len(self.versions) + 1, datetime(2026, 10, 20, tzinfo=UTC), user_id
+        )
+        self.versions.append(stored)
 
     def get_active(self):
         self.reads += 1
         if self.broken:
             raise RepositoryUnavailable
         return self.active
+
+    def history(self, limit: int):
+        if self.broken:
+            raise RepositoryUnavailable
+        return list(reversed(self.versions))[:limit]

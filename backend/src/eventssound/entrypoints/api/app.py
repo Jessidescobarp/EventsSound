@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from eventssound.application.agent_config_admin import AgentConfigAdmin
 from eventssound.application.catalog_admin import CatalogAdmin
 from eventssound.application.portfolio import PortfolioStore
 from eventssound.application.ports import (
@@ -25,6 +26,7 @@ from eventssound.entrypoints.api.guards import (
     FailClosedLimiter,
 )
 from eventssound.entrypoints.api.routes import (
+    admin_agent_config,
     admin_catalog,
     auth,
     catalog,
@@ -49,6 +51,10 @@ TAGS = [
     {
         "name": "Auth",
         "description": "Login with email and password; returns a bearer token.",
+    },
+    {
+        "name": "Agent configuration",
+        "description": "Admin only: read, preview and apply the agent's behavior and limits.",
     },
     {
         "name": "Quote agent",
@@ -108,7 +114,13 @@ def create_app(
     app.state.catalog_repository = catalog_repository or container.make_catalog_repository(factory)
 
     # The admin-editable agent config: cached, and exactly today's behavior when none is stored.
-    app.state.agent_config = container.make_agent_config(settings, factory, agent_config_repository)
+    config_repository = agent_config_repository or container.make_agent_config_repository(
+        settings, factory
+    )
+    app.state.agent_config = container.make_agent_config(settings, factory, config_repository)
+    app.state.agent_config_admin = AgentConfigAdmin(config_repository, settings)
+    app.state.confirmation_tokens = container.make_confirmation_tokens(settings)
+    app.state.agent_config_limiter = container.make_admin_limiter()
 
     # Quote chat. Limiter and budget are wrapped so that an error in either refuses the request.
     app.state.chat_agent = quote_agent or container.make_quote_agent(
@@ -153,6 +165,7 @@ def create_app(
     app.include_router(records.me_router)
     app.include_router(records.admin_router)
     app.include_router(admin_catalog.router)
+    app.include_router(admin_agent_config.router)
     app.include_router(security.router)
     app.include_router(portfolio.public_router)
     app.include_router(portfolio.admin_router)
