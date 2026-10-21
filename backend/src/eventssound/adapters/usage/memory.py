@@ -9,7 +9,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 
-from eventssound.application.usage import Reservation
+from eventssound.application.usage import CapsSource, Reservation, resolve_caps
 
 
 class InMemoryUsageBudget:
@@ -19,12 +19,16 @@ class InMemoryUsageBudget:
         token_cap: int,
         cost_cap_micro_usd: int,
         now: Callable[[], datetime] | None = None,
+        caps: CapsSource | None = None,
     ) -> None:
+        """`token_cap` and `cost_cap_micro_usd` are the defaults; `caps`, when given, is asked on
+        every reserve (the admin-editable config) and falls back to them if it fails."""
         if token_cap < 0 or cost_cap_micro_usd < 0:
             raise ValueError("caps must be >= 0")
         self._lock = threading.Lock()
         self._token_cap = token_cap
         self._cost_cap = cost_cap_micro_usd
+        self._caps = caps
         self._now = now or (lambda: datetime.now(UTC))
         self._reserved: dict[date, tuple[int, int]] = {}
 
@@ -32,16 +36,14 @@ class InMemoryUsageBudget:
         if tokens < 0 or cost_micro_usd < 0:
             raise ValueError("usage cannot be negative")
         day = self._now().astimezone(UTC).date()
+        token_cap, cost_cap = resolve_caps(self._caps, (self._token_cap, self._cost_cap))
         with self._lock:
             # The insert path has no cap check of its own, so a reservation larger than
             # the cap is rejected up front.
-            if tokens > self._token_cap or cost_micro_usd > self._cost_cap:
+            if tokens > token_cap or cost_micro_usd > cost_cap:
                 return None
             used_tokens, used_cost = self._reserved.get(day, (0, 0))
-            if (
-                used_tokens + tokens > self._token_cap
-                or used_cost + cost_micro_usd > self._cost_cap
-            ):
+            if used_tokens + tokens > token_cap or used_cost + cost_micro_usd > cost_cap:
                 return None
             self._reserved[day] = (used_tokens + tokens, used_cost + cost_micro_usd)
         return Reservation(day=day, tokens=tokens, cost_micro_usd=cost_micro_usd)

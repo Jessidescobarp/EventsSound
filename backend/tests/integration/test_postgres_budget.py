@@ -320,3 +320,40 @@ def test_a_disabled_openrouter_chat_needs_no_persistent_budget(
     values = {"DATABASE_URL": "postgresql+psycopg://u:p@127.0.0.1:1/x", "chat_enabled": False}
     settings = Settings(_env_file=None, **(values | OPENROUTER))  # type: ignore[arg-type]
     assert type(make_usage_budget(settings, unreachable_session_factory)) is InMemoryUsageBudget
+
+
+def test_a_live_cap_source_overrides_the_constructor_caps_per_reserve(
+    session_factory: sessionmaker[Session],
+) -> None:
+    live = [(1_000, 10_000)]
+    b = PostgresUsageBudget(
+        session_factory,
+        token_cap=1_000,
+        cost_cap_micro_usd=10_000,
+        now=lambda: NOON,
+        caps=lambda: live[0],
+    )
+    assert b.reserve(600, 0) is not None
+    live[0] = (700, 10_000)  # lowered: the atomic upsert WHERE uses the new cap
+    assert b.reserve(101, 0) is None
+    assert b.reserve(100, 0) is not None
+    live[0] = (5_000, 10_000)  # raised above the constructor cap: the insert path honors it too
+    assert b.reserve(2_000, 0) is not None
+    assert row(session_factory) == (2_700, 0)
+
+
+def test_lowering_a_cap_below_the_usage_refuses_new_reserves_and_keeps_the_row(
+    session_factory: sessionmaker[Session],
+) -> None:
+    live = [(1_000, 10_000)]
+    b = PostgresUsageBudget(
+        session_factory,
+        token_cap=1_000,
+        cost_cap_micro_usd=10_000,
+        now=lambda: NOON,
+        caps=lambda: live[0],
+    )
+    assert b.reserve(800, 5_000) is not None
+    live[0] = (500, 3_000)  # below today's usage on both counters
+    assert b.reserve(1, 0) is None and b.reserve(0, 1) is None
+    assert row(session_factory) == (800, 5_000)  # refusing changed nothing
