@@ -63,3 +63,21 @@ describe("model in use card", () => {
     expect(screen.getAllByText(t.card.perMillion(warns ? "0" : "3"))).toHaveLength(warns ? 2 : 1);
   });
 });
+
+describe("free models", () => {
+  it.each([
+    ["a free model shows the badge", { model: "vendor/model-b:free", free: true, input_price_per_mtok: 0, output_price_per_mtok: 0, cost_cap_applies: false }, true],
+    ["a paid model does not", {}, false],
+  ])("%s", async (_name, patch, badge) => {
+    renderApp("/admin/agente", withView({ ...VIEW, model_in_use: { ...VIEW.model_in_use, ...patch } }));
+    await card();
+    expect(screen.queryByText(t.card.free) !== null).toBe(badge);
+  });
+
+  it("marks free models in the model select", async () => {
+    renderApp("/admin/agente", withView({ ...VIEW, allowed_models: ["vendor/model-a", "vendor/model-b:free"] }));
+    await card();
+    expect(screen.getByRole("option", { name: t.freeModelOption("vendor/model-b:free") })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "vendor/model-a" })).toBeInTheDocument();
+  });
+});

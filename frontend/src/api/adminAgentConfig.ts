@@ -29,6 +29,8 @@ export interface ModelInUse {
   input_price_per_mtok: number;
   output_price_per_mtok: number;
   cost_cap_applies: boolean;
+  /** A free model (`:free` id). Absent from older servers, so it defaults to false. */
+  free: boolean;
 }
 
 export interface AgentConfigView {
@@ -110,6 +112,7 @@ function parseModel(value: unknown): ModelInUse {
     input_price_per_mtok: int(o, "input_price_per_mtok", 0, MAX_INT),
     output_price_per_mtok: int(o, "output_price_per_mtok", 0, MAX_INT),
     cost_cap_applies: bool(o, "cost_cap_applies"),
+    free: o.free === undefined ? false : bool(o, "free"),
   };
 }
 

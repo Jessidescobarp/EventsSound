@@ -67,3 +67,14 @@ describe("fake agent config API", () => {
     expect((await call("GET", "", undefined, "nope")).status).toBe(401);
   });
 });
+
+describe("fake agent config API: free models", () => {
+  it("previews a free model with a known zero estimate and the info notice", async () => {
+    const parsed = parsePreview((await preview({ llm_model: "vendor/model-c:free" })).body);
+    const codes = parsed.warnings.map((w) => w.code);
+    expect(parsed.max_daily_cost_estimate_micro_usd).toBe(0);
+    expect(codes).toContain("free_model_limits");
+    expect(codes).not.toContain("cost_unknown");
+    expect((await preview({ llm_model: "vendor/model-b" })).body).toMatchObject({ max_daily_cost_estimate_micro_usd: null });
+  });
+});

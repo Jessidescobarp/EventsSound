@@ -13,7 +13,9 @@ export function ModelInUseCard({ model, version }: { model: ModelInUse; version:
       <h2 className="text-xl font-semibold">{t.title}</h2>
       <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
         <Item label={t.provider}>{model.provider}</Item>
-        <Item label={t.model}>{model.model}</Item>
+        <Item label={t.model}>
+          {model.model} {model.free ? <Badge tone="accent">{t.free}</Badge> : null}
+        </Item>
         <Item label={t.state}>
           <Badge tone={model.status === "active" ? "brand" : "accent"}>{t.statuses[model.status] ?? model.status}</Badge>
         </Item>

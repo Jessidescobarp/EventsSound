@@ -8,7 +8,7 @@ import {
   type AgentConfigView,
 } from "../../api/adminAgentConfig";
 import { es } from "../../copy/es";
-import { draftOf, evaluateDraft, microToUsd, type AgentDraft, type FormResult } from "../../lib/agentConfigForm";
+import { draftOf, evaluateDraft, isFreeModel, microToUsd, type AgentDraft, type FormResult } from "../../lib/agentConfigForm";
 import { Alert } from "../ui/Alert";
 import { Button } from "../ui/Button";
 import { Field, fieldProps, inputClass } from "./Field";
@@ -84,7 +84,7 @@ export function AgentConfigForm({
         {(p) => (
           <select {...fieldProps(p)} value={draft.llm_model} onChange={set("llm_model")} className={inputClass}>
             {(view.allowed_models.includes(draft.llm_model) ? view.allowed_models : [draft.llm_model, ...view.allowed_models]).map((m) => (
-              <option key={m} value={m}>{m}</option>
+              <option key={m} value={m}>{isFreeModel(m) ? t.freeModelOption(m) : m}</option>
             ))}
           </select>
         )}

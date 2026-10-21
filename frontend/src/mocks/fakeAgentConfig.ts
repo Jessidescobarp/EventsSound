@@ -16,7 +16,8 @@ interface Stored {
 }
 
 const CEILINGS = { max_daily_tokens: 1_000_000, max_daily_cost_micro_usd: 10_000_000, max_rate_limit_per_minute: 60 };
-const MODELS = ["demo/replay", "vendor/model-a", "vendor/model-b"];
+const MODELS = ["demo/replay", "vendor/model-a", "vendor/model-b", "vendor/model-c:free"];
+const isFree = (model: string) => model.endsWith(":free");
 const INITIAL: AgentConfig = {
   tone: "cercano",
   off_topic_policy: "strict",
@@ -29,7 +30,7 @@ const INITIAL: AgentConfig = {
   chat_rate_limit_per_minute: 10,
 };
 const TEXTS: ConfigField[] = ["refusal_message", "closing_message", "welcome_message"];
-const MODEL_IN_USE = { provider: "demo", model: "demo/replay", status: "replay" as Status, input_price_per_mtok: 0, output_price_per_mtok: 0, cost_cap_applies: false };
+const MODEL_IN_USE = { provider: "demo", model: "demo/replay", status: "replay" as Status, input_price_per_mtok: 0, output_price_per_mtok: 0, cost_cap_applies: false, free: false };
 
 let history: Stored[] = [];
 let used = new Set<string>();
@@ -81,7 +82,7 @@ function diffOf(patch: Partial<AgentConfig>, from: AgentConfig): Diff {
   return diff;
 }
 
-function warningsOf(diff: Diff, estimate: number | null) {
+function warningsOf(diff: Diff, estimate: number | null, free = false) {
   const w = (code: string, severity: "info" | "warning" | "danger", message_es: string) => ({ code, severity, message_es });
   const raised = (k: string) => k in diff && (diff[k]![1] as number) > (diff[k]![0] as number);
   const out = [w("immediate_effect", "info", "Este cambio afecta cada conversación nueva de inmediato y puede aumentar el costo.")];
@@ -90,6 +91,7 @@ function warningsOf(diff: Diff, estimate: number | null) {
   if ("llm_model" in diff) out.push(w("model_changed", "danger", "Cambia el modelo del agente: la calidad y el costo pueden variar."));
   if (TEXTS.some((k) => k in diff)) out.push(w("texts_changed", "info", "Cambian los textos que ven los clientes."));
   if ("tone" in diff || "off_topic_policy" in diff) out.push(w("behavior_changed", "warning", "Cambia el tono o la política de temas fuera de alcance."));
+  if (free) out.push(w("free_model_limits", "info", "Los modelos gratuitos pueden tener límites de uso del proveedor, menor disponibilidad y calidad distinta; el tope de costo no aplica, el tope de tokens sí."));
   if (estimate === null && ("llm_model" in diff || raised("daily_cost_cap_micro_usd"))) out.push(w("cost_unknown", "warning", "No se puede estimar el costo del modelo seleccionado."));
   return out;
 }
@@ -139,12 +141,13 @@ export function agentConfigRoute(pathname: string, init: RequestInit | undefined
   if (!apply) {
     const token = `demo-confirm-${++counter}`;
     issued.set(token, key);
-    const estimate = "llm_model" in diff || MODEL_IN_USE.input_price_per_mtok === 0 ? null : (plan.patch.daily_cost_cap_micro_usd ?? current().config.daily_cost_cap_micro_usd);
+    const model = plan.patch.llm_model ?? current().config.llm_model;
+    const estimate = isFree(model) ? 0 : "llm_model" in diff || MODEL_IN_USE.input_price_per_mtok === 0 ? null : (plan.patch.daily_cost_cap_micro_usd ?? current().config.daily_cost_cap_micro_usd);
     return json({
       action: typeof body.rollback_to_version === "number" ? "rollback" : "save",
       base_version: body.base_version,
       diff,
-      warnings: warningsOf(diff, estimate),
+      warnings: warningsOf(diff, estimate, isFree(model) && technical),
       requires_password: technical,
       max_daily_cost_estimate_micro_usd: estimate,
       confirmation_token: token,
