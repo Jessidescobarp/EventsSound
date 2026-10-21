@@ -3,6 +3,7 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { RequireRole } from "./auth/RequireRole";
 import { Layout } from "./components/Layout";
 import AboutPage from "./pages/AboutPage";
+import { AdminAgentPage } from "./pages/AdminAgentPage";
 import { AdminCatalogPage } from "./pages/AdminCatalogPage";
 import { AdminPortfolioPage } from "./pages/AdminPortfolioPage";
 import { AdminBookingsPage, AdminLayout, AdminQuotesPage } from "./pages/AdminPages";
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="portafolio" element={<AdminPortfolioPage />} />
             <Route path="reservas" element={<AdminBookingsPage />} />
             <Route path="seguridad" element={<AdminSecurityPage />} />
+            <Route path="agente" element={<AdminAgentPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFoundPage />} />
