@@ -190,3 +190,21 @@ def test_concurrent_writer_losing_the_race_gets_a_conflict(engine: Engine) -> No
         SqlAlchemyAgentConfigRepository(factory, ALLOWED).save(
             CONFIG, base_version=0, user_id=None, note=None
         )
+
+
+def test_audit_lists_actions_diffs_and_notes_newest_first(
+    repo: SqlAlchemyAgentConfigRepository,
+) -> None:
+    repo.save(CONFIG, base_version=0, user_id=None, note="first")
+    repo.save(replace(CONFIG, tone="formal"), base_version=1, user_id=None, note=None)
+    repo.save(CONFIG, base_version=2, user_id=None, note="back", action="rollback")
+
+    entries = repo.audit(2)
+
+    assert [(e.version, e.action, e.note) for e in entries] == [
+        (3, "rollback", "back"),
+        (2, "save", None),
+    ]
+    assert entries[0].diff == {"tone": ["formal", "cercano"]}
+    with pytest.raises(InvalidAgentConfig):
+        repo.save(CONFIG, base_version=3, user_id=None, note=None, action="delete")
