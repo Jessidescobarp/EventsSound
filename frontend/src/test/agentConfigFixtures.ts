@@ -15,7 +15,7 @@ export const VIEW = {
   config: CONFIG,
   ceilings: { max_daily_tokens: 1000000, max_daily_cost_micro_usd: 10000000, max_rate_limit_per_minute: 60 },
   allowed_models: ["vendor/model-a", "vendor/model-b"],
-  model_in_use: { provider: "openrouter", model: "vendor/model-a", status: "active", input_price_per_mtok: 3, output_price_per_mtok: 15, cost_cap_applies: true },
+  model_in_use: { provider: "openrouter", model: "vendor/model-a", status: "active", input_price_per_mtok: 3000000, output_price_per_mtok: 15000000, cost_cap_applies: true },
   defaults_out_of_bounds: [],
   updated_at: "2026-10-20T10:00:00Z",
   updated_by: "abc",

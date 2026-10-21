@@ -7,6 +7,7 @@
 import type { CatalogItem, ServicePackage } from "../api/catalog";
 import type { PortfolioEvent } from "../api/portfolio";
 import type { ChatResponse, QuoteLine } from "../api/chat";
+import { agentConfigRoute, resetDemoAgentConfig } from "./fakeAgentConfig";
 
 const item = (
   code: string,
@@ -274,6 +275,7 @@ export function resetDemoCatalog(): void {
   liveItems = MOCK_ITEMS.map((i) => ({ ...i }));
   livePackages = MOCK_PACKAGES.map((p) => ({ ...p, items: p.items.map((m) => ({ ...m })) }));
   livePortfolio = MOCK_PORTFOLIO.map((e) => ({ ...e, equipment: [...e.equipment] }));
+  resetDemoAgentConfig();
 }
 
 // ---- portfolio: the six illustrative events the real database is seeded with ----
@@ -409,6 +411,12 @@ function adminCatalogRoute(pathname: string, init?: RequestInit): Response {
 }
 
 function route(pathname: string, init?: RequestInit, search = new URLSearchParams()): Response {
+  if (pathname.startsWith("/admin/agent-config")) {
+    const role = callerRole(init);
+    if (role === null) return json({ detail: "not_authenticated", message: "Debes iniciar sesion." }, 401);
+    if (role !== "admin") return json({ detail: "forbidden", message: "No tienes permiso." }, 403);
+    return agentConfigRoute(pathname, init, search, DEMO_PASSWORD);
+  }
   if (pathname.startsWith("/admin/catalog/")) return adminCatalogRoute(pathname, init);
   if (pathname === "/portfolio" || pathname.startsWith("/admin/portfolio")) {
     return portfolioRoute(pathname, init);
