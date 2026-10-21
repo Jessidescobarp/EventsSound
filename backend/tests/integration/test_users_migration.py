@@ -60,3 +60,16 @@ def test_downgrade_drops_the_table(alembic_config: Config, engine: Engine) -> No
     command.downgrade(alembic_config, "0005")
 
     assert "users" not in inspect(engine).get_table_names()
+
+
+def test_repository_finds_a_user_by_id_and_none_for_unknown_or_malformed(engine: Engine) -> None:
+    add(engine, "root@example.com", "admin")
+    repository = SqlAlchemyUserRepository(sessionmaker(engine))
+    known = repository.by_email("root@example.com")
+    assert known is not None
+
+    found = repository.by_id(known.id)
+
+    assert found == known
+    assert repository.by_id("00000000-0000-4000-8000-000000000000") is None
+    assert repository.by_id("not-a-uuid") is None

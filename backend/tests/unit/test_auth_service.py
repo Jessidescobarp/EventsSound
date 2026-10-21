@@ -30,6 +30,9 @@ class FakeUsers:
     def by_email(self, email: str) -> User | None:
         return USER if email == USER.email else None
 
+    def by_id(self, user_id: str) -> User | None:
+        return USER if user_id == USER.id else None
+
 
 def service(hasher: FakeHasher | None = None) -> tuple[AuthService, FakeHasher]:
     hasher = hasher or FakeHasher()
@@ -58,4 +61,22 @@ def test_bad_credentials_are_one_indistinguishable_error(email, password, verifi
     with pytest.raises(InvalidCredentials):
         auth.login(email, password)
 
+    assert hasher.verified == verified
+
+
+@pytest.mark.parametrize(
+    ("user_id", "password", "ok", "verified"),
+    [
+        (USER.id, "secret", True, ["hash:secret"]),
+        (USER.id, "wrong", False, ["hash:secret"]),
+        ("22222222-2222-4222-8222-222222222222", "secret", False, ["hash:dummy"]),  # no such user
+    ],
+    ids=["valid", "wrong-password", "unknown-user"],
+)
+def test_verify_password_rechecks_a_signed_in_user_without_revealing_existence(
+    user_id, password, ok, verified
+) -> None:
+    auth, hasher = service()
+
+    assert auth.verify_password(user_id, password) is ok
     assert hasher.verified == verified

@@ -21,11 +21,23 @@
 - [x] Chat per-minute rate limit read per hit (limiter state is kept on a change).
 - [x] LLM model: the agent is rebuilt once when the active model changes.
 
-- [ ] Refusal and closing texts, `tone` (fixed prompt sentence per value) and `off_topic_policy` (fixed block limit per value): deferred to a follow-up PR (size budget).
+- [x] Refusal and closing texts, `tone` (fixed prompt sentence per value) and `off_topic_policy` (fixed block limit per value): PR 2d.
 
 ## PR 3: admin endpoints
 
-- [ ] GET config, preview, apply, history; confirmation token; password re-auth for technical params; audit.
+API contract: `api.md`.
+
+### PR 3a: read and preview (feat/agent-config-api-read)
+
+- [x] Confirmation token (HMAC, bound to user, base version and change; 5 minutes; single use).
+- [x] GET config with ceilings, allowed models and the read-only model in use.
+- [x] POST preview: validation (field names only), diff, risk warnings, `requires_password`, cost estimate, rollback preview; per-admin rate limit.
+
+### PR 3b: apply, history, rollback (feat/agent-config-api-write)
+
+- [x] PUT apply (recomputed diff, token, typed confirmation, password re-auth for technical params); rollback through the same flow (audit action `rollback`).
+- [x] GET history from the audit table; rejected attempts recorded as security events (`config_rejected`, `config_reauth_failed`; no migration needed, `kind` is free text).
+- [x] `AuthService.verify_password` and `UserRepository.by_id` for the re-auth.
 
 ## PR 4: frontend Agent tab
 

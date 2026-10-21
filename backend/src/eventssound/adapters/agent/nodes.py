@@ -32,6 +32,7 @@ from eventssound.application.messages_es import (
     CLARIFICATION_FIELD_ORDER,
     CLARIFICATION_REPHRASE,
     REFUSAL,
+    TEMPLATE_CLOSING,
     clarify_item_options,
     render_clarification,
     render_clarify_items,
@@ -45,6 +46,7 @@ from eventssound.application.proposal_check import (
 )
 from eventssound.application.quote_chat import AgentLimitExceeded, ChatLimits
 from eventssound.application.search import EquipmentSearch, SearchHit
+from eventssound.domain.agent_config import AgentConfig
 from eventssound.domain.availability import AvailabilityReport
 from eventssound.domain.catalog import Catalog
 from eventssound.domain.errors import InvalidEventRequest
@@ -83,8 +85,19 @@ class AgentDeps:
     limits: ChatLimits
     timezone: "tzinfo"
     scenario: str | None = None
+    config_source: Callable[[], AgentConfig] | None = None
     token_factory: Callable[[], str] = partial(secrets.token_hex, 8)
     monotonic: Callable[[], float] = time.monotonic
+
+
+def _active(deps: AgentDeps) -> AgentConfig | None:
+    """The active admin config, or None (static defaults) when there is none or it fails."""
+    if deps.config_source is None:
+        return None
+    try:
+        return deps.config_source()
+    except Exception:  # noqa: BLE001  (fail-safe: the chat keeps today's behavior)
+        return None
 
 
 def missing_fields(extraction: Extraction) -> tuple[str, ...]:
@@ -152,7 +165,9 @@ def understand(deps: AgentDeps) -> Callable[[AgentState], dict]:
 
 def refuse(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
-        return {"status": "refused", "reply": REFUSAL, "reply_source": "static"}
+        active = _active(deps)
+        reply = active.refusal_message if active else REFUSAL
+        return {"status": "refused", "reply": reply, "reply_source": "static"}
 
     return node
 
@@ -391,8 +406,10 @@ def draft(deps: AgentDeps) -> Callable[[AgentState], dict]:
         payload = facts_payload(
             facts, event_type=request.event_type.value, available=report.is_available
         )
+        active = _active(deps)
+        tone = active.tone if active else None
         try:
-            text = _complete_draft(deps, state, build_draft_messages(json.dumps(payload)))
+            text = _complete_draft(deps, state, build_draft_messages(json.dumps(payload), tone))
         except LlmError:
             return {"facts": facts, "route": "render_template"}
         return {"facts": facts, "draft": text, "route": "verify"}
@@ -410,8 +427,10 @@ def verify(deps: AgentDeps) -> Callable[[AgentState], dict]:
 
 def render_template_node(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
+        active = _active(deps)
+        closing = active.closing_message if active else TEMPLATE_CLOSING
         return {
-            "reply": render_template(state["facts"]),
+            "reply": render_template(state["facts"], closing),
             "reply_source": "template",
             "status": "quote",
         }

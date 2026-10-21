@@ -19,10 +19,16 @@ logger = logging.getLogger(__name__)
 
 CHAT_REFUSED = "chat_refused"  # the agent refused: off-topic or injection attempt
 LOGIN_FAILED = "login_failed"
-# Only these two kinds are stored: both are bounded (by the block and by the login limiters).
+# Rejected attempts to change the agent configuration. Only a signed-in admin reaches them, and
+# preview/apply are rate limited per admin, so they stay bounded.
+CONFIG_REJECTED = "config_rejected"  # bad token, typed confirmation, conflict, invalid change
+CONFIG_REAUTH_FAILED = "config_reauth_failed"  # wrong password on a technical change
+# Only these kinds are stored: all are bounded (by the block and by the login and admin limiters).
 # Blocked and rate-limited requests are only logged, so a flood cannot grow the table.
 
 REFUSED_LIMIT = 5
+# Admin-selectable `off_topic_policy` -> refusals allowed per window. Fixed in code.
+REFUSED_LIMIT_BY_POLICY = {"normal": REFUSED_LIMIT, "strict": 3}
 BLOCK_WINDOW = timedelta(minutes=10)
 
 
@@ -80,12 +86,14 @@ class AbuseGate:
         enabled: bool = True,
         refused_limit: int = REFUSED_LIMIT,
         window: timedelta = BLOCK_WINDOW,
+        limit_source: Callable[[], int] | None = None,
     ) -> None:
         self._log = log
         self._key = key
         self._enabled = enabled
         self._clock = clock
         self._limit = refused_limit
+        self._limit_source = limit_source
         self._window = window
 
     def record(self, kind: str, ip: str) -> None:
@@ -101,9 +109,18 @@ class AbuseGate:
             return False
         try:
             since = self._clock() - self._window
-            return self._log.count_since(CHAT_REFUSED, client_key(ip, self._key), since) >= (
-                self._limit
-            )
+            limit = self._current_limit()
+            return self._log.count_since(CHAT_REFUSED, client_key(ip, self._key), since) >= limit
         except Exception as error:
             logger.warning("abuse check failed open error=%s", type(error).__name__)
             return False
+
+    def _current_limit(self) -> int:
+        """The limit of the active policy, read per request; the fixed default if it fails."""
+        if self._limit_source is None:
+            return self._limit
+        try:
+            return self._limit_source()
+        except Exception as error:  # noqa: BLE001  (fail-safe: keep the default limit)
+            logger.warning("abuse limit source failed error=%s", type(error).__name__)
+            return self._limit
