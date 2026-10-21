@@ -244,7 +244,11 @@ class RecordingBudget(InMemoryUsageBudget):
 
 def test_the_active_model_price_prices_the_next_reservation() -> None:
     repo, budget = InMemoryAgentConfigRepository(), RecordingBudget()
-    settings_pair = {"llm_input_price_micro_usd_per_mtok": 300_000}
+    settings_pair = {
+        "llm_input_price_micro_usd_per_mtok": 300_000,
+        "llm_provider": "openrouter",  # replay ignores the active model
+        "openrouter_api_key": "sk-test-key",
+    }
     client, settings = make(repo, settings_pair, usage_budget=budget)
     provider = client.app.state.agent_config  # type: ignore[attr-defined]
 

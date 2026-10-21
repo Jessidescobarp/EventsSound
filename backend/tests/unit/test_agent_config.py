@@ -228,16 +228,25 @@ def _settings(**over: object) -> Any:
     return Settings(_env_file=None, DATABASE_URL="postgresql://u:p@127.0.0.1/x", **over)  # type: ignore[call-arg, arg-type]
 
 
-@pytest.mark.parametrize("extra", ["v/m:free", "v/m,v/m2:free,v/m3:free"])
+@pytest.mark.parametrize("extra", ["v/m:free", "v/m,v/m2:free,v/m3:free", " v/m:free ,v/m2:free "])
 def test_startup_accepts_the_env_model_and_free_extras(extra: str) -> None:
     settings = _settings(llm_model="v/m", llm_model_allowlist=extra)
 
-    assert settings.allowed_llm_models == tuple(extra.split(","))
+    assert settings.allowed_llm_models == tuple(p.strip() for p in extra.split(","))
 
 
 @pytest.mark.parametrize(
     "allowlist",
-    ["v/m,v/paid", "v/m:free,v/paid-model", "v/other:FREE", "v/x:free-extra", "free:v/x"],
+    [
+        "v/m,v/paid",
+        "v/m:free,v/paid-model",
+        "v/other:FREE",
+        "v/x:free-extra",
+        "free:v/x",
+        "v/xFf1afree",  # fullwidth colon
+        "v/x:free00a0",  # non-breaking space is not trimmed
+        "v/x:free:",
+    ],
 )
 def test_startup_rejects_a_paid_extra_naming_it_without_secrets(allowlist: str) -> None:
     from pydantic import ValidationError
