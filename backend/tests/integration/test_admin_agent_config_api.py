@@ -29,7 +29,7 @@ def settings_for(**over: Any) -> Settings:
     values: dict[str, Any] = {
         "DATABASE_URL": "postgresql+psycopg://u:p@127.0.0.1:1/x",
         "llm_model": "vendor/model-a",
-        "llm_model_allowlist": "vendor/model-a,vendor/model-b",
+        "llm_model_allowlist": "vendor/model-a,vendor/model-b:free",
         "jwt_secret": JWT,
         **over,
     }
@@ -103,7 +103,7 @@ def test_get_shows_the_defaults_then_the_stored_version() -> None:
         "max_daily_cost_micro_usd": 10_000_000,
         "max_rate_limit_per_minute": 60,
     }
-    assert first["allowed_models"] == ["vendor/model-a", "vendor/model-b"]
+    assert first["allowed_models"] == ["vendor/model-a", "vendor/model-b:free"]
     assert second["version"] == 1 and second["config"]["tone"] == "formal"
     assert second["updated_by"] == ROOT.id and second["updated_at"].startswith("2026-10-20")
 
@@ -224,7 +224,7 @@ def test_a_stale_base_version_is_409_and_no_change_is_422() -> None:
         ({"daily_token_cap": 150_000}, {"cap_raised"}, True),
         ({"daily_cost_cap_micro_usd": 2_500_000}, {"cap_raised_2x"}, True),
         ({"daily_token_cap": 50_000}, set(), True),  # lowering is not a risk warning
-        ({"llm_model": "vendor/model-b"}, {"model_changed"}, True),
+        ({"llm_model": "vendor/model-b:free"}, {"model_changed"}, True),
         ({"chat_rate_limit_per_minute": 30}, {"rate_limit_raised"}, True),
         ({"chat_rate_limit_per_minute": 2}, set(), True),
     ],
@@ -264,7 +264,7 @@ def test_preview_flags_a_cost_cap_that_cannot_bind_and_estimates_the_worst_day()
     assert "cost_cap_not_binding" not in {w["code"] for w in paid_body["warnings"]}
     assert paid_body["max_daily_cost_estimate_micro_usd"] == 300_000  # 150k tokens at 2 USD/Mtok
 
-    other = preview(paid, {"llm_model": "vendor/model-b"}).json()  # price belongs to model-a
+    other = preview(paid, {"llm_model": "vendor/model-b:free"}).json()  # price belongs to model-a
     assert other["max_daily_cost_estimate_micro_usd"] is None
     assert {w["code"]: w["severity"] for w in other["warnings"]}["cost_unknown"] == "danger"
 
@@ -296,14 +296,14 @@ def test_a_rollback_previews_the_difference_to_that_version() -> None:
     client, repo, settings = build()
     base = defaults_from_settings(settings)
     repo.put(dataclasses.replace(base, tone="formal"))
-    repo.put(dataclasses.replace(base, tone="cercano", llm_model="vendor/model-b"))
+    repo.put(dataclasses.replace(base, tone="cercano", llm_model="vendor/model-b:free"))
 
     body = preview(client, base=2, rollback_to_version=1).json()
 
     assert body["action"] == "rollback"
     assert body["diff"] == {
         "tone": ["cercano", "formal"],
-        "llm_model": ["vendor/model-b", "vendor/model-a"],
+        "llm_model": ["vendor/model-b:free", "vendor/model-a"],
     }
     assert body["requires_password"] is True
     assert preview(client, base=2, rollback_to_version=2).json()["detail"] == "no_changes"

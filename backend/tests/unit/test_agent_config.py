@@ -4,6 +4,7 @@ import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -209,7 +210,7 @@ def test_load_falls_back_to_defaults_without_raising(
     ("raw", "expected"),
     [
         ("", ()),
-        ("a/b, c/d ,,a/b", ("a/b", "c/d")),
+        ("a/b:free, c/d:free ,,a/b:free", ("a/b:free", "c/d:free")),
     ],
 )
 def test_settings_allowlist_parsing(raw: str, expected: tuple[str, ...]) -> None:
@@ -219,6 +220,53 @@ def test_settings_allowlist_parsing(raw: str, expected: tuple[str, ...]) -> None
     assert settings.allowed_llm_models == expected
     only_default = Settings(DATABASE_URL="postgresql://u:p@127.0.0.1/x", llm_model="v/m")
     assert only_default.allowed_llm_models == ("v/m",)
+
+
+def _settings(**over: object) -> Any:
+    from eventssound.config import Settings
+
+    return Settings(_env_file=None, DATABASE_URL="postgresql://u:p@127.0.0.1/x", **over)  # type: ignore[call-arg, arg-type]
+
+
+@pytest.mark.parametrize("extra", ["v/m:free", "v/m,v/m2:free,v/m3:free"])
+def test_startup_accepts_the_env_model_and_free_extras(extra: str) -> None:
+    settings = _settings(llm_model="v/m", llm_model_allowlist=extra)
+
+    assert settings.allowed_llm_models == tuple(extra.split(","))
+
+
+@pytest.mark.parametrize(
+    "allowlist",
+    ["v/m,v/paid", "v/m:free,v/paid-model", "v/other:FREE", "v/x:free-extra", "free:v/x"],
+)
+def test_startup_rejects_a_paid_extra_naming_it_without_secrets(allowlist: str) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as raised:
+        _settings(llm_model="v/m", llm_model_allowlist=allowlist, openrouter_api_key="sk-secret-1")
+
+    text = str(raised.value)
+    offender = next(m for m in allowlist.split(",") if m not in ("v/m", "v/m:free"))
+    assert offender in text and "sk-secret-1" not in text and "postgresql" not in text
+
+
+@pytest.mark.parametrize("model", ["v/m:free", "a:free"])
+def test_the_free_suffix_is_a_valid_model_id_for_both_checks(model: str) -> None:
+    check_model_id(model)
+    assert MODEL_ID_PATTERN.fullmatch(model)
+    assert validate_config(replace(parse(), llm_model=model), (model,)).llm_model == model
+    with pytest.raises(InvalidAgentConfig):
+        validate_config(replace(parse(), llm_model=model), ALLOWED)  # not in the allowlist
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["a/b:free\n", "a/b :free", "a//b:free", "https://a.b:free", "a\\b:free", "a/b:fr\x00ee"],
+)
+def test_free_lookalikes_with_bad_shapes_are_still_rejected(model: str) -> None:
+    assert not MODEL_ID_PATTERN.fullmatch(model)
+    with pytest.raises(LlmValidationError):
+        check_model_id(model)
 
 
 @pytest.mark.parametrize("field", ["closing_message", "refusal_message", "welcome_message"])

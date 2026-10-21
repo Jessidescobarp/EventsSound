@@ -29,7 +29,7 @@ def make(repo: InMemoryAgentConfigRepository, **parts: Any) -> tuple[TestClient,
         _env_file=None,
         DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:1/x",  # type: ignore[arg-type]
         llm_model="vendor/model-a",
-        llm_model_allowlist="vendor/model-a,vendor/model-b",  # type: ignore[arg-type]
+        llm_model_allowlist="vendor/model-a,vendor/model-b:free",  # type: ignore[arg-type]
     )
     app = create_app(
         settings,
@@ -172,9 +172,9 @@ def test_replay_never_rebuilds_on_a_model_edit() -> None:
     agent = container.make_quote_agent(settings, None, client.app.state.agent_config)  # type: ignore[arg-type,attr-defined]
     source = agent._model_source  # type: ignore[attr-defined]
     before = source()
-    stored(repo, settings, llm_model="vendor/model-b")
+    stored(repo, settings, llm_model="vendor/model-b:free")
     client.app.state.agent_config.invalidate()  # type: ignore[attr-defined]
-    assert client.app.state.agent_config.current().config.llm_model == "vendor/model-b"  # type: ignore[attr-defined]
+    assert client.app.state.agent_config.current().config.llm_model == "vendor/model-b:free"  # type: ignore[attr-defined]
     assert source() == before == "vendor/model-a"
 
 
