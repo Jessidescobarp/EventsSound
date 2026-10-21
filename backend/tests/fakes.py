@@ -132,23 +132,61 @@ class InMemorySecurityLog:
 
 
 class InMemoryAgentConfigRepository:
-    """Only the read side the runtime uses; `put` stores the active version (1, 2, ...)."""
+    """`put` stores the next version (1, 2, ...); reads follow the port (newest first)."""
 
     def __init__(self, broken: bool = False) -> None:
-        self.active = None
+        self.versions: list = []
+        self.audit_rows: list = []
+        self.saves: list = []
         self.broken = broken
         self.reads = 0
 
-    def put(self, config) -> None:
+    @property
+    def active(self):
+        return self.versions[-1] if self.versions else None
+
+    def put(self, config, user_id=None) -> None:
         from datetime import UTC
 
         from eventssound.domain.agent_config import StoredAgentConfig
 
-        version = self.active.version + 1 if self.active else 1
-        self.active = StoredAgentConfig(config, version, datetime(2026, 10, 20, tzinfo=UTC), None)
+        stored = StoredAgentConfig(
+            config, len(self.versions) + 1, datetime(2026, 10, 20, tzinfo=UTC), user_id
+        )
+        self.versions.append(stored)
 
     def get_active(self):
         self.reads += 1
         if self.broken:
             raise RepositoryUnavailable
         return self.active
+
+    def history(self, limit: int):
+        if self.broken:
+            raise RepositoryUnavailable
+        return list(reversed(self.versions))[:limit]
+
+    def save(self, config, *, base_version, user_id, note, action="save"):
+        """Like the adapter: the next version, or VersionConflict when the base is not current."""
+        from eventssound.application.errors import VersionConflict
+        from eventssound.domain.agent_config import AuditEntry, validate_note
+
+        if self.broken:
+            raise RepositoryUnavailable
+        note = validate_note(note)  # like the adapter, before writing
+        if base_version != len(self.versions):
+            raise VersionConflict
+        old = self.active.config.to_dict() if self.active else {}
+        self.put(config, user_id)
+        stored = self.versions[-1]
+        diff = {k: [old.get(k), v] for k, v in config.to_dict().items() if old.get(k) != v}
+        self.audit_rows.append(
+            AuditEntry(stored.version, stored.created_at, user_id, action, diff, note)
+        )
+        self.saves.append((config, base_version, user_id, note, action))
+        return stored
+
+    def audit(self, limit: int):
+        if self.broken:
+            raise RepositoryUnavailable
+        return list(reversed(self.audit_rows))[:limit]

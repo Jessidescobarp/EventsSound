@@ -42,6 +42,7 @@ from eventssound.application.agent_config import ActiveConfigProvider
 from eventssound.application.auth import AuthService
 from eventssound.application.availability import check_event_availability
 from eventssound.application.catalog_admin import CatalogAdmin
+from eventssound.application.confirmation import ConfirmationTokens, derive_confirmation_key
 from eventssound.application.embedding_index import refresh_embeddings
 from eventssound.application.embeddings import EmbeddingProvider
 from eventssound.application.llm import LlmProvider
@@ -90,6 +91,12 @@ def make_catalog_repository(factory: sessionmaker[Session]) -> CatalogRepository
     return SqlAlchemyCatalogRepository(factory)
 
 
+def make_agent_config_repository(
+    settings: Settings, factory: sessionmaker[Session]
+) -> AgentConfigRepository:
+    return SqlAlchemyAgentConfigRepository(factory, settings.allowed_llm_models)
+
+
 def make_agent_config(
     settings: Settings,
     factory: sessionmaker[Session],
@@ -97,8 +104,22 @@ def make_agent_config(
 ) -> ActiveConfigProvider:
     """The active agent config, read through a short TTL cache and never failing: with an empty
     table or any storage error it is exactly the Settings defaults (today's behavior)."""
-    repository = repository or SqlAlchemyAgentConfigRepository(factory, settings.allowed_llm_models)
+    repository = repository or make_agent_config_repository(settings, factory)
     return ActiveConfigProvider(repository, settings)
+
+
+def make_confirmation_tokens(settings: Settings) -> ConfirmationTokens | None:
+    """Confirmation tokens signed with a key derived from the JWT secret. None without a secret:
+    the admin config endpoints then refuse to preview or apply (fail closed)."""
+    secret = settings.jwt_secret
+    if secret is None:
+        return None
+    return ConfirmationTokens(derive_confirmation_key(secret.get_secret_value()))
+
+
+def make_admin_limiter() -> RateLimiter:
+    """Preview and apply per admin user: 10 per minute, in this process only."""
+    return FailClosedLimiter(InMemoryRateLimiter(10, per_hour=600))
 
 
 def make_chat_limits(settings: Settings) -> ChatLimits:

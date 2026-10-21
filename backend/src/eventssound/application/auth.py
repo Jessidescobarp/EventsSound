@@ -32,6 +32,8 @@ class TokenIssuer(Protocol):
 class UserRepository(Protocol):
     def by_email(self, email: str) -> User | None: ...
 
+    def by_id(self, user_id: str) -> User | None: ...
+
 
 def normalize_email(email: str) -> str:
     return email.strip().lower()
@@ -59,3 +61,17 @@ class AuthService:
         if user is None or not valid:
             raise InvalidCredentials
         return self._tokens.issue(user)
+
+    def is_admin(self, user_id: str) -> bool:
+        """Whether the account still exists and is an admin. A token's role claim is trusted
+        until it expires, so a write re-reads the account (a demotion or deletion takes effect)."""
+        user = self._users.by_id(user_id)
+        return user is not None and user.role is Role.ADMIN
+
+    def verify_password(self, user_id: str, password: str) -> bool:
+        """Re-check the password of an already signed-in user. A missing user still pays one
+        verification, so neither the result nor the timing says whether the account exists."""
+        user = self._users.by_id(user_id)
+        stored = user.password_hash if user is not None else self._dummy_hash
+        valid = self._hasher.verify(stored, password)
+        return user is not None and valid

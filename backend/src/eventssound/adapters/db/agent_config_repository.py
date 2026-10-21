@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from eventssound.application.errors import InvalidStoredData, RepositoryUnavailable, VersionConflict
 from eventssound.domain.agent_config import (
     AgentConfig,
+    AuditEntry,
     StoredAgentConfig,
     validate_config,
     validate_note,
@@ -68,11 +69,35 @@ class SqlAlchemyAgentConfigRepository:
         except SQLAlchemyError as error:
             raise RepositoryUnavailable from error
 
+    def audit(self, limit: int) -> list[AuditEntry]:
+        try:
+            with self._factory() as session:
+                rows = session.execute(
+                    select(Audit, Settings.note)
+                    .join(Settings, Settings.version == Audit.version)
+                    .order_by(Audit.version.desc())
+                    .limit(limit)
+                ).all()
+                return [
+                    AuditEntry(a.version, a.at, a.user_id, a.action, a.diff, note)
+                    for a, note in rows
+                ]
+        except SQLAlchemyError as error:
+            raise RepositoryUnavailable from error
+
     def save(
-        self, config: AgentConfig, *, base_version: int, user_id: UUID | None, note: str | None
+        self,
+        config: AgentConfig,
+        *,
+        base_version: int,
+        user_id: UUID | None,
+        note: str | None,
+        action: str = "save",
     ) -> StoredAgentConfig:
         config = validate_config(config, self._allowed_models)  # before touching the database
         note = validate_note(note)
+        if action not in ("save", "rollback"):
+            raise InvalidAgentConfig("action must be save or rollback")
         try:
             with self._factory.begin() as session:
                 current = session.scalars(
@@ -92,7 +117,7 @@ class SqlAlchemyAgentConfigRepository:
                     Audit(
                         version=row.version,
                         user_id=user_id,
-                        action="save",
+                        action=action,
                         diff=_diff(current.config if current else None, row.config),
                     )
                 )
