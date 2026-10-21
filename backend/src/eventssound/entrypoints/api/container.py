@@ -54,7 +54,12 @@ from eventssound.application.ports import (
 from eventssound.application.pricing import price_quote
 from eventssound.application.quote_chat import AgentInput, AgentOutcome, ChatLimits, QuoteAgent
 from eventssound.application.quotes import BookingLister, QuoteStore
-from eventssound.application.security import AbuseGate, SecurityLog, derive_key
+from eventssound.application.security import (
+    REFUSED_LIMIT_BY_POLICY,
+    AbuseGate,
+    SecurityLog,
+    derive_key,
+)
 from eventssound.application.usage import CapsSource, RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
@@ -203,7 +208,10 @@ def _make_embedder(settings: Settings) -> tuple[EmbeddingProvider, str] | None:
 
 
 def _build_agent(
-    settings: Settings, factory: sessionmaker[Session], model: str | None = None
+    settings: Settings,
+    factory: sessionmaker[Session],
+    model: str | None = None,
+    active: ActiveConfigProvider | None = None,
 ) -> QuoteAgent:
     # Imported here: LangGraph costs import time and memory that /health must not pay.
     from eventssound.adapters.agent.graph import GraphQuoteAgent
@@ -226,6 +234,7 @@ def _build_agent(
             price=lambda request: price_quote(request, catalog_repository, pricing_rules),
             limits=make_chat_limits(settings),
             timezone=ZoneInfo(TIMEZONE),
+            config_source=None if active is None else lambda: active.current().config,
         )
     )
 
@@ -306,7 +315,9 @@ def make_quote_agent(
             return settings.llm_model
         return active.current().config.llm_model
 
-    return LazyQuoteAgent(lambda model: _build_agent(settings, factory, model), model_source)
+    return LazyQuoteAgent(
+        lambda model: _build_agent(settings, factory, model, active), model_source
+    )
 
 
 def make_catalog_admin(
@@ -378,7 +389,9 @@ def make_security_log(factory: sessionmaker[Session]) -> SecurityLog:
     return SqlAlchemySecurityLog(factory)
 
 
-def make_abuse_gate(settings: Settings, log: SecurityLog) -> AbuseGate:
+def make_abuse_gate(
+    settings: Settings, log: SecurityLog, active: ActiveConfigProvider | None = None
+) -> AbuseGate:
     """Client pseudonyms are keyed by a purpose-bound key derived from the JWT secret, or by a
     random per-process one when it is unset. The block needs a trustworthy client address:
     in production with TRUSTED_PROXY_HOPS=0 every visitor shares the proxy's address, so the
@@ -388,7 +401,12 @@ def make_abuse_gate(settings: Settings, log: SecurityLog) -> AbuseGate:
     enabled = not (settings.is_production and settings.trusted_proxy_hops == 0)
     if not enabled:
         logger.warning("abuse block disabled: set TRUSTED_PROXY_HOPS so clients can be told apart")
-    return AbuseGate(log, key, lambda: datetime.now(UTC), enabled=enabled)
+    source = (
+        None
+        if active is None
+        else lambda: REFUSED_LIMIT_BY_POLICY[active.current().config.off_topic_policy]
+    )
+    return AbuseGate(log, key, lambda: datetime.now(UTC), enabled=enabled, limit_source=source)
 
 
 def make_booking_lister(factory: sessionmaker[Session]) -> BookingLister:

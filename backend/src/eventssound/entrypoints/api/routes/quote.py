@@ -156,7 +156,7 @@ RESPONSES: dict[int | str, dict[str, object]] = {
     429: {
         "model": ChatErrorOut,
         "description": "Too many requests from this client, or `temporarily_blocked` after "
-        "5 off-topic refusals in 10 minutes. Wait `Retry-After` seconds.",
+        "Several off-topic refusals in 10 minutes (3 or 5, by policy). Wait `Retry-After` seconds.",
         "headers": {"Retry-After": {"schema": {"type": "integer", "minimum": 1, "example": 37}}},
         **_examples("rate_limited", "temporarily_blocked"),
     },
