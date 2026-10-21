@@ -29,6 +29,7 @@ from eventssound.domain.agent_config import (
     validate_note,
 )
 from eventssound.domain.errors import InvalidAgentConfig
+from eventssound.domain.model_prices import ModelPrice, price_for
 
 FIELDS = tuple(f.name for f in dataclasses.fields(AgentConfig))
 TECHNICAL_FIELDS = frozenset(
@@ -72,6 +73,7 @@ class ModelInUse:
     input_price_per_mtok: int
     output_price_per_mtok: int
     cost_cap_applies: bool
+    free: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +136,9 @@ def risk_warnings(plan: Plan, model: ModelInUse, estimate: int | None) -> list[R
         found.append(("texts_changed", "info"))
     if not BEHAVIOR_FIELDS.isdisjoint(plan.diff):
         found.append(("behavior_changed", "info"))
-    if plan.requires_password and not model.cost_cap_applies and model.status != "replay":
+    if plan.requires_password and model.free:
+        found.append(("free_model_limits", "info"))  # says the cost cap does not apply
+    elif plan.requires_password and not model.cost_cap_applies and model.status != "replay":
         found.append(("cost_cap_not_binding", "warning"))
     if plan.requires_password and estimate is None:
         found.append(("cost_unknown", "danger" if "llm_model" in plan.diff else "warning"))
@@ -166,28 +170,37 @@ class AgentConfigAdmin:
 
     def model_in_use(self, config: AgentConfig) -> ModelInUse:
         s = self._settings
-        prices = (s.llm_input_price_micro_usd_per_mtok, s.llm_output_price_micro_usd_per_mtok)
         if not s.chat_active:
             status = "disabled"
         else:
             status = "replay" if s.llm_provider == "replay" else "active"
         # Replay never calls a model: it keeps the environment model whatever is configured.
         model = s.llm_model if s.llm_provider == "replay" else config.llm_model
+        # The price table, like the runtime: a model without a price keeps the environment pair.
+        price = price_for(model, s) or ModelPrice(
+            s.llm_input_price_micro_usd_per_mtok, s.llm_output_price_micro_usd_per_mtok, False
+        )
+        prices = (price.input_micro_usd_per_mtok, price.output_micro_usd_per_mtok)
         applies = s.llm_provider == "openrouter" and any(prices)
-        return ModelInUse(s.llm_provider, model, status, *prices, applies)
+        return ModelInUse(s.llm_provider, model, status, *prices, applies, price.free)
 
     def max_daily_cost_estimate(self, config: AgentConfig) -> int | None:
         """Worst case per day in micro-USD: the cost cap, or what the token cap can cost.
 
-        None when it is unknown: the only configured prices belong to the environment model, so
-        another model (or prices left at 0 on a real provider) has no trustworthy price. The
-        replay provider spends nothing, so 0 is its real answer.
+        A free model costs 0, which is known. None when it is unknown: a model without a price, or
+        prices left at 0 on a real provider for a model that is not free. The replay provider
+        spends nothing, so 0 is its real answer.
         """
         s = self._settings
         if s.llm_provider == "replay":
             return 0
-        price = max(s.llm_input_price_micro_usd_per_mtok, s.llm_output_price_micro_usd_per_mtok)
-        if price == 0 or config.llm_model != s.llm_model:
+        table = price_for(config.llm_model, s)
+        if table is None:
+            return None
+        if table.free:
+            return 0
+        price = max(table.input_micro_usd_per_mtok, table.output_micro_usd_per_mtok)
+        if price == 0:
             return None
         by_tokens = math.ceil(config.daily_token_cap * price / 1_000_000)
         return min(config.daily_cost_cap_micro_usd, by_tokens)

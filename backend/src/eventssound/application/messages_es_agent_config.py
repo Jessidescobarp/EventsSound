@@ -28,6 +28,10 @@ WARNINGS = {
     "cost_cap_not_binding": (
         "El tope de costo no aplica con los precios actuales (0): solo limita el tope de tokens."
     ),
+    "free_model_limits": (
+        "Los modelos gratuitos pueden tener límites de uso del proveedor, menor disponibilidad "
+        "y calidad distinta; el tope de costo no aplica, el tope de tokens sí."
+    ),
     "cost_unknown": "No se puede estimar el costo del modelo seleccionado.",
     "immediate_effect": (
         "Este cambio afecta cada conversacion nueva de inmediato y puede aumentar el costo."

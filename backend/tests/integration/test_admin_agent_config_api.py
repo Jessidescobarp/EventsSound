@@ -145,8 +145,32 @@ def test_the_model_in_use_card_and_it_never_leaks_keys(
         "input_price_per_mtok",
         "output_price_per_mtok",
         "cost_cap_applies",
+        "free",
     }
+    assert card["free"] is False  # the env model has no `:free` suffix
     assert API_KEY not in response.text and JWT not in response.text
+
+
+def test_the_card_prices_the_active_model_from_the_table_not_the_env_pair() -> None:
+    priced = {
+        "llm_provider": "openrouter",
+        "openrouter_api_key": API_KEY,
+        "llm_input_price_micro_usd_per_mtok": 300_000,
+        "llm_output_price_micro_usd_per_mtok": 900_000,
+    }
+    client, repo, settings = build(**priced)
+    admin = as_user(client, ROOT)
+
+    env_card = client.get(GET, headers=admin).json()["model_in_use"]
+    repo.put(dataclasses.replace(defaults_from_settings(settings), llm_model="vendor/model-b:free"))
+    client.app.state.agent_config.invalidate()  # type: ignore[attr-defined]
+    free_card = client.get(GET, headers=admin).json()["model_in_use"]
+
+    assert (env_card["input_price_per_mtok"], env_card["cost_cap_applies"]) == (300_000, True)
+    assert env_card["free"] is False
+    assert free_card["model"] == "vendor/model-b:free" and free_card["free"] is True
+    assert (free_card["input_price_per_mtok"], free_card["output_price_per_mtok"]) == (0, 0)
+    assert free_card["cost_cap_applies"] is False
 
 
 @pytest.mark.parametrize(
@@ -264,9 +288,39 @@ def test_preview_flags_a_cost_cap_that_cannot_bind_and_estimates_the_worst_day()
     assert "cost_cap_not_binding" not in {w["code"] for w in paid_body["warnings"]}
     assert paid_body["max_daily_cost_estimate_micro_usd"] == 300_000  # 150k tokens at 2 USD/Mtok
 
-    other = preview(paid, {"llm_model": "vendor/model-b:free"}).json()  # price belongs to model-a
-    assert other["max_daily_cost_estimate_micro_usd"] is None
-    assert {w["code"]: w["severity"] for w in other["warnings"]}["cost_unknown"] == "danger"
+
+def test_switching_to_a_free_model_is_a_known_zero_cost_with_an_info_notice() -> None:
+    paid, _, _ = build(
+        llm_provider="openrouter",
+        openrouter_api_key=API_KEY,
+        llm_input_price_micro_usd_per_mtok=1_000_000,
+        llm_output_price_micro_usd_per_mtok=2_000_000,
+    )
+
+    body = preview(paid, {"llm_model": "vendor/model-b:free"}).json()
+
+    severities = {w["code"]: w["severity"] for w in body["warnings"]}
+    assert body["max_daily_cost_estimate_micro_usd"] == 0  # known: free, never unknown
+    assert "cost_unknown" not in severities and "cost_cap_not_binding" not in severities
+    assert severities["free_model_limits"] == "info" and severities["model_changed"] == "warning"
+    message = next(w for w in body["warnings"] if w["code"] == "free_model_limits")["message_es"]
+    assert "gratuitos" in message and "tope de tokens" in message
+
+
+def test_a_model_without_a_price_stays_cost_unknown() -> None:
+    from eventssound.application.agent_config_admin import AgentConfigAdmin, Plan, risk_warnings
+    from eventssound.domain.model_prices import price_for
+
+    _, repo, settings = build(llm_provider="openrouter", openrouter_api_key=API_KEY)
+    admin = AgentConfigAdmin(repo, settings)  # type: ignore[arg-type]
+    config = dataclasses.replace(defaults_from_settings(settings), llm_model="vendor/paid-extra")
+    plan = Plan("save", 0, defaults_from_settings(settings), config, {"llm_model": ["a", "b"]})
+
+    assert price_for(config.llm_model, settings) is None  # unreachable through Settings
+    estimate = admin.max_daily_cost_estimate(config)
+    found = {w.code: w.severity for w in risk_warnings(plan, admin.model_in_use(config), estimate)}
+    assert estimate is None and found["cost_unknown"] == "danger"
+    assert "free_model_limits" not in found
 
 
 def test_success_bodies_are_not_cacheable_and_oversized_changes_are_refused() -> None:
@@ -348,3 +402,19 @@ def test_preview_is_rate_limited_per_admin_user() -> None:
 
     assert statuses == [200] * 10 + [429]
     assert int(client.post(PREVIEW, json=body, headers=admin).headers["Retry-After"]) >= 1
+
+
+def test_an_environment_model_that_is_free_is_flagged_free_with_a_zero_estimate() -> None:
+    client, _, _ = build(
+        llm_provider="openrouter",
+        openrouter_api_key=API_KEY,
+        llm_model="vendor/env:free",
+        llm_model_allowlist="vendor/env:free",
+    )
+
+    card = client.get(GET, headers=as_user(client, ROOT)).json()["model_in_use"]
+    body = preview(client, {"daily_token_cap": 150_000}).json()
+
+    assert (card["free"], card["cost_cap_applies"]) == (True, False)
+    assert body["max_daily_cost_estimate_micro_usd"] == 0
+    assert "free_model_limits" in {w["code"] for w in body["warnings"]}

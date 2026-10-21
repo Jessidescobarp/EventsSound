@@ -13,7 +13,8 @@ token). Error bodies are `{detail: <code>, message: <Spanish>}`; 422 `invalid_co
   ceilings: { max_daily_tokens, max_daily_cost_micro_usd, max_rate_limit_per_minute },
   allowed_models: [...],
   model_in_use: { provider, model, status: "active"|"disabled"|"replay",
-                  input_price_per_mtok, output_price_per_mtok, cost_cap_applies },
+                  input_price_per_mtok, output_price_per_mtok, cost_cap_applies,
+                  free /* bool: a `:free` model; absent from older servers */ },
   defaults_out_of_bounds: [...], // field names of `config` that fail validation (see below)
   updated_at, updated_by }       // null while version is 0; updated_by is a user id
 ```
@@ -35,16 +36,20 @@ Body: `{ changes: {<partial config>}, base_version }` or `{ rollback_to_version,
 { action: "save"|"rollback", base_version, diff: { <field>: [old, new] },
   warnings: [{ code, severity: "info"|"warning"|"danger", message_es }],
   requires_password,             // true when llm_model, a daily cap or the rate limit changes
-  max_daily_cost_estimate_micro_usd,  // int, or null when the price is unknown (never 0 then)
+  max_daily_cost_estimate_micro_usd,  // int (0 for a free model), or null when the price is unknown
   confirmation_token, expires_at }
 ```
 
-The only configured prices are the environment model's: the estimate is null when `llm_model`
-differs from it or the prices are 0 on a real provider (the replay provider is 0). A technical
-change with a null estimate adds `cost_unknown` ("danger" when the model changes).
+Prices come from a per-model table (`domain/model_prices.py`): the environment model keeps the
+environment price pair, any other model is priced only if it is free (id ending in `:free`, cost 0)
+and Settings refuses an allowlist extra that is neither. The estimate is 0 for a free model (known,
+not unknown) and null only when the model has no price or the prices are 0 on a real provider for a
+non-free model (the replay provider is 0). A technical change with a null estimate adds `cost_unknown`
+("danger" when the model changes); a free model adds `free_model_limits` (info) instead of
+`cost_cap_not_binding`.
 
 Warning codes: `cap_raised`, `cap_raised_2x`, `model_changed`, `rate_limit_raised`,
-`texts_changed`, `behavior_changed`, `cost_cap_not_binding`, `cost_unknown`, `immediate_effect`.
+`texts_changed`, `behavior_changed`, `cost_cap_not_binding`, `free_model_limits`, `cost_unknown`, `immediate_effect`.
 
 Errors: 409 `version_conflict` (`base_version` is not the current one), 422 `invalid_config`,
 `no_changes`, `unknown_version` (rollback target not among the last 200 versions), `invalid_request`

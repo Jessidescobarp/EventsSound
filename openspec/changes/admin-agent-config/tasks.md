@@ -50,3 +50,11 @@ API contract: `api.md`.
 ## PR 6 (optional): public welcome message endpoint
 
 - [x] Unauthenticated read of the welcome message (`GET /quote/config`; the chat page shows it, with the built-in copy as fallback).
+
+## PR 7: per-model price table and free-models-only allowlist (feat/model-price-table)
+
+- [x] `domain/model_prices.py`: the environment model keeps the env price pair, any other model is priced only when its id ends in `:free` (cost 0).
+- [x] Settings refuses a `LLM_MODEL_ALLOWLIST` entry that is neither `LLM_MODEL` nor `:free` (fail closed at startup); `MODEL_ID_PATTERN` rejects `//`.
+- [x] The chat prices each request with the active model (`make_chat_limits_source`); the env pair is the fallback.
+- [x] `model_in_use.free`, a zero estimate and `free_model_limits` for free models; `cost_unknown` only for a model with no price.
+- [x] Frontend: "Gratuito" badge on the card and "(gratuito)" in the model select.
