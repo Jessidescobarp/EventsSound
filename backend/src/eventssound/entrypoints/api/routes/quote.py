@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from eventssound.application.errors import InvalidStoredData, RepositoryUnavailable
 from eventssound.application.llm import LlmError
+from eventssound.application.messages_es import WELCOME
 from eventssound.application.messages_es_chat import CHAT_ERRORS
 from eventssound.application.quote_chat import (
     AgentStatus,
@@ -28,9 +29,13 @@ from eventssound.entrypoints.api.schemas import (
     ChatInvalidOut,
     ChatRequestIn,
     ChatResponseOut,
+    QuoteConfigOut,
 )
 
 router = APIRouter(prefix="/quote", tags=["Quote agent"], dependencies=[Depends(chat_guard)])
+
+# Public and read-only, so it skips the chat guard: the greeting is still shown when chat is off.
+config_router = APIRouter(prefix="/quote", tags=["Quote agent"])
 
 logger = logging.getLogger(__name__)
 
@@ -310,3 +315,32 @@ def post_chat(body: ChatRequestIn, request: Request) -> JSONResponse:
 def _refuse(code: str, status: int, request_id: str, **headers: str) -> JSONResponse:
     logger.info("chat refused request_id=%s outcome=%s", request_id, code)
     return _error(code, status, request_id, **headers)
+
+
+@config_router.get(
+    "/config",
+    response_model=QuoteConfigOut,
+    summary="Mensaje de bienvenida del asistente",
+    description=(
+        "Public, no login. The greeting the chat opens with, as configured by an admin (a "
+        "default when none is stored). It exposes nothing else of the agent configuration. "
+        "Served from a short in-memory cache, never a database read per request."
+    ),
+    responses={
+        200: {
+            "content": {"application/json": {"example": {"welcome_message": WELCOME}}},
+            "headers": {"Cache-Control": {"schema": {"example": "public, max-age=30"}}},
+        }
+    },
+)
+def get_quote_config(request: Request) -> JSONResponse:
+    try:
+        message = request.app.state.agent_config.current().config.welcome_message
+        if not isinstance(message, str) or not message:
+            message = WELCOME
+    except Exception as exc:  # public read: any failure serves the default
+        logger.warning("welcome message unavailable: %s", type(exc).__name__)
+        message = WELCOME
+    return JSONResponse(
+        {"welcome_message": message}, headers={"Cache-Control": "public, max-age=30"}
+    )
