@@ -62,3 +62,31 @@ def test_invalid_key_is_a_typed_error(key) -> None:
 def test_invalid_limits_are_rejected() -> None:
     with pytest.raises(ValueError):
         InMemoryRateLimiter(0)
+
+
+def test_a_live_limit_applies_to_the_next_hit_and_keeps_the_recorded_hits() -> None:
+    live = [3]
+    clock = Clock()
+    limiter = InMemoryRateLimiter(3, clock=clock, per_minute_source=lambda: live[0])
+    assert [limiter.hit("a").allowed for _ in range(3)] == [True] * 3
+    live[0] = 2  # lowered: three hits are already recorded, so "a" stays blocked
+    assert not limiter.hit("a").allowed
+    live[0] = 4  # raised: one more hit fits, the recorded ones still count
+    assert limiter.hit("a").allowed and not limiter.hit("a").allowed
+
+
+def test_the_hourly_cap_follows_a_raised_per_minute_limit() -> None:
+    live = [3]
+    limiter = InMemoryRateLimiter(3, per_hour=5, clock=Clock(), per_minute_source=lambda: live[0])
+    live[0] = 8  # the hour window can never be tighter than the minute window
+    assert [limiter.hit("a").allowed for _ in range(9)] == [True] * 8 + [False]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [lambda: 1 / 0, lambda: 0, lambda: -3, lambda: "9", lambda: 2.5, lambda: None],
+    ids=["raises", "zero", "negative", "text", "float", "none"],
+)
+def test_a_broken_live_limit_falls_back_to_the_default(source) -> None:
+    limiter = InMemoryRateLimiter(2, clock=Clock(), per_minute_source=source)
+    assert [limiter.hit("a").allowed for _ in range(3)] == [True, True, False]

@@ -1,5 +1,6 @@
 """Ports for the daily LLM budget and the request rate limiter."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
@@ -36,3 +37,19 @@ class RateLimiter(Protocol):
     """Record one request for a key and decide whether it is allowed."""
 
     def hit(self, key: str) -> RateDecision: ...
+
+
+CapsSource = Callable[[], tuple[int, int]]
+
+
+def resolve_caps(source: CapsSource | None, fallback: tuple[int, int]) -> tuple[int, int]:
+    """The (token cap, cost cap) to enforce now: the live source, or `fallback` when there is no
+    source or it fails or returns something that is not two non-negative ints. Never raises."""
+    if source is not None:
+        try:
+            tokens, cost = source()
+            if type(tokens) is int and type(cost) is int and tokens >= 0 and cost >= 0:
+                return tokens, cost
+        except Exception:  # noqa: BLE001  (fail-safe by contract)
+            pass
+    return fallback

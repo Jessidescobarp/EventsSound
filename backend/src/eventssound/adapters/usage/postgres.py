@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from eventssound.adapters.db.models import LlmUsageDailyModel as Usage
-from eventssound.application.usage import Reservation
+from eventssound.application.usage import CapsSource, Reservation, resolve_caps
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +45,15 @@ class PostgresUsageBudget:
         statement_timeout_ms: int = 5_000,
         lock_timeout_ms: int = 3_000,
         now: Callable[[], datetime] | None = None,
+        caps: CapsSource | None = None,
     ) -> None:
+        """`token_cap` and `cost_cap_micro_usd` are the defaults; `caps`, when given, is asked on
+        every reserve (the admin-editable config) and falls back to them if it fails."""
         _check(token_cap, cost_cap_micro_usd, statement_timeout_ms, lock_timeout_ms)
         self._factory = factory
         self._token_cap = token_cap
         self._cost_cap = cost_cap_micro_usd
+        self._caps = caps
         self._now = now or (lambda: datetime.now(UTC))
         self._timeouts = (statement_timeout_ms, lock_timeout_ms)
 
@@ -63,7 +67,8 @@ class PostgresUsageBudget:
     def reserve(self, tokens: int, cost_micro_usd: int) -> Reservation | None:
         _check(tokens, cost_micro_usd)
         # The insert path of an upsert has no WHERE, so an oversized request is refused here.
-        if tokens > self._token_cap or cost_micro_usd > self._cost_cap:
+        token_cap, cost_cap = resolve_caps(self._caps, (self._token_cap, self._cost_cap))
+        if tokens > token_cap or cost_micro_usd > cost_cap:
             return None
         day = self._now().astimezone(UTC).date()
         statement = insert(Usage).values(day=day, tokens=tokens, cost_micro_usd=cost_micro_usd)
@@ -74,8 +79,8 @@ class PostgresUsageBudget:
                 "cost_micro_usd": Usage.cost_micro_usd + statement.excluded.cost_micro_usd,
                 "updated_at": func.now(),
             },
-            where=(Usage.tokens + statement.excluded.tokens <= self._token_cap)
-            & (Usage.cost_micro_usd + statement.excluded.cost_micro_usd <= self._cost_cap),
+            where=(Usage.tokens + statement.excluded.tokens <= token_cap)
+            & (Usage.cost_micro_usd + statement.excluded.cost_micro_usd <= cost_cap),
         ).returning(Usage.day)
         failure: str | None = None
         granted = False

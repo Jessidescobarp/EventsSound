@@ -2,6 +2,8 @@
 
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from eventssound.adapters.usage.memory import InMemoryUsageBudget
 
 
@@ -102,3 +104,67 @@ class TestDayRoll:
         )
         r = b.reserve(1, 0)
         assert r.day == date(2026, 10, 12)
+
+
+class TestLiveCaps:
+    """`caps` is asked on every reserve; the constructor caps are only the fallback."""
+
+    @staticmethod
+    def with_caps(source, token_cap=100_000, cost_cap=1_000_000):
+        return InMemoryUsageBudget(
+            token_cap=token_cap,
+            cost_cap_micro_usd=cost_cap,
+            now=lambda: datetime(2026, 10, 12, 12, 0, tzinfo=UTC),
+            caps=source,
+        )
+
+    def test_a_lowered_cap_applies_to_the_next_reserve(self) -> None:
+        live = [(10_000, 100_000)]
+        b = self.with_caps(lambda: live[0])
+        assert b.reserve(6_000, 0) is not None
+        live[0] = (6_000, 100_000)  # lowered below today's usage plus one more token
+        assert b.reserve(1, 0) is None
+        assert b.reserve(0, 1) is not None  # the other cap is independent
+
+    def test_a_raised_cap_applies_to_the_next_reserve(self) -> None:
+        live = [(10, 10)]
+        b = self.with_caps(lambda: live[0], token_cap=10, cost_cap=10)
+        assert b.reserve(10, 10) is not None
+        assert b.reserve(1, 0) is None
+        live[0] = (500, 500)
+        assert b.reserve(400, 400) is not None
+
+    def test_a_source_equal_to_the_constructor_caps_behaves_like_no_source(self) -> None:
+        plain = make_budget(token_cap=1_000, cost_cap=5_000)
+        live = self.with_caps(lambda: (1_000, 5_000), token_cap=1_000, cost_cap=5_000)
+        for tokens, cost in [(600, 0), (401, 0), (400, 5_000), (0, 1), (1_001, 0)]:
+            assert (plain.reserve(tokens, cost) is None) == (live.reserve(tokens, cost) is None)
+
+    def test_zero_from_the_source_refuses_everything_like_a_zero_constructor_cap(self) -> None:
+        assert self.with_caps(lambda: (0, 0)).reserve(1, 0) is None
+        assert make_budget(token_cap=0, cost_cap=0).reserve(1, 0) is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+            lambda: (-1, 5),
+            lambda: (5, 1.5),
+            lambda: None,
+        ],
+        ids=["raises", "negative", "not-int", "not-a-pair"],
+    )
+    def test_a_broken_source_falls_back_to_the_constructor_caps(self, source) -> None:
+        b = self.with_caps(source, token_cap=100, cost_cap=100)
+        assert b.reserve(100, 0) is not None
+        assert b.reserve(1, 0) is None
+
+    def test_lowering_a_cap_below_the_usage_refuses_new_reserves_and_keeps_the_usage(self) -> None:
+        live = [(10_000, 100_000)]
+        b = self.with_caps(lambda: live[0])
+        assert b.reserve(6_000, 0) is not None
+        live[0] = (3_000, 100_000)  # below what is already used today
+        assert b.reserve(1, 0) is None and b.reserve(0, 1) is None  # over the cap blocks all
+        live[0] = (10_000, 100_000)  # the usage was kept: exactly 4_000 tokens are left
+        assert b.reserve(4_001, 0) is None
+        assert b.reserve(4_000, 0) is not None
