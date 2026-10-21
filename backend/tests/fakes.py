@@ -129,3 +129,26 @@ class InMemorySecurityLog:
             if at >= since:
                 counts[kind] = counts.get(kind, 0) + 1
         return counts
+
+
+class InMemoryAgentConfigRepository:
+    """Only the read side the runtime uses; `put` stores the active version (1, 2, ...)."""
+
+    def __init__(self, broken: bool = False) -> None:
+        self.active = None
+        self.broken = broken
+        self.reads = 0
+
+    def put(self, config) -> None:
+        from datetime import UTC
+
+        from eventssound.domain.agent_config import StoredAgentConfig
+
+        version = self.active.version + 1 if self.active else 1
+        self.active = StoredAgentConfig(config, version, datetime(2026, 10, 20, tzinfo=UTC), None)
+
+    def get_active(self):
+        self.reads += 1
+        if self.broken:
+            raise RepositoryUnavailable
+        return self.active

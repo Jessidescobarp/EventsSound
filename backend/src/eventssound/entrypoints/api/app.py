@@ -6,7 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from eventssound.application.catalog_admin import CatalogAdmin
 from eventssound.application.portfolio import PortfolioStore
-from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
+from eventssound.application.ports import (
+    AgentConfigRepository,
+    CatalogRepository,
+    DatabaseHealthPort,
+)
 from eventssound.application.quote_chat import QuoteAgent
 from eventssound.application.quotes import BookingLister, QuoteStore
 from eventssound.application.security import SecurityLog
@@ -78,6 +82,7 @@ def create_app(
     catalog_admin: CatalogAdmin | None = None,
     portfolio_store: PortfolioStore | None = None,
     security_log: SecurityLog | None = None,
+    agent_config_repository: AgentConfigRepository | None = None,
 ) -> FastAPI:
     """Build an isolated FastAPI app. Tests override settings and adapters."""
     settings = settings or Settings()  # type: ignore[call-arg]
@@ -102,13 +107,18 @@ def create_app(
     app.state.database_health = database_health or container.make_database_health(factory)
     app.state.catalog_repository = catalog_repository or container.make_catalog_repository(factory)
 
+    # The admin-editable agent config: cached, and exactly today's behavior when none is stored.
+    app.state.agent_config = container.make_agent_config(settings, factory, agent_config_repository)
+
     # Quote chat. Limiter and budget are wrapped so that an error in either refuses the request.
-    app.state.chat_agent = quote_agent or container.make_quote_agent(settings, factory)
+    app.state.chat_agent = quote_agent or container.make_quote_agent(
+        settings, factory, app.state.agent_config
+    )
     app.state.usage_budget = FailClosedBudget(
-        usage_budget or container.make_usage_budget(settings, factory)
+        usage_budget or container.make_usage_budget(settings, factory, app.state.agent_config)
     )
     app.state.rate_limiter = FailClosedLimiter(
-        rate_limiter or container.make_rate_limiter(settings)
+        rate_limiter or container.make_rate_limiter(settings, app.state.agent_config)
     )
     app.state.chat_limits = container.make_chat_limits(settings)
     # Login. None means auth is not configured (production without JWT_SECRET): its routes

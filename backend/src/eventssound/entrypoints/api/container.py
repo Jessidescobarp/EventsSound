@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from eventssound.adapters.auth.hasher import Argon2Hasher
 from eventssound.adapters.auth.tokens import JwtTokenIssuer
+from eventssound.adapters.db.agent_config_repository import SqlAlchemyAgentConfigRepository
 from eventssound.adapters.db.booking_repository import SqlAlchemyBookingRepository
 from eventssound.adapters.db.catalog_repository import SqlAlchemyCatalogRepository
 from eventssound.adapters.db.catalog_writer import SqlAlchemyCatalogWriter
@@ -37,6 +38,7 @@ from eventssound.adapters.search.vector import VectorSearch
 from eventssound.adapters.usage.memory import InMemoryUsageBudget
 from eventssound.adapters.usage.postgres import PostgresUsageBudget
 from eventssound.adapters.usage.rate_limit import InMemoryRateLimiter
+from eventssound.application.agent_config import ActiveConfigProvider
 from eventssound.application.auth import AuthService
 from eventssound.application.availability import check_event_availability
 from eventssound.application.catalog_admin import CatalogAdmin
@@ -44,12 +46,16 @@ from eventssound.application.embedding_index import refresh_embeddings
 from eventssound.application.embeddings import EmbeddingProvider
 from eventssound.application.llm import LlmProvider
 from eventssound.application.portfolio import PortfolioStore
-from eventssound.application.ports import CatalogRepository, DatabaseHealthPort
+from eventssound.application.ports import (
+    AgentConfigRepository,
+    CatalogRepository,
+    DatabaseHealthPort,
+)
 from eventssound.application.pricing import price_quote
 from eventssound.application.quote_chat import AgentInput, AgentOutcome, ChatLimits, QuoteAgent
 from eventssound.application.quotes import BookingLister, QuoteStore
 from eventssound.application.security import AbuseGate, SecurityLog, derive_key
-from eventssound.application.usage import RateLimiter, UsageBudget
+from eventssound.application.usage import CapsSource, RateLimiter, UsageBudget
 from eventssound.config import Settings
 from eventssound.domain.availability import default_availability_rules
 from eventssound.domain.catalog import Catalog
@@ -84,6 +90,17 @@ def make_catalog_repository(factory: sessionmaker[Session]) -> CatalogRepository
     return SqlAlchemyCatalogRepository(factory)
 
 
+def make_agent_config(
+    settings: Settings,
+    factory: sessionmaker[Session],
+    repository: AgentConfigRepository | None = None,
+) -> ActiveConfigProvider:
+    """The active agent config, read through a short TTL cache and never failing: with an empty
+    table or any storage error it is exactly the Settings defaults (today's behavior)."""
+    repository = repository or SqlAlchemyAgentConfigRepository(factory, settings.allowed_llm_models)
+    return ActiveConfigProvider(repository, settings)
+
+
 def make_chat_limits(settings: Settings) -> ChatLimits:
     return ChatLimits(
         input_price_micro_usd=settings.llm_input_price_micro_usd_per_mtok,
@@ -91,11 +108,31 @@ def make_chat_limits(settings: Settings) -> ChatLimits:
     )
 
 
-def make_rate_limiter(settings: Settings) -> RateLimiter:
-    return InMemoryRateLimiter(settings.chat_rate_limit_per_minute)
+def make_rate_limiter(
+    settings: Settings, active: ActiveConfigProvider | None = None
+) -> RateLimiter:
+    """One limiter for the process: an edit of the per-minute limit changes the threshold of the
+    next hit, never the recorded hits. The hourly and global limits are not editable."""
+    source = None if active is None else lambda: active.current().config.chat_rate_limit_per_minute
+    return InMemoryRateLimiter(settings.chat_rate_limit_per_minute, per_minute_source=source)
 
 
-def make_usage_budget(settings: Settings, factory: sessionmaker[Session]) -> UsageBudget:
+def _budget_caps(active: ActiveConfigProvider | None) -> CapsSource | None:
+    if active is None:
+        return None
+
+    def caps() -> tuple[int, int]:
+        config = active.current().config
+        return config.daily_token_cap, config.daily_cost_cap_micro_usd
+
+    return caps
+
+
+def make_usage_budget(
+    settings: Settings,
+    factory: sessionmaker[Session],
+    active: ActiveConfigProvider | None = None,
+) -> UsageBudget:
     """Postgres whenever the chat can spend real money; in-memory otherwise.
 
     Explicit rule: an active OpenRouter chat (real money) ALWAYS uses the persistent budget, in
@@ -112,23 +149,27 @@ def make_usage_budget(settings: Settings, factory: sessionmaker[Session]) -> Usa
     ):
         # Fine for a free model; for a paid one the cost cap never binds (only the token cap).
         logger.warning("LLM prices are 0: the daily cost cap cannot bind, only the token cap")
+    caps = _budget_caps(active)
     if settings.chat_active and settings.llm_provider == "openrouter":
         logger.info("daily LLM budget: postgres (persistent)")
         return PostgresUsageBudget(
             factory,
             token_cap=settings.llm_daily_token_cap,
             cost_cap_micro_usd=settings.llm_daily_cost_cap_micro_usd,
+            caps=caps,
         )
     logger.info("daily LLM budget: in-memory (resets on restart; replay provider only)")
     return InMemoryUsageBudget(
         token_cap=settings.llm_daily_token_cap,
         cost_cap_micro_usd=settings.llm_daily_cost_cap_micro_usd,
+        caps=caps,
     )
 
 
-def make_llm_provider(settings: Settings) -> LlmProvider:
+def make_llm_provider(settings: Settings, model: str | None = None) -> LlmProvider:
+    """`model` is the active config's model; the provider kind and the API key stay in Settings."""
     if settings.llm_provider == "openrouter":
-        return OpenRouterProvider(settings.openrouter_api_key, settings.llm_model)
+        return OpenRouterProvider(settings.openrouter_api_key, model or settings.llm_model)
     # Only reachable outside production (`Settings.chat_active`). Without fixtures it answers
     # nothing, so a local chat call fails loudly instead of inventing quotes.
     return ReplayProvider({})
@@ -161,7 +202,9 @@ def _make_embedder(settings: Settings) -> tuple[EmbeddingProvider, str] | None:
     return embedder, settings.embedding_model
 
 
-def _build_agent(settings: Settings, factory: sessionmaker[Session]) -> QuoteAgent:
+def _build_agent(
+    settings: Settings, factory: sessionmaker[Session], model: str | None = None
+) -> QuoteAgent:
     # Imported here: LangGraph costs import time and memory that /health must not pay.
     from eventssound.adapters.agent.graph import GraphQuoteAgent
     from eventssound.adapters.agent.nodes import AgentDeps
@@ -174,7 +217,7 @@ def _build_agent(settings: Settings, factory: sessionmaker[Session]) -> QuoteAge
     search = _make_search(settings, factory, catalog_repository.get_catalog())
     return GraphQuoteAgent(
         AgentDeps(
-            provider=make_llm_provider(settings),
+            provider=make_llm_provider(settings, model),
             search=search,
             load_catalog=catalog_repository.get_catalog,
             check_availability=lambda request: check_event_availability(
@@ -188,31 +231,82 @@ def _build_agent(settings: Settings, factory: sessionmaker[Session]) -> QuoteAge
 
 
 class LazyQuoteAgent:
-    """Builds the real agent on the first request, once, so startup never needs the database."""
+    """Builds the real agent on the first request, once, so startup never needs the database.
 
-    def __init__(self, build: Callable[[], QuoteAgent]) -> None:
+    With a `model_source` (the active config's model) the agent is rebuilt, once, when the model
+    differs from the one it was built with, and `build` receives that model. A failing source
+    keeps the agent already built.
+    """
+
+    def __init__(
+        self,
+        build: Callable[..., QuoteAgent],
+        model_source: Callable[[], str] | None = None,
+    ) -> None:
         self._build = build
-        self._agent: QuoteAgent | None = None
+        self._model_source = model_source
+        self._built: tuple[QuoteAgent, str | None] | None = None  # the agent and its model
         self._lock = threading.Lock()
 
     def reset(self) -> None:
         """Drop the built agent: the next request rebuilds it, and its search index, from the
         current catalog. Requests already running keep the agent they started with."""
         with self._lock:
-            self._agent = None
+            self._built = None
+
+    def _wanted_model(self) -> str | None:
+        if self._model_source is not None:
+            try:
+                return self._model_source()
+            except Exception:  # noqa: BLE001  (fail-safe: keep what is built)
+                built = self._built
+                return built[1] if built else None
+        return None
 
     def run(self, data: AgentInput) -> AgentOutcome:
-        agent = self._agent
-        if agent is None:
-            with self._lock:
-                if self._agent is None:
-                    self._agent = self._build()
-                agent = self._agent
-        return agent.run(data)
+        model = self._wanted_model()
+        built = self._built
+        if built is None or built[1] != model:
+            built = self._rebuild()
+        return built[0].run(data)
+
+    def _rebuild(self) -> tuple[QuoteAgent, str | None]:
+        with self._lock:
+            # Re-read inside the lock: a request that read the model before a switch must not
+            # rebuild the old model over the newer one.
+            model = self._wanted_model()
+            built = self._built
+            if built is not None and built[1] == model:
+                return built
+            try:
+                agent = self._build() if self._model_source is None else self._build(model)
+            except Exception as error:  # noqa: BLE001
+                if built is None:
+                    raise  # nothing to fall back to: same as the first build always was
+                # Keep serving the previous working agent (and retry on the next request).
+                logger.warning(
+                    "agent rebuild failed, keeping the previous one: %s", type(error).__name__
+                )
+                return built
+            self._built = (agent, model)
+            return self._built
 
 
-def make_quote_agent(settings: Settings, factory: sessionmaker[Session]) -> QuoteAgent:
-    return LazyQuoteAgent(lambda: _build_agent(settings, factory))
+def make_quote_agent(
+    settings: Settings,
+    factory: sessionmaker[Session],
+    active: ActiveConfigProvider | None = None,
+) -> QuoteAgent:
+    if active is None:
+        return LazyQuoteAgent(lambda: _build_agent(settings, factory))
+
+    def model_source() -> str:
+        # Replay never calls a model, so an edit of the model must not rebuild its agent.
+        if settings.llm_provider != "openrouter":
+            return settings.llm_model
+        return active.current().config.llm_model
+
+    return LazyQuoteAgent(lambda model: _build_agent(settings, factory, model), model_source)
 
 
 def make_catalog_admin(
