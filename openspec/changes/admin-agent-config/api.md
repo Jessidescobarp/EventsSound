@@ -71,6 +71,10 @@ rate limit, typed confirmation, plan (409 / 422), token, password, token spent, 
 Returns `{ version, config, applied_at }`; the new version is active for every new conversation
 at once. Rollbacks are saved as a NEW version with action `rollback`.
 
+Apply re-reads the caller's account first (a JWT keeps its role until it expires): a deleted or
+demoted user gets 403 `reauth_failed`, the same answer as a wrong password. A bad `note` is
+refused (422) before the token is checked, so it is not spent.
+
 Errors: 403 `token_invalid` / `token_expired` / `token_used` / `token_mismatch` / `reauth_failed`,
 409 `version_conflict`, 422 `typed_confirmation_invalid` / `password_required` / `invalid_config`
 (`fields` may include `note`) / `no_changes` / `unknown_version` / `invalid_request`, 429

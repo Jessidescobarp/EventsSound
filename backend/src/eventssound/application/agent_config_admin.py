@@ -26,6 +26,7 @@ from eventssound.domain.agent_config import (
     AuditEntry,
     StoredAgentConfig,
     validate_config,
+    validate_note,
 )
 from eventssound.domain.errors import InvalidAgentConfig
 
@@ -216,9 +217,12 @@ class AgentConfigAdmin:
         changes: Mapping[str, Any] | None,
         rollback_to_version: int | None,
         base_version: int,
+        note: str | None = None,
     ) -> Plan:
-        """The validated change from the current version. Raises VersionConflict,
-        InvalidAgentConfig, UnknownVersion or NoChanges."""
+        """The validated change from the current version (and its note, so a bad one is refused
+        before a confirmation token is spent). Raises VersionConflict, InvalidAgentConfig,
+        UnknownVersion or NoChanges."""
+        validate_note(note)
         current = self.current()
         if base_version != current.version:
             raise VersionConflict

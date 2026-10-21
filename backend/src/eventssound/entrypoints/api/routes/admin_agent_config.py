@@ -92,7 +92,8 @@ class Refusal:
 def plan_or_refusal(service: AgentConfigAdmin, body: ChangeIn) -> Plan | Refusal:
     """The validated plan, or why the request is refused (field names only, never values)."""
     try:
-        return service.plan(body.changes, body.rollback_to_version, body.base_version)
+        note = body.note if isinstance(body, ApplyIn) else None
+        return service.plan(body.changes, body.rollback_to_version, body.base_version, note)
     except VersionConflict:
         return Refusal(409, "version_conflict")
     except NoChanges:
@@ -253,6 +254,13 @@ def apply_change(request: Request, who: AdminOnly, body: ApplyIn) -> ApplyOut | 
         return refuse(503, "confirmation_unavailable")
     if (limited := over_limit(request, who)) is not None:
         return limited
+    kit: AuthKit = request.app.state.auth
+    try:
+        still_admin = kit.service.is_admin(who.user_id)
+    except RepositoryUnavailable:
+        return refuse(503, "auth_unavailable")
+    if not still_admin:  # demoted or deleted since the token was issued
+        return reject(request, who, 403, "reauth_failed")  # same answer as a wrong password
     if body.typed_confirmation != TYPED_CONFIRMATION:
         return reject(request, who, 422, "typed_confirmation_invalid")
     service = admin_service(request)

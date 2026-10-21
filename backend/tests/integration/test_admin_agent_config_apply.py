@@ -2,6 +2,8 @@
 
 import dataclasses
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import UUID
 
@@ -27,6 +29,7 @@ from eventssound.domain.user import Role, User
 
 APPLY = "/admin/agent-config/apply"
 HISTORY = "/admin/agent-config/history"
+GHOST = User("99999999-9999-4999-8999-999999999999", "ghost@example.com", Role.ADMIN, "h:pw")
 TEXT = f"Bienvenido {SENTINEL.replace('-', '')} amigo"
 
 
@@ -306,3 +309,64 @@ def test_applied_values_never_reach_the_logs_or_the_security_events(
     assert sentinel not in caplog.text and SENTINEL not in caplog.text
     assert "agent config applied version=1 action=save" in caplog.text
     assert sentinel not in repr(client.app.state.security_log.rows)  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("who", [ANA, GHOST], ids=["demoted", "deleted"])
+@pytest.mark.parametrize(
+    "changes", [{"daily_token_cap": 50_000}, {"tone": "formal"}], ids=["technical", "texts-only"]
+)
+def test_a_token_whose_account_is_no_longer_an_admin_cannot_apply(
+    who: User, changes: dict[str, Any]
+) -> None:
+    client, repo, _ = build()
+    stale = dataclasses.replace(who, role=Role.ADMIN)  # the role claim a still-valid JWT carries
+    headers = {"Authorization": f"Bearer {JwtTokenIssuer(SECRET, 60).issue(stale).token}"}
+    request = {"changes": changes, "base_version": 0}
+    token = client.post(PREVIEW, json=request, headers=headers).json()["confirmation_token"]
+    body = {
+        **request,
+        "confirmation_token": token,
+        "typed_confirmation": "APLICAR",
+        "password": "pw",
+    }
+
+    response = apply(client, headers, body)
+
+    assert response.status_code == 403 and response.json()["detail"] == "reauth_failed"
+    assert repo.saves == [] and events(client) == [CONFIG_REJECTED]
+
+
+def test_a_bad_note_is_refused_without_spending_the_token_and_history_is_not_cached() -> None:
+    client, repo, _ = build()
+    headers, body = sign_off(client, {"tone": "formal"})
+
+    bad = apply(client, headers, {**body, "note": "line\nbreak"})
+    good = apply(client, headers, {**body, "note": "fine"})
+
+    assert (bad.status_code, bad.json()["fields"]) == (422, ["note"])
+    assert good.status_code == 200 and len(repo.saves) == 1
+    assert good.headers["Cache-Control"] == "no-store"
+    assert client.get(HISTORY, headers=headers).headers["Cache-Control"] == "no-store"
+
+
+def test_two_simultaneous_applies_with_one_token_save_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, repo, _ = build()
+    headers, body = sign_off(client, {"tone": "formal"})
+    barrier = threading.Barrier(2, timeout=10)
+    read = repo.get_active
+
+    def meet_after_reading():  # noqa: ANN202  (both requests have planned before either goes on)
+        stored = read()
+        barrier.wait()
+        return stored
+
+    monkeypatch.setattr(repo, "get_active", meet_after_reading)
+
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(lambda _: apply(client, headers, body), range(2)))
+
+    assert sorted(r.status_code for r in results) == [200, 403]
+    assert {r.json()["detail"] for r in results if r.status_code == 403} == {"token_used"}
+    assert len(repo.saves) == 1
