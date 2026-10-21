@@ -13,6 +13,7 @@ from eventssound.adapters.usage.rate_limit import InMemoryRateLimiter
 from eventssound.application.agent_config import defaults_from_settings
 from eventssound.application.auth import AuthService
 from eventssound.config import Settings
+from eventssound.domain.user import Role, User
 from eventssound.entrypoints.api.app import create_app
 from eventssound.entrypoints.api.auth_kit import AuthKit
 from fakes import InMemoryAgentConfigRepository, InMemorySecurityLog
@@ -35,16 +36,27 @@ def settings_for(**over: Any) -> Settings:
     return Settings(_env_file=None, **values)  # type: ignore[call-arg]
 
 
+ROOT2 = User("88888888-8888-4888-8888-888888888888", "root2@example.com", Role.ADMIN, "h:pw")
+
+
+class UsersById(Users):
+    def by_email(self, email: str) -> User | None:
+        return {u.email: u for u in (ANA, ROOT, ROOT2)}.get(email)
+
+    def by_id(self, user_id: str) -> User | None:
+        return {u.id: u for u in (ANA, ROOT, ROOT2)}.get(user_id)
+
+
 def build(
-    repo: InMemoryAgentConfigRepository | None = None, **over: Any
+    repo: InMemoryAgentConfigRepository | None = None, *, login_limit: int = 100, **over: Any
 ) -> tuple[TestClient, InMemoryAgentConfigRepository, Settings]:
     repo = repo or InMemoryAgentConfigRepository()
     tokens = JwtTokenIssuer(SECRET, 60)
     kit = AuthKit(
-        AuthService(Users(), Hasher(), tokens, dummy_hash="h:x"),
+        AuthService(UsersById(), Hasher(), tokens, dummy_hash="h:x"),
         tokens,
         InMemoryRateLimiter(100),
-        InMemoryRateLimiter(100),
+        InMemoryRateLimiter(login_limit),
     )
     settings = settings_for(**over)
     app = create_app(

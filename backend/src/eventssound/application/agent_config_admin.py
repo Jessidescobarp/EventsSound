@@ -11,6 +11,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Protocol
+from uuid import UUID
 
 from eventssound.application.agent_config import AgentSettingsSource, defaults_from_settings
 from eventssound.application.confirmation import hash_change
@@ -22,6 +23,8 @@ from eventssound.domain.agent_config import (
     HARD_MAX_DAILY_TOKENS,
     HARD_MAX_RATE_LIMIT_PER_MINUTE,
     AgentConfig,
+    AuditEntry,
+    StoredAgentConfig,
     validate_config,
 )
 from eventssound.domain.errors import InvalidAgentConfig
@@ -103,9 +106,9 @@ class RiskWarning:
 
 
 def failing_field(error: InvalidAgentConfig) -> str | None:
-    """The config field a validation error names (messages start with it), never a value."""
+    """The config field (or `note`) a validation error names (messages start with it)."""
     word = str(error).split(" ", 1)[0]
-    return word if word in FIELDS else None
+    return word if word in (*FIELDS, "note") else None
 
 
 def risk_warnings(plan: Plan, model: ModelInUse) -> list[RiskWarning]:
@@ -212,3 +215,16 @@ class AgentConfigAdmin:
         if not diff:
             raise NoChanges
         return Plan(action, base_version, current.config, new, diff)  # type: ignore[arg-type]
+
+    def apply(self, plan: Plan, user_id: str, note: str | None) -> StoredAgentConfig:
+        """Save the planned change as the next version (VersionConflict if it moved meanwhile)."""
+        try:
+            author: UUID | None = UUID(user_id)
+        except ValueError:
+            author = None
+        return self._repository.save(
+            plan.new, base_version=plan.base_version, user_id=author, note=note, action=plan.action
+        )
+
+    def history(self, limit: int) -> list[AuditEntry]:
+        return self._repository.audit(limit)

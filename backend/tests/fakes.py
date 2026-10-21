@@ -136,6 +136,8 @@ class InMemoryAgentConfigRepository:
 
     def __init__(self, broken: bool = False) -> None:
         self.versions: list = []
+        self.audit_rows: list = []
+        self.saves: list = []
         self.broken = broken
         self.reads = 0
 
@@ -163,3 +165,28 @@ class InMemoryAgentConfigRepository:
         if self.broken:
             raise RepositoryUnavailable
         return list(reversed(self.versions))[:limit]
+
+    def save(self, config, *, base_version, user_id, note, action="save"):
+        """Like the adapter: the next version, or VersionConflict when the base is not current."""
+        from eventssound.application.errors import VersionConflict
+        from eventssound.domain.agent_config import AuditEntry, validate_note
+
+        if self.broken:
+            raise RepositoryUnavailable
+        note = validate_note(note)  # like the adapter, before writing
+        if base_version != len(self.versions):
+            raise VersionConflict
+        old = self.active.config.to_dict() if self.active else {}
+        self.put(config, user_id)
+        stored = self.versions[-1]
+        diff = {k: [old.get(k), v] for k, v in config.to_dict().items() if old.get(k) != v}
+        self.audit_rows.append(
+            AuditEntry(stored.version, stored.created_at, user_id, action, diff, note)
+        )
+        self.saves.append((config, base_version, user_id, note, action))
+        return stored
+
+    def audit(self, limit: int):
+        if self.broken:
+            raise RepositoryUnavailable
+        return list(reversed(self.audit_rows))[:limit]

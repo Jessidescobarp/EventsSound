@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 
 CHAT_REFUSED = "chat_refused"  # the agent refused: off-topic or injection attempt
 LOGIN_FAILED = "login_failed"
-# Only these two kinds are stored: both are bounded (by the block and by the login limiters).
+# Rejected attempts to change the agent configuration. Only a signed-in admin reaches them, and
+# preview/apply are rate limited per admin, so they stay bounded.
+CONFIG_REJECTED = "config_rejected"  # bad token, typed confirmation, conflict, invalid change
+CONFIG_REAUTH_FAILED = "config_reauth_failed"  # wrong password on a technical change
+# Only these kinds are stored: all are bounded (by the block and by the login and admin limiters).
 # Blocked and rate-limited requests are only logged, so a flood cannot grow the table.
 
 REFUSED_LIMIT = 5

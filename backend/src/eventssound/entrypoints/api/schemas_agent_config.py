@@ -2,7 +2,7 @@
 
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictInt, model_validator
 
 
 class AgentConfigOut(BaseModel):
@@ -75,3 +75,27 @@ class PreviewOut(BaseModel):
     max_daily_cost_estimate_micro_usd: int
     confirmation_token: str
     expires_at: str
+
+
+class ApplyIn(ChangeIn):
+    confirmation_token: str = Field(min_length=1, max_length=2000)
+    typed_confirmation: str = Field(max_length=32, description='Exactly "APLICAR".')
+    password: SecretStr | None = Field(
+        default=None, max_length=256, description="Required when requires_password was true."
+    )
+    note: str | None = Field(default=None, max_length=200)
+
+
+class ApplyOut(BaseModel):
+    version: int
+    config: AgentConfigOut
+    applied_at: str
+
+
+class HistoryItemOut(BaseModel):
+    version: int
+    created_at: str
+    created_by: str | None = Field(description="User id of the editor.")
+    note: str | None
+    action: Literal["save", "rollback"]
+    diff: dict[str, list[Any]] = Field(description="Field -> [old, new].")
