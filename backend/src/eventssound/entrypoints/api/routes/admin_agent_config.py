@@ -5,7 +5,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 
 from eventssound.application.agent_config_admin import (
@@ -33,7 +33,13 @@ from eventssound.entrypoints.api.schemas_agent_config import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["Agent configuration"])
+
+def no_store(response: Response) -> None:
+    """Success bodies carry the config and, for a preview, the confirmation token."""
+    response.headers["Cache-Control"] = "no-store"
+
+
+router = APIRouter(prefix="/admin", tags=["Agent configuration"], dependencies=[Depends(no_store)])
 
 AdminOnly = Annotated[Principal, Depends(require_role(Role.ADMIN))]
 MESSAGES = {**AUTH_ERRORS, **CONFIG_ERRORS}
@@ -112,6 +118,7 @@ def get_agent_config(request: Request, who: AdminOnly) -> AgentConfigViewOut | J
             "ceilings": CEILINGS,
             "allowed_models": list(service.allowed_models),
             "model_in_use": asdict(service.model_in_use(current.config)),
+            "defaults_out_of_bounds": service.out_of_bounds(current.config),
             "updated_at": current.updated_at.isoformat() if current.updated_at else None,
             "updated_by": current.updated_by,
         }
@@ -146,15 +153,18 @@ def preview_change(request: Request, who: AdminOnly, body: ChangeIn) -> PreviewO
     plan, refusal = plan_or_refusal(service, body)
     if plan is None:
         return refusal  # type: ignore[return-value]
+    estimate = service.max_daily_cost_estimate(plan.new)
     token, expires_at = tokens.issue(who.user_id, plan.base_version, plan.digest)
     return PreviewOut.model_validate(
         {
             "action": plan.action,
             "base_version": plan.base_version,
             "diff": plan.diff,
-            "warnings": [asdict(w) for w in risk_warnings(plan, service.model_in_use(plan.new))],
+            "warnings": [
+                asdict(w) for w in risk_warnings(plan, service.model_in_use(plan.new), estimate)
+            ],
             "requires_password": plan.requires_password,
-            "max_daily_cost_estimate_micro_usd": service.max_daily_cost_estimate(plan.new),
+            "max_daily_cost_estimate_micro_usd": estimate,
             "confirmation_token": token,
             "expires_at": datetime.fromtimestamp(expires_at, UTC).isoformat(),
         }

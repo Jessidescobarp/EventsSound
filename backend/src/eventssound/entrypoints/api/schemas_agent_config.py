@@ -2,7 +2,10 @@
 
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+
+MAX_CHANGE_KEYS = 12
+MAX_CHANGE_STRING = 1000
 
 
 class AgentConfigOut(BaseModel):
@@ -40,6 +43,10 @@ class AgentConfigViewOut(BaseModel):
     ceilings: CeilingsOut
     allowed_models: list[str]
     model_in_use: ModelInUseOut
+    defaults_out_of_bounds: list[str] = Field(
+        description="Fields of the active config outside the validation bounds (version 0 can "
+        "carry environment values such as a cap of 0): a change must fix all of them at once."
+    )
     updated_at: str | None
     updated_by: str | None = Field(description="User id of the last editor.")
 
@@ -52,6 +59,18 @@ class ChangeIn(BaseModel):
     changes: dict[str, Any] | None = Field(default=None, description="Fields to change.")
     rollback_to_version: StrictInt | None = Field(default=None, ge=1)
     base_version: StrictInt = Field(ge=0, description="The version the editor started from.")
+
+    @field_validator("changes")
+    @classmethod
+    def _bounded_changes(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Cap the size before any normalization runs on it (a config has 9 fields)."""
+        if value is not None and (
+            len(value) > MAX_CHANGE_KEYS
+            or any(len(k) > 64 for k in value)
+            or any(isinstance(v, str) and len(v) > MAX_CHANGE_STRING for v in value.values())
+        ):
+            raise ValueError("changes are too large")
+        return value
 
     @model_validator(mode="after")
     def _exactly_one_change(self) -> Self:
@@ -72,6 +91,8 @@ class PreviewOut(BaseModel):
     diff: dict[str, list[Any]] = Field(description="Field -> [old, new].")
     warnings: list[WarningOut]
     requires_password: bool
-    max_daily_cost_estimate_micro_usd: int
+    max_daily_cost_estimate_micro_usd: int | None = Field(
+        description="Worst case per day; null when the price of the selected model is unknown."
+    )
     confirmation_token: str
     expires_at: str

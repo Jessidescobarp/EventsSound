@@ -14,11 +14,17 @@ token). Error bodies are `{detail: <code>, message: <Spanish>}`; 422 `invalid_co
   allowed_models: [...],
   model_in_use: { provider, model, status: "active"|"disabled"|"replay",
                   input_price_per_mtok, output_price_per_mtok, cost_cap_applies },
+  defaults_out_of_bounds: [...], // field names of `config` that fail validation (see below)
   updated_at, updated_by }       // null while version is 0; updated_by is a user id
 ```
 
 With version 0 the config comes from the environment and may sit outside the ceilings (for
 example caps of 0 = unmetered): a form must not preload and resubmit those values blindly.
+`defaults_out_of_bounds` lists every such field. Any change at version 0 is validated as a whole,
+so it must fix ALL of them at once; otherwise the 422 `fields` names the first one still invalid.
+
+All success responses carry `Cache-Control: no-store`. `changes` accepts at most 12 keys and 1000
+characters per string value (else 422 `invalid_request`).
 
 ## POST /admin/agent-config/preview
 
@@ -29,12 +35,16 @@ Body: `{ changes: {<partial config>}, base_version }` or `{ rollback_to_version,
 { action: "save"|"rollback", base_version, diff: { <field>: [old, new] },
   warnings: [{ code, severity: "info"|"warning"|"danger", message_es }],
   requires_password,             // true when llm_model, a daily cap or the rate limit changes
-  max_daily_cost_estimate_micro_usd,
+  max_daily_cost_estimate_micro_usd,  // int, or null when the price is unknown (never 0 then)
   confirmation_token, expires_at }
 ```
 
+The only configured prices are the environment model's: the estimate is null when `llm_model`
+differs from it or the prices are 0 on a real provider (the replay provider is 0). A technical
+change with a null estimate adds `cost_unknown` ("danger" when the model changes).
+
 Warning codes: `cap_raised`, `cap_raised_2x`, `model_changed`, `rate_limit_raised`,
-`texts_changed`, `behavior_changed`, `cost_cap_not_binding`, `immediate_effect`.
+`texts_changed`, `behavior_changed`, `cost_cap_not_binding`, `cost_unknown`, `immediate_effect`.
 
 Errors: 409 `version_conflict` (`base_version` is not the current one), 422 `invalid_config`,
 `no_changes`, `unknown_version` (rollback target not among the last 200 versions), `invalid_request`
