@@ -10,6 +10,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints, field_validator
 
+from eventssound.application.spanish_facts import parse_clock_time
+
 # Closed sets as `Literal`: the JSON schema sent to the model becomes an `enum`. An unanchored
 # `pattern="quote|other"` accepted any superstring and let the model write `"quote,`.
 Intent = Literal["quote", "other"]
@@ -93,6 +95,14 @@ class Extraction(_Strict):
             date.fromisoformat(value)
         except ValueError:
             raise ValueError("date must be a real calendar date") from None
+        return value
+
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def _normalize_time(cls, value: Any) -> Any:
+        """Weak models answer "8 PM" or "20:00:00": normalize to HH:MM in code, not the prompt."""
+        if isinstance(value, str) and not _TIME.fullmatch(value):
+            return parse_clock_time(value) or value
         return value
 
     @field_validator("locality")

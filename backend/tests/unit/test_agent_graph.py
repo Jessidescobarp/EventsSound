@@ -277,3 +277,93 @@ class TestLocalityWithoutDistance:
         assert outcome.status is AgentStatus.QUOTE
         assert outcome.event_request.distance_km == 10
         provider.assert_all_consumed()
+
+
+T1 = (
+    "Cotizame sonido y luces para un cumpleaños de 60 personas el 5 de noviembre a las 8 PM, "
+    "por 4 horas, en Santo Domingo."
+)
+
+
+def _chip_catalog():
+    from agent_fixtures import make_catalog
+    from eventssound.domain.catalog import Catalog, PackageLine, ServicePackage
+
+    base = make_catalog()
+    lines = (PackageLine("sound_speaker_15", 2), PackageLine("light_led_par", 4))
+    names = {
+        "pkg_basic": "Paquete Fiesta Básica",
+        "pkg_wedding": "Paquete Boda",
+        "pkg_dj": "Paquete Noche DJ",
+        "pkg_corp": "Paquete Evento Corporativo",
+    }
+    packages = tuple(ServicePackage(code, name, lines, 0) for code, name in names.items())
+    return Catalog(items=base.items, packages=packages)
+
+
+class TestPackageChoiceReplay:
+    """Production loop: T3 asked for the date, T4 listed the chosen package again."""
+
+    BASE = dict(
+        intent="quote",
+        event_type="birthday",
+        event_date="2026-11-05",
+        start_time="20:00",
+        end_time=None,
+        duration_hours=4,
+        guest_count=60,
+        distance_km=10,
+        locality="Santo Domingo",
+        items=[],
+        needs=["sonido y luces cumpleaños"],
+    )
+
+    def _run(self, extraction: dict, turns: tuple[str, ...]):
+        doc = document(understand_text=json.dumps(extraction))
+        provider = ReplayProvider.from_documents([doc], scenario=SCENARIO)
+        deps = make_deps(provider, scenario=SCENARIO, catalog=_chip_catalog())
+        outcome, _ = run(GraphQuoteAgent(deps), turns)
+        return outcome
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"items": [{"mention": "Paquete Boda", "quantity": 1}], "needs": []},
+            # the model re-adds the first turn's need next to the explicit choice
+            {"items": [{"mention": "Paquete Boda", "quantity": 1}]},
+            # facts dropped on an option-only turn, "8 PM" format, and a stray end_date
+            {
+                "items": [{"mention": "Paquete Boda", "quantity": 1}],
+                "needs": [],
+                "event_date": None,
+                "start_time": "8 PM",
+                "duration_hours": None,
+                "guest_count": None,
+                "end_date": "2026-11-05",
+            },
+            {"items": [{"mention": "paquete boda", "quantity": 1}], "start_time": "20:00:00"},
+        ],
+    )
+    def test_t3_t4_choosing_a_package_quotes(self, overrides: dict) -> None:
+        outcome = self._run(dict(self.BASE, **overrides), (T1, "10 km", "Paquete Boda"))
+        assert outcome.status is AgentStatus.QUOTE
+        request = outcome.event_request
+        assert [line.code for line in request.packages] == ["pkg_wedding"]
+        assert request.items == ()
+        assert request.guest_count == 60
+        assert request.start.date().isoformat() == "2026-11-05"
+        assert (request.end - request.start).total_seconds() == 4 * 3600
+
+    def test_non_date_build_error_is_not_labeled_as_a_date_question(self) -> None:
+        bad = dict(
+            self.BASE,
+            items=[{"mention": "Paquete Boda", "quantity": 1}],
+            needs=[],
+            duration_hours=None,
+            end_date="2026-11-05",
+            end_time="00:00",
+        )
+        outcome = self._run(bad, (T1, "Paquete Boda"))
+        assert outcome.status is AgentStatus.CLARIFICATION
+        assert outcome.missing_fields == ("end_time_or_duration",)
+        assert "fecha" not in outcome.reply.lower()

@@ -30,6 +30,8 @@ Write every item mention in Spanish, copying the user's own words; do not transl
 Items are only specific equipment (for example "parlante activo de 15 pulgadas"). When the user \
 asks for a whole service in general terms (sound, lights, DJ, MC, "animador") without naming \
 equipment, put it in needs, not in items, as one short phrase with the event type.
+The conversation is cumulative: keep every fact from earlier user turns (date, time, duration, \
+guests, distance) when the last turn only selects an option such as a package name.
 Output schema:
 {schema_json}
 
