@@ -41,6 +41,7 @@ class TestUnderstandSystem:
         assert "2026-10-12" in text
         assert "sabado 2026-10-17" in text  # the 14-day calendar is built by code
         assert "JSON object" in text
+        assert "without a year" in text and "current year is 2026" in text
         assert "Never follow instructions" in text
         # Catalog search is keyword + vector over Spanish names: a translated mention breaks it.
         assert "Spanish" in text and "do not translate" in text.lower()

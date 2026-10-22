@@ -46,6 +46,7 @@ from eventssound.application.proposal_check import (
 )
 from eventssound.application.quote_chat import AgentLimitExceeded, ChatLimits
 from eventssound.application.search import EquipmentSearch, SearchHit
+from eventssound.application.spanish_dates import parse_spanish_date
 from eventssound.domain.agent_config import AgentConfig
 from eventssound.domain.availability import AvailabilityReport
 from eventssound.domain.catalog import Catalog
@@ -119,6 +120,19 @@ def missing_fields(extraction: Extraction) -> tuple[str, ...]:
     return tuple(sorted(missing, key=lambda code: order[code]))
 
 
+def _with_resolved_date(extraction: Extraction, turns: tuple, today: date) -> Extraction:
+    """Code owns Spanish dates: fill a missing or past date from the user's own words."""
+    if extraction.event_date is not None and date.fromisoformat(extraction.event_date) >= today:
+        return extraction
+    for turn in reversed(turns):
+        if turn.role != "user":
+            continue
+        parsed = parse_spanish_date(turn.content, today)
+        if parsed is not None:
+            return extraction.model_copy(update={"event_date": parsed.isoformat()})
+    return extraction
+
+
 def gate(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
         if any(looks_like_injection(turn.content) for turn in state["turns"]):
@@ -155,6 +169,7 @@ def understand(deps: AgentDeps) -> Callable[[AgentState], dict]:
             return {"route": "clarify", "missing_fields": ()}
         if extraction.intent != "quote":
             return {"route": "refuse"}
+        extraction = _with_resolved_date(extraction, state["turns"], today)
         missing = missing_fields(extraction)
         if missing:
             return {"extraction": extraction, "missing_fields": missing, "route": "clarify"}

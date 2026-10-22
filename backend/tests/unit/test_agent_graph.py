@@ -5,6 +5,8 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from agent_fixtures import make_deps
 from eventssound.adapters.agent.graph import GraphQuoteAgent
 from eventssound.adapters.llm.replay import ReplayProvider
@@ -62,11 +64,12 @@ def make_agent(doc: dict | None = None):
     return GraphQuoteAgent(deps), provider
 
 
-def run(agent, turn: str, now: datetime = NOW):
+def run(agent, turn: str | tuple[str, ...], now: datetime = NOW):
     meter = UsageMeter()
+    texts = (turn,) if isinstance(turn, str) else turn
     outcome = agent.run(
         AgentInput(
-            turns=(ChatTurn("user", turn),),
+            turns=tuple(ChatTurn("user", text) for text in texts),
             now=now,
             request_id="req-test",
             meter=meter,
@@ -154,6 +157,26 @@ class TestClarification:
         assert "Parlante activo de 15 pulgadas" in outcome.reply
         assert "Parlante activo de 15 pulgadas" in outcome.options
         assert outcome.reply_source == "static"
+        provider.assert_all_consumed()
+
+
+class TestSpanishDateWithoutYear:
+    @pytest.mark.parametrize("llm_date", [None, "2025-12-15"])
+    def test_weak_model_date_is_recovered_from_the_user_text(self, llm_date: str | None) -> None:
+        extraction = dict(EXTRACTION, event_date=llm_date, start_time="17:00", end_time=None)
+        extraction["duration_hours"] = 5
+        doc = document(understand_text=json.dumps(extraction))
+        agent, provider = make_agent(doc)
+        outcome, _ = run(
+            agent,
+            (
+                "boda de 120 personas el 15 de diciembre en Santo Domingo, DJ por 5 horas",
+                "5 PM",
+            ),
+        )
+        assert outcome.status is AgentStatus.QUOTE
+        assert outcome.event_request is not None
+        assert outcome.event_request.start.date().isoformat() == "2026-12-15"
         provider.assert_all_consumed()
 
 

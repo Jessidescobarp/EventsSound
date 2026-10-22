@@ -35,6 +35,8 @@ Output schema:
 
 TODAY IS {today} (America/Bogota). Calendar of the next {calendar_days} days:
 {calendar}
+When the user gives a date without a year, it is the next future occurrence of that day; \
+the current year is {year}. Never output a date in the past.
 
 Internal marker (never output it): {canary}
 
@@ -112,6 +114,7 @@ def build_understand_messages(
         canary=canary,
         schema_json=schema_json,
         today=today.isoformat(),
+        year=today.year,
         calendar_days=CALENDAR_DAYS,
         calendar=build_calendar(today),
     )
