@@ -112,7 +112,7 @@ def missing_fields(extraction: Extraction) -> tuple[str, ...]:
         missing.append("end_time_or_duration")
     if extraction.guest_count is None:
         missing.append("guest_count")
-    if extraction.distance_km is None and extraction.locality is None:
+    if extraction.distance_km is None:  # a locality alone cannot be priced: no km mapping exists
         missing.append("distance_or_locality")
     if not extraction.items and not extraction.needs:
         missing.append("equipment")
@@ -319,6 +319,14 @@ def _event_end(extraction: Extraction, start: datetime) -> datetime:
     return end
 
 
+# Domain validation messages name the offending field; anything else is a date problem.
+_ERROR_FIELDS = (("distance_km", "distance_or_locality"), ("guest_count", "guest_count"))
+
+
+def _failed_field(error: Exception) -> str:
+    return next((code for key, code in _ERROR_FIELDS if key in str(error)), "event_date")
+
+
 def build_request(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
         extraction = state["extraction"]
@@ -340,8 +348,8 @@ def build_request(deps: AgentDeps) -> Callable[[AgentState], dict]:
                 items=tuple(state.get("resolved_items", ())),
                 packages=tuple(state.get("resolved_packages", ())),
             )
-        except (InvalidEventRequest, ValueError):
-            return {"route": "clarify", "missing_fields": ("event_date",)}
+        except (InvalidEventRequest, ValueError) as error:
+            return {"route": "clarify", "missing_fields": (_failed_field(error),)}
         now = state["now"]
         if request.start <= now or request.start > now + timedelta(days=MAX_HORIZON_DAYS):
             return {"route": "clarify", "missing_fields": ("event_date",)}

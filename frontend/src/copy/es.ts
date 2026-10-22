@@ -245,7 +245,7 @@ export const es = {
       start_time: "La hora de inicio",
       end_time_or_duration: "La hora de fin o la duración",
       guest_count: "El número de invitados",
-      distance_or_locality: "La ciudad o la distancia desde Bogotá",
+      distance_or_locality: "La distancia aproximada en km desde Bogotá",
       equipment: "Los equipos que necesitas",
     } as Record<string, string>,
   },

@@ -8,6 +8,7 @@ import pytest
 
 from agent_fixtures import make_deps
 from eventssound.adapters.agent.nodes import (
+    _failed_field,
     build_request,
     check_availability,
     clarify,
@@ -29,7 +30,13 @@ from eventssound.application.llm import LlmResponse, LlmTimeout, TokenUsage
 from eventssound.application.messages_es import VIEW_ALL_OPTION
 from eventssound.application.quote_chat import ChatTurn, UsageMeter
 from eventssound.domain.availability import AvailabilityReport
-from eventssound.domain.event_request import EventRequest, EventType, RequestedLine, VenueType
+from eventssound.domain.event_request import (
+    EventRequest,
+    EventType,
+    InvalidEventRequest,
+    RequestedLine,
+    VenueType,
+)
 from eventssound.domain.pricing import Quote
 
 BOGOTA = ZoneInfo("America/Bogota")
@@ -129,9 +136,9 @@ class TestMissingFields:
         ex = extraction(end_time=None, duration_hours=4)
         assert "end_time_or_duration" not in missing_fields(ex)
 
-    def test_locality_covers_distance(self) -> None:
+    def test_locality_alone_does_not_cover_distance(self) -> None:
         ex = extraction(distance_km=None, locality="Chia")
-        assert "distance_or_locality" not in missing_fields(ex)
+        assert "distance_or_locality" in missing_fields(ex)
 
     def test_needs_cover_equipment(self) -> None:
         ex = extraction(items=[], needs=["sonido"])
@@ -447,6 +454,37 @@ class TestBuildRequest:
             )
         )
         assert out["event_request"].end.date() == date(2026, 10, 18)
+
+    @pytest.mark.parametrize(
+        ("overrides", "field"),
+        [
+            ({"distance_km": None, "locality": "Santo Domingo"}, "distance_or_locality"),
+        ],
+    )
+    def test_validation_failure_asks_for_the_offending_field(
+        self, overrides: dict, field: str
+    ) -> None:
+        deps = make_deps(ScriptedProvider([]))
+        out = build_request(deps)(
+            state(
+                extraction=extraction(**overrides),
+                resolved_items=(RequestedLine("sound_mixer_16", 2),),
+                resolved_packages=(),
+            )
+        )
+        assert out["route"] == "clarify"
+        assert out["missing_fields"] == (field,)
+
+    @pytest.mark.parametrize(
+        ("message", "field"),
+        [
+            ("distance_km must be within 0..500", "distance_or_locality"),
+            ("guest_count must be within 1..9", "guest_count"),
+            ("end must be after start", "event_date"),
+        ],
+    )
+    def test_domain_error_maps_to_its_field(self, message: str, field: str) -> None:
+        assert _failed_field(InvalidEventRequest(message)) == field
 
     def test_past_start_clarifies(self) -> None:
         deps = make_deps(ScriptedProvider([]))

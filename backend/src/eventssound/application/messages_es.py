@@ -29,7 +29,7 @@ _CLARIFICATION_FIELDS = {
     "start_time": "A que hora empieza?",
     "end_time_or_duration": "A que hora termina o cuantas horas dura?",
     "guest_count": "Cuantos invitados habra?",
-    "distance_or_locality": "En que ciudad o a cuantos kilometros de Bogota es el evento?",
+    "distance_or_locality": "A cuantos kilometros de Bogota (aprox.) queda el lugar del evento?",
     "equipment": "Que equipos necesitas?",
 }
 
