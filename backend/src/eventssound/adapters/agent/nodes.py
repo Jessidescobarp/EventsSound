@@ -5,6 +5,7 @@ The only LLM calls happen in `understand` and `draft`; everything else is determ
 """
 
 import json
+import logging
 import secrets
 import time
 from collections.abc import Callable
@@ -47,6 +48,12 @@ from eventssound.application.proposal_check import (
 from eventssound.application.quote_chat import AgentLimitExceeded, ChatLimits
 from eventssound.application.search import EquipmentSearch, SearchHit
 from eventssound.application.spanish_dates import parse_spanish_date
+from eventssound.application.spanish_facts import (
+    fold,
+    parse_clock_time,
+    parse_duration_hours,
+    parse_guest_count,
+)
 from eventssound.domain.agent_config import AgentConfig
 from eventssound.domain.availability import AvailabilityReport
 from eventssound.domain.catalog import Catalog
@@ -72,6 +79,7 @@ EVENT_WORD_ES = {
     "concert": "concierto",
 }
 SEARCH_LIMIT = 5
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +141,26 @@ def _with_resolved_date(extraction: Extraction, turns: tuple, today: date) -> Ex
     return extraction
 
 
+def _with_carried_facts(extraction: Extraction, turns: tuple) -> Extraction:
+    """Fill facts the model dropped from earlier user turns; never override a value it gave.
+
+    The agent is stateless, so a turn that only picks an option ("Paquete Boda") makes the model
+    forget the time, duration and guest count stated before. Latest user turn wins.
+    """
+    user_texts = [turn.content for turn in reversed(turns) if turn.role == "user"]
+    update: dict = {}
+    if extraction.start_time is None:
+        update["start_time"] = next((t for x in user_texts if (t := parse_clock_time(x))), None)
+    if extraction.end_time is None and extraction.duration_hours is None:
+        update["duration_hours"] = next(
+            (h for x in user_texts if (h := parse_duration_hours(x))), None
+        )
+    if extraction.guest_count is None:
+        update["guest_count"] = next((g for x in user_texts if (g := parse_guest_count(x))), None)
+    update = {key: value for key, value in update.items() if value is not None}
+    return extraction.model_copy(update=update) if update else extraction
+
+
 def gate(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
         if any(looks_like_injection(turn.content) for turn in state["turns"]):
@@ -170,6 +198,7 @@ def understand(deps: AgentDeps) -> Callable[[AgentState], dict]:
         if extraction.intent != "quote":
             return {"route": "refuse"}
         extraction = _with_resolved_date(extraction, state["turns"], today)
+        extraction = _with_carried_facts(extraction, state["turns"])
         missing = missing_fields(extraction)
         if missing:
             return {"extraction": extraction, "missing_fields": missing, "route": "clarify"}
@@ -218,8 +247,17 @@ def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
         extraction = state["extraction"]
         catalog = deps.load_catalog()
+        by_name = {fold(i.name): i.code for i in catalog.items}
+        by_name |= {fold(p.name): p.code for p in catalog.packages}
+        package_codes = {p.code for p in catalog.packages}
+        # A mention that is exactly a catalog name needs no search ranking to be understood.
+        exact = [by_name.get(fold(m.mention)) for m in extraction.items]
         queries = [mention.mention for mention in extraction.items]
         needs_query = " ".join(extraction.needs).strip() if extraction.needs else None
+        if any(code in package_codes for code in exact):
+            # The user named a package: the vague `needs` the model keeps re-extracting from the
+            # first turn ("sonido y luces") is that same intent, so it must not ask again.
+            needs_query = None
         event_word = EVENT_WORD_ES.get(extraction.event_type or "", "")
         if needs_query:
             queries.append(f"{event_word} {needs_query}".strip())
@@ -228,11 +266,15 @@ def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
         resolved_items: list[RequestedLine] = []
         ambiguous: list[tuple[str, tuple[str, ...]]] = []
         unresolved: list[str] = []
-        for mention, result in zip(extraction.items, results, strict=False):
+        resolved_packages: list[RequestedLine] = []
+        for mention, result, exact_code in zip(extraction.items, results, exact, strict=False):
             codes = list(dict.fromkeys(hit.code for hit in result.hits))
-            if len(codes) == 1 or result.confident_code is not None:
-                code = result.confident_code or codes[0]
-                resolved_items.append(RequestedLine(code, mention.quantity))
+            if exact_code is not None or len(codes) == 1 or result.confident_code is not None:
+                code = exact_code or result.confident_code or codes[0]
+                if code in package_codes:  # a package is a package line, never an item line
+                    resolved_packages.append(RequestedLine(code, 1))
+                else:
+                    resolved_items.append(RequestedLine(code, mention.quantity))
             elif codes:
                 ambiguous.append(
                     (
@@ -242,7 +284,6 @@ def resolve_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
                 )
             else:
                 unresolved.append(mention.mention)
-        resolved_packages: list[RequestedLine] = []
         if len(ambiguous) + len(unresolved) >= BROAD_WISH_MIN and needs_query is None:
             # Several vague mentions ("sonido, luces, DJ") describe a whole service: when the
             # search puts a package first for them plus the event type, that package covers them.
@@ -303,9 +344,7 @@ def clarify_items(deps: AgentDeps) -> Callable[[AgentState], dict]:
 
 def _event_end(extraction: Extraction, start: datetime) -> datetime:
     tzinfo = start.tzinfo
-    if extraction.end_date is not None:
-        if extraction.end_time is None:
-            raise InvalidEventRequest("end_date requires end_time")
+    if extraction.end_date is not None and extraction.end_time is not None:
         return datetime.combine(
             date.fromisoformat(extraction.end_date),
             dtime.fromisoformat(extraction.end_time),
@@ -319,12 +358,19 @@ def _event_end(extraction: Extraction, start: datetime) -> datetime:
     return end
 
 
-# Domain validation messages name the offending field; anything else is a date problem.
-_ERROR_FIELDS = (("distance_km", "distance_or_locality"), ("guest_count", "guest_count"))
+# Domain validation messages name the offending field. Anything unlisted gets the generic
+# "rephrase" clarification (None): it must never be mislabeled as a date question.
+_ERROR_FIELDS = (
+    ("distance_km", "distance_or_locality"),
+    ("guest_count", "guest_count"),
+    ("end must be after start", "end_time_or_duration"),
+    ("at most 31 days", "end_time_or_duration"),
+    ("a request needs", "equipment"),
+)
 
 
-def _failed_field(error: Exception) -> str:
-    return next((code for key, code in _ERROR_FIELDS if key in str(error)), "event_date")
+def _failed_field(error: Exception) -> str | None:
+    return next((code for key, code in _ERROR_FIELDS if key in str(error)), None)
 
 
 def build_request(deps: AgentDeps) -> Callable[[AgentState], dict]:
@@ -349,7 +395,9 @@ def build_request(deps: AgentDeps) -> Callable[[AgentState], dict]:
                 packages=tuple(state.get("resolved_packages", ())),
             )
         except (InvalidEventRequest, ValueError) as error:
-            return {"route": "clarify", "missing_fields": (_failed_field(error),)}
+            logger.info("build_request rejected the extraction: %s", type(error).__name__)
+            field = _failed_field(error)
+            return {"route": "clarify", "missing_fields": (field,) if field else ()}
         now = state["now"]
         if request.start <= now or request.start > now + timedelta(days=MAX_HORIZON_DAYS):
             return {"route": "clarify", "missing_fields": ("event_date",)}

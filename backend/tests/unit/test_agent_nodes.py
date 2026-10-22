@@ -480,10 +480,12 @@ class TestBuildRequest:
         [
             ("distance_km must be within 0..500", "distance_or_locality"),
             ("guest_count must be within 1..9", "guest_count"),
-            ("end must be after start", "event_date"),
+            ("end must be after start", "end_time_or_duration"),
+            ("a request needs 1..40 lines", "equipment"),
+            ("something unexpected", None),  # generic rephrase, never a date question
         ],
     )
-    def test_domain_error_maps_to_its_field(self, message: str, field: str) -> None:
+    def test_domain_error_maps_to_its_field(self, message: str, field: str | None) -> None:
         assert _failed_field(InvalidEventRequest(message)) == field
 
     def test_past_start_clarifies(self) -> None:

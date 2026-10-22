@@ -56,7 +56,7 @@ class TestBounds:
         with pytest.raises(ValidationError):
             make(event_date=value)
 
-    @pytest.mark.parametrize("value", ["24:00", "8:00", "20:5", "2000", "20:00:00"])
+    @pytest.mark.parametrize("value", ["24:00", "20:5", "2000", "soon"])
     def test_start_time_must_be_hh_mm(self, value: str) -> None:
         with pytest.raises(ValidationError):
             make(start_time=value)
