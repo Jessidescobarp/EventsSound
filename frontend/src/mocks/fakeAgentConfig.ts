@@ -18,6 +18,7 @@ interface Stored {
 const CEILINGS = { max_daily_tokens: 1_000_000, max_daily_cost_micro_usd: 10_000_000, max_rate_limit_per_minute: 60 };
 const MODELS = ["demo/replay", "vendor/model-a", "vendor/model-b", "vendor/model-c:free"];
 const isFree = (model: string) => model.endsWith(":free");
+const isPaid = (model: string) => !isFree(model) && model !== "demo/replay";
 const INITIAL: AgentConfig = {
   tone: "cercano",
   off_topic_policy: "strict",
@@ -82,7 +83,7 @@ function diffOf(patch: Partial<AgentConfig>, from: AgentConfig): Diff {
   return diff;
 }
 
-function warningsOf(diff: Diff, estimate: number | null, free = false) {
+function warningsOf(diff: Diff, estimate: number | null, free = false, paid = false) {
   const w = (code: string, severity: "info" | "warning" | "danger", message_es: string) => ({ code, severity, message_es });
   const raised = (k: string) => k in diff && (diff[k]![1] as number) > (diff[k]![0] as number);
   const out = [w("immediate_effect", "info", "Este cambio afecta cada conversación nueva de inmediato y puede aumentar el costo.")];
@@ -91,6 +92,7 @@ function warningsOf(diff: Diff, estimate: number | null, free = false) {
   if ("llm_model" in diff) out.push(w("model_changed", "danger", "Cambia el modelo del agente: la calidad y el costo pueden variar."));
   if (TEXTS.some((k) => k in diff)) out.push(w("texts_changed", "info", "Cambian los textos que ven los clientes."));
   if ("tone" in diff || "off_topic_policy" in diff) out.push(w("behavior_changed", "warning", "Cambia el tono o la política de temas fuera de alcance."));
+  if (paid) out.push(w("paid_model_cost", "warning", "El modelo seleccionado es de pago: su gasto cuenta contra el tope diario de costo."));
   if (free) out.push(w("free_model_limits", "info", "Los modelos gratuitos pueden tener límites de uso del proveedor, menor disponibilidad y calidad distinta; el tope de costo no aplica, el tope de tokens sí."));
   if (estimate === null && ("llm_model" in diff || raised("daily_cost_cap_micro_usd"))) out.push(w("cost_unknown", "warning", "No se puede estimar el costo del modelo seleccionado."));
   return out;
@@ -113,6 +115,7 @@ function view() {
     ceilings: CEILINGS,
     allowed_models: MODELS,
     free_models: MODELS.filter(isFree),
+    paid_models: MODELS.filter(isPaid),
     model_in_use: MODEL_IN_USE,
     defaults_out_of_bounds: [],
     updated_at: history[0]?.at ?? null,
@@ -148,7 +151,7 @@ export function agentConfigRoute(pathname: string, init: RequestInit | undefined
       action: typeof body.rollback_to_version === "number" ? "rollback" : "save",
       base_version: body.base_version,
       diff,
-      warnings: warningsOf(diff, estimate, isFree(model) && technical),
+      warnings: warningsOf(diff, estimate, isFree(model) && technical, isPaid(model) && technical && "llm_model" in diff),
       requires_password: technical,
       max_daily_cost_estimate_micro_usd: estimate,
       confirmation_token: token,

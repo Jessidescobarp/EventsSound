@@ -32,8 +32,7 @@ def make(
         _env_file=None,
         DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:1/x",  # type: ignore[arg-type]
         llm_model="vendor/model-a",
-        llm_model_allowlist="vendor/model-a,vendor/model-b:free",  # type: ignore[arg-type]
-        **(over or {}),
+        **{"llm_model_allowlist": "vendor/model-a,vendor/model-b:free", **(over or {})},
     )
     app = create_app(
         settings,
@@ -261,3 +260,21 @@ def test_the_active_model_price_prices_the_next_reservation() -> None:
     client.post(URL, json=BODY)
 
     assert budget.reserved == [(8000, 300_000), (8000, 0), (8000, 300_000)]
+
+
+def test_a_paid_extra_model_spends_against_the_cost_cap_with_its_table_price() -> None:
+    repo, budget = InMemoryAgentConfigRepository(), RecordingBudget()
+    over = {
+        "llm_input_price_micro_usd_per_mtok": 300_000,
+        "llm_provider": "openrouter",
+        "openrouter_api_key": "sk-test-key",
+        "llm_model_allowlist": "vendor/model-a,vendor/paid",
+        "llm_model_prices": '{"vendor/paid": {"input": 1000000, "output": 0}}',
+    }
+    client, settings = make(repo, over, usage_budget=budget)
+    stored(repo, settings, llm_model="vendor/paid")
+    client.app.state.agent_config.invalidate()  # type: ignore[attr-defined]
+
+    client.post(URL, json=BODY)
+
+    assert budget.reserved == [(8000, 1_000_000)]  # the table price, not the env pair

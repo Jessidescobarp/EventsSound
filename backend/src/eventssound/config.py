@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from eventssound.domain.model_prices import FREE_SUFFIX, is_free_model
+from eventssound.domain.model_prices import FREE_SUFFIX, is_free_model, parse_model_prices
 
 
 def root_env_file(module: Path | None = None) -> Path | None:
@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     llm_model: str = ""
     # Models an admin may select, comma-separated. Empty means only `llm_model`.
     llm_model_allowlist: Annotated[list[str], NoDecode] = []
+    # Prices of the paid extras, JSON `{"<model-id>": {"input": int, "output": int}}`, in
+    # micro-USD per million tokens. An allowlist extra is valid if it is LLM_MODEL, free or here.
+    llm_model_prices: Annotated[dict[str, tuple[int, int]], NoDecode] = {}
     llm_input_price_micro_usd_per_mtok: Annotated[int, Field(ge=0)] = 0
     llm_output_price_micro_usd_per_mtok: Annotated[int, Field(ge=0)] = 0
     llm_daily_token_cap: Annotated[int, Field(ge=0)] = 100_000
@@ -145,15 +148,39 @@ class Settings(BaseSettings):
             return [part for part in (p.strip() for p in value.split(",")) if part]
         return value
 
+    @field_validator("llm_model_prices", mode="before")
+    @classmethod
+    def _parse_prices(cls, value: object) -> dict[str, tuple[int, int]]:
+        return parse_model_prices(value)
+
     @model_validator(mode="after")
-    def _allowlist_extras_must_be_free(self) -> "Settings":
-        # Fail closed: only the environment model has a configured price, every other selectable
-        # model must be free, so a model switch can never spend money the cost cap cannot see.
-        for model in self.llm_model_allowlist:
-            if model != self.llm_model and not is_free_model(model):
+    def _allowlist_extras_must_have_a_price(self) -> "Settings":
+        # Fail closed: every selectable model needs a known price (the environment pair, free, or
+        # declared in LLM_MODEL_PRICES), so a model switch can never spend money the cost cap
+        # cannot see.
+        env_pair = (
+            self.llm_input_price_micro_usd_per_mtok,
+            self.llm_output_price_micro_usd_per_mtok,
+        )
+        for model, pair in self.llm_model_prices.items():
+            if model == self.llm_model and pair != env_pair:
                 raise ValueError(
-                    f"LLM_MODEL_ALLOWLIST entry {model!r} must be LLM_MODEL or end with "
-                    f"{FREE_SUFFIX!r}"
+                    f"LLM_MODEL_PRICES entry {model!r} disagrees with the LLM_*_PRICE_* pair"
+                )
+            if not is_free_model(model) and not any(pair):
+                raise ValueError(f"LLM_MODEL_PRICES entry {model!r} is not free but priced 0/0")
+            if is_free_model(model) and any(pair):
+                raise ValueError(
+                    f"LLM_MODEL_PRICES entry {model!r} ends with ':free' but is priced"
+                )
+            if model != self.llm_model and model not in self.llm_model_allowlist:
+                raise ValueError(f"LLM_MODEL_PRICES entry {model!r} is not in LLM_MODEL_ALLOWLIST")
+        for model in self.llm_model_allowlist:
+            unpriced = model != self.llm_model and model not in self.llm_model_prices
+            if unpriced and not is_free_model(model):
+                raise ValueError(
+                    f"LLM_MODEL_ALLOWLIST entry {model!r} must be LLM_MODEL, end with "
+                    f"{FREE_SUFFIX!r} or have a price in LLM_MODEL_PRICES"
                 )
         return self
 

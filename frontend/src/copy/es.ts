@@ -400,6 +400,7 @@ export const es = {
     },
     version: (n: number) => (n === 0 ? "Valores iniciales del entorno" : `Versión ${n}`),
     freeModelOption: (model: string) => `${model} (gratuito)`,
+    paidModelOption: (model: string) => `${model} (de pago)`,
     outOfBounds: (labels: string) => `Estos valores iniciales están fuera de los límites y debes corregirlos todos a la vez: ${labels}.`,
     fields: {
       tone: "Tono",
