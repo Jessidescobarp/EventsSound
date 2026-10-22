@@ -17,6 +17,7 @@ FREE_SUFFIX = ":free"
 # Sanity ceiling for a declared price (1,000 USD per million tokens): rejects typos and unit mixups.
 MAX_PRICE_MICRO_USD_PER_MTOK = 1_000_000_000
 MAX_PRICED_MODELS = 50
+MAX_RAW_LENGTH = 8192
 
 
 class PriceSettings(Protocol):
@@ -55,6 +56,8 @@ def parse_model_prices(raw: object) -> dict[str, tuple[int, int]]:
     Strict and fail closed. Messages never echo the raw text or any value, only field names.
     """
     if isinstance(raw, str):
+        if len(raw) > MAX_RAW_LENGTH:
+            raise ValueError("LLM_MODEL_PRICES is too long")
         if not raw.strip():
             return {}
         try:

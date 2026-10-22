@@ -167,6 +167,8 @@ class Settings(BaseSettings):
                 raise ValueError(
                     f"LLM_MODEL_PRICES entry {model!r} disagrees with the LLM_*_PRICE_* pair"
                 )
+            if not is_free_model(model) and not any(pair):
+                raise ValueError(f"LLM_MODEL_PRICES entry {model!r} is not free but priced 0/0")
             if is_free_model(model) and any(pair):
                 raise ValueError(
                     f"LLM_MODEL_PRICES entry {model!r} ends with ':free' but is priced"

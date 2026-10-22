@@ -327,6 +327,7 @@ def test_startup_accepts_a_paid_extra_with_a_declared_price(allowlist: str, pric
         ("v/m", PRICES),  # priced model not in the allowlist
         ("v/m,v/x:free", '{"v/x:free": {"input": 1, "output": 0}}'),  # ':free' but priced
         ("v/m", '{"v/m": {"input": 9, "output": 2}}'),  # disagrees with the env pair
+        ("v/m,v/paid", '{"v/paid": {"input": 0, "output": 0}}'),  # paid but priced 0/0
         ("v/m,v/paid", "{oops sk-secret-1"),  # malformed JSON
         ("v/m,v/paid", '{"v/paid": {"input": 2000000000, "output": 1}}'),  # over the ceiling
     ],

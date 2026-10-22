@@ -43,7 +43,6 @@ def env(
         ("vendor/other", env(), None),  # a paid extra has no price
         ("v/extra", env(prices={"v/extra": (5, 7)}), ModelPrice(5, 7, False)),  # declared
         ("v/z:free", env(prices={"v/z:free": (0, 0)}), ModelPrice(0, 0, True)),
-        ("v/extra", env(prices={"v/extra": (0, 0)}), ModelPrice(0, 0, False)),  # 0 is not free
         ("", env(), None),
         *[
             (m, env(), None)
@@ -86,6 +85,7 @@ def test_parse_model_prices_accepts(raw: object, expected: dict[str, tuple[int, 
     "raw",
     [
         "{not json sk-secret",
+        " " * 8192 + "{}",  # over the raw-length guard
         "[]",
         "null",
         '"x"',
