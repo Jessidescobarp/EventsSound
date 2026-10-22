@@ -254,3 +254,26 @@ class TestAvailabilityShortage:
         assert outcome.reply_source == "template"
         assert meter.llm_calls == 1  # the draft LLM call is skipped entirely
         provider.assert_all_consumed()
+
+
+class TestLocalityWithoutDistance:
+    def test_asks_for_kilometers_then_quotes(self) -> None:
+        base = dict(
+            EXTRACTION, start_time="17:00", end_time=None, duration_hours=5, guest_count=120
+        )
+        first = dict(base, distance_km=None, locality="Santo Domingo")
+        agent, provider = make_agent(document(understand_text=json.dumps(first), draft=None))
+        turns = ("boda de 120 personas el 15 de diciembre en Santo Domingo, DJ por 5 horas",)
+        outcome, _ = run(agent, turns + ("5 PM", "15 de diciembre"))
+        assert outcome.status is AgentStatus.CLARIFICATION
+        assert outcome.missing_fields == ("distance_or_locality",)
+        assert "kilometros" in outcome.reply
+        assert "fecha" not in outcome.reply.lower()
+        provider.assert_all_consumed()
+
+        second = dict(base, distance_km=10, locality="Santo Domingo")
+        agent, provider = make_agent(document(understand_text=json.dumps(second)))
+        outcome, _ = run(agent, turns + ("10 km",))
+        assert outcome.status is AgentStatus.QUOTE
+        assert outcome.event_request.distance_km == 10
+        provider.assert_all_consumed()
