@@ -13,6 +13,7 @@ token). Error bodies are `{detail: <code>, message: <Spanish>}`; 422 `invalid_co
   ceilings: { max_daily_tokens, max_daily_cost_micro_usd, max_rate_limit_per_minute },
   allowed_models: [...],
   free_models: [...],            // the allowed models that cost nothing (subset; may be absent in old servers)
+  paid_models: [...],            // the allowed models with a non-zero price (subset; may be absent in old servers)
   model_in_use: { provider, model, status: "active"|"disabled"|"replay",
                   input_price_per_mtok, output_price_per_mtok, cost_cap_applies,
                   free /* bool: a `:free` model; absent from older servers */ },
@@ -42,8 +43,13 @@ Body: `{ changes: {<partial config>}, base_version }` or `{ rollback_to_version,
 ```
 
 Prices come from a per-model table (`domain/model_prices.py`): the environment model keeps the
-environment price pair, any other model is priced only if it is free (id ending in `:free`, cost 0)
-and Settings refuses an allowlist extra that is neither. The estimate is 0 for a free model (known,
+environment price pair, any other model is priced if it is free (id ending in `:free`, cost 0) or
+declared in `LLM_MODEL_PRICES` (JSON `{"<model-id>": {"input": int, "output": int}}`, micro-USD per
+million tokens, each 0 to 1,000,000,000). Settings refuses to start on malformed JSON, an
+allowlist extra that is none of those, a `:free` id with a non-zero price, a price for
+`LLM_MODEL` that differs from the `LLM_*_PRICE_*` pair, or a priced id outside the allowlist.
+Switching to a model with a non-zero price adds `paid_model_cost` (warning): its spend counts
+against the daily cost cap. The estimate is 0 for a free model (known,
 not unknown) and null only when the model has no price or the prices are 0 on a real provider for a
 non-free model (the replay provider is 0). A technical change with a null estimate adds `cost_unknown`
 ("danger" when the model changes); a free model adds `free_model_limits` (info) instead of

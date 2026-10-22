@@ -32,6 +32,9 @@ WARNINGS = {
         "Los modelos gratuitos pueden tener límites de uso del proveedor, menor disponibilidad "
         "y calidad distinta; el tope de costo no aplica, el tope de tokens sí."
     ),
+    "paid_model_cost": (
+        "El modelo seleccionado es de pago: su gasto cuenta contra el tope diario de costo."
+    ),
     "cost_unknown": "No se puede estimar el costo del modelo seleccionado.",
     "immediate_effect": (
         "Este cambio afecta cada conversacion nueva de inmediato y puede aumentar el costo."

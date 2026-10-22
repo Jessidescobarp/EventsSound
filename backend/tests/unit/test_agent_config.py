@@ -295,3 +295,52 @@ def test_closing_and_refusal_reject_any_digit(field: str, text: str) -> None:
 
 def test_welcome_keeps_digits_for_opening_hours() -> None:
     assert parse(welcome_message="Atendemos de 8 a 18 h").welcome_message == "Atendemos de 8 a 18 h"
+
+
+PRICES = '{"v/paid": {"input": 3000000, "output": 15000000}}'
+
+
+@pytest.mark.parametrize(
+    ("allowlist", "prices"),
+    [
+        ("v/m,v/paid", PRICES),
+        ("v/paid,v/x:free", PRICES),
+        ("v/m,v/x:free", '{"v/x:free": {"input": 0, "output": 0}}'),
+        ("v/m", '{"v/m": {"input": 1, "output": 2}}'),  # table agrees with the env pair
+    ],
+)
+def test_startup_accepts_a_paid_extra_with_a_declared_price(allowlist: str, prices: str) -> None:
+    settings = _settings(
+        llm_model="v/m",
+        llm_model_allowlist=allowlist,
+        llm_model_prices=prices,
+        llm_input_price_micro_usd_per_mtok=1,
+        llm_output_price_micro_usd_per_mtok=2,
+    )
+    assert set(settings.llm_model_prices) <= set(settings.allowed_llm_models)
+
+
+@pytest.mark.parametrize(
+    ("allowlist", "prices"),
+    [
+        ("v/m,v/other", PRICES),  # unpriced paid extra
+        ("v/m", PRICES),  # priced model not in the allowlist
+        ("v/m,v/x:free", '{"v/x:free": {"input": 1, "output": 0}}'),  # ':free' but priced
+        ("v/m", '{"v/m": {"input": 9, "output": 2}}'),  # disagrees with the env pair
+        ("v/m,v/paid", "{oops sk-secret-1"),  # malformed JSON
+        ("v/m,v/paid", '{"v/paid": {"input": 2000000000, "output": 1}}'),  # over the ceiling
+    ],
+)
+def test_startup_rejects_bad_price_tables_without_secrets(allowlist: str, prices: str) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as raised:
+        _settings(
+            llm_model="v/m",
+            llm_model_allowlist=allowlist,
+            llm_model_prices=prices,
+            llm_input_price_micro_usd_per_mtok=1,
+            llm_output_price_micro_usd_per_mtok=2,
+            openrouter_api_key="sk-secret-1",
+        )
+    assert "sk-secret-1" not in str(raised.value) and "postgresql" not in str(raised.value)

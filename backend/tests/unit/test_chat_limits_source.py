@@ -21,6 +21,7 @@ ENV = SimpleNamespace(
     llm_model="vendor/paid",
     llm_input_price_micro_usd_per_mtok=300_000,
     llm_output_price_micro_usd_per_mtok=900_000,
+    llm_model_prices={},
 )
 
 

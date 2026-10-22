@@ -448,3 +448,35 @@ def test_an_env_model_with_the_free_suffix_but_a_price_is_not_listed_free() -> N
     body = client.get(GET, headers=as_user(client, ROOT)).json()
 
     assert body["free_models"] == ["vendor/x:free"]
+
+
+PAID = {
+    "llm_model_allowlist": "vendor/model-a,vendor/paid,vendor/model-b:free",
+    "llm_model_prices": '{"vendor/paid": {"input": 2000000, "output": 8000000}}',
+    "llm_input_price_micro_usd_per_mtok": 300_000,
+    "llm_provider": "openrouter",
+    "openrouter_api_key": API_KEY,
+}
+
+
+def test_get_lists_the_paid_models_and_a_switch_to_one_warns_about_cost() -> None:
+    client, _, _ = build(**PAID)
+    admin = as_user(client, ROOT)
+
+    body = client.get(GET, headers=admin).json()
+    preview = client.post(
+        PREVIEW, headers=admin, json={"base_version": 0, "changes": {"llm_model": "vendor/paid"}}
+    ).json()
+    to_free = client.post(
+        PREVIEW,
+        headers=admin,
+        json={"base_version": 0, "changes": {"llm_model": "vendor/model-b:free"}},
+    ).json()
+
+    assert body["paid_models"] == ["vendor/model-a", "vendor/paid"]
+    assert body["free_models"] == ["vendor/model-b:free"]
+    assert preview["requires_password"] is True
+    codes = {w["code"] for w in preview["warnings"]}
+    assert "paid_model_cost" in codes and "cost_unknown" not in codes
+    assert preview["max_daily_cost_estimate_micro_usd"] > 0
+    assert "paid_model_cost" not in {w["code"] for w in to_free["warnings"]}

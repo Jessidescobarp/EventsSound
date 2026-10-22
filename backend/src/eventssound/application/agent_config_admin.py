@@ -58,6 +58,7 @@ class AdminSettingsSource(AgentSettingsSource, Protocol):
     llm_provider: str
     llm_input_price_micro_usd_per_mtok: int
     llm_output_price_micro_usd_per_mtok: int
+    llm_model_prices: Mapping[str, tuple[int, int]]
 
     @property
     def chat_active(self) -> bool: ...
@@ -136,6 +137,8 @@ def risk_warnings(plan: Plan, model: ModelInUse, estimate: int | None) -> list[R
         found.append(("texts_changed", "info"))
     if not BEHAVIOR_FIELDS.isdisjoint(plan.diff):
         found.append(("behavior_changed", "info"))
+    if plan.requires_password and model.cost_cap_applies and "llm_model" in plan.diff:
+        found.append(("paid_model_cost", "warning"))  # the new model spends against the cap
     if plan.requires_password and model.free:
         found.append(("free_model_limits", "info"))  # says the cost cap does not apply
     elif plan.requires_password and not model.cost_cap_applies and model.status != "replay":
@@ -157,6 +160,18 @@ class AgentConfigAdmin:
     @property
     def allowed_models(self) -> Collection[str]:
         return self._settings.allowed_llm_models
+
+    @property
+    def paid_models(self) -> list[str]:
+        """The allowed models with a known, non-zero price: their spend counts against the cap."""
+        prices = ((m, price_for(m, self._settings)) for m in self.allowed_models)
+        return [
+            m
+            for m, price in prices
+            if price is not None
+            and not price.free
+            and (price.input_micro_usd_per_mtok or price.output_micro_usd_per_mtok)
+        ]
 
     @property
     def free_models(self) -> list[str]:
