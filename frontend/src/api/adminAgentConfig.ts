@@ -40,6 +40,8 @@ export interface AgentConfigView {
   allowed_models: string[];
   /** Allowed models that cost nothing, as the server prices them; [] from an older server. */
   free_models: string[];
+  /** Allowed models that spend money (their cost counts against the daily cap); [] from an older server. */
+  paid_models: string[];
   model_in_use: ModelInUse;
   defaults_out_of_bounds: string[];
   updated_at: string | null;
@@ -133,6 +135,7 @@ export function parseConfigView(json: unknown): AgentConfigView {
     },
     allowed_models: list(o.allowed_models, 50, item),
     free_models: o.free_models === undefined ? [] : list(o.free_models, 50, item),
+    paid_models: o.paid_models === undefined ? [] : list(o.paid_models, 50, item),
     model_in_use: parseModel(o.model_in_use),
     defaults_out_of_bounds: list(o.defaults_out_of_bounds, 12, item),
     updated_at: nullable(o.updated_at, (v) => str({ v }, "v", 40)),

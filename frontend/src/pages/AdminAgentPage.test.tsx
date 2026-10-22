@@ -81,4 +81,12 @@ describe("free models", () => {
     expect(screen.getByRole("option", { name: "vendor/model-a" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "vendor/env:free" })).toBeInTheDocument(); // the server says it is not free
   });
+
+  it("marks paid models in the model select", async () => {
+    const models = ["vendor/model-a", "vendor/model-b"];
+    renderApp("/admin/agente", withView({ ...VIEW, allowed_models: models, paid_models: ["vendor/model-b"] }));
+    await card();
+    expect(screen.getByRole("option", { name: t.paidModelOption("vendor/model-b") })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "vendor/model-a" })).toBeInTheDocument();
+  });
 });
