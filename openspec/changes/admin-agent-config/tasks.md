@@ -41,11 +41,11 @@ API contract: `api.md`.
 
 ## PR 4: frontend Agent tab
 
-- [ ] Editing form plus read-only "model in use" card.
+- [x] Editing form plus read-only "model in use" card.
 
 ## PR 5: double confirmation UI, history, rollback
 
-- [ ] Confirmation dialogs, version history, rollback.
+- [x] Confirmation dialogs, version history, rollback.
 
 ## PR 6 (optional): public welcome message endpoint
 
