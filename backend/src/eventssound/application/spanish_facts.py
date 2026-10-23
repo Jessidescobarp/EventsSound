@@ -11,7 +11,7 @@ _MERIDIEM = r"(a\.?\s?m\.?|p\.?\s?m\.?)"
 # "8 PM", "8:30 p. m.", "20:00", "20:00:00" (seconds ignored). A bare "8" is never a time.
 _CLOCK = re.compile(rf"\b(\d{{1,2}})(?::([0-5]\d))?(?::[0-5]\d)?\s*{_MERIDIEM}?(?![\w:])")
 _GUESTS = re.compile(r"\b(\d{1,6})\s*(?:personas|invitados|asistentes|pax|huespedes)\b")
-_HOURS = re.compile(r"\b(\d{1,2}(?:[.,]\d)?)\s*(?:horas|hrs|hs)\b")
+_HOURS = re.compile(r"\b(\d{1,2}(?:[.,]\d)?)\s*(?:horas?|hrs|hs)\b")
 _MAX_GUESTS = 100_000
 
 
@@ -31,16 +31,22 @@ def _to_hhmm(hour: int, minute: int, meridiem: str | None) -> str | None:
     return f"{hour:02d}:{minute:02d}"
 
 
-def parse_clock_time(text: str) -> str | None:
-    """The first clock time in `text` as "HH:MM", or None. Needs a colon or an AM/PM marker."""
+def parse_clock_times(text: str) -> list[str]:
+    """Every clock time in `text` as "HH:MM". Needs a colon or an AM/PM marker."""
+    found: list[str] = []
     for match in _CLOCK.finditer(fold(text)):
         hour, minute, meridiem = int(match.group(1)), match.group(2), match.group(3)
         if minute is None and meridiem is None:
             continue
         result = _to_hhmm(hour, int(minute or 0), meridiem)
         if result is not None:
-            return result
-    return None
+            found.append(result)
+    return found
+
+
+def parse_clock_time(text: str) -> str | None:
+    """The first clock time in `text` as "HH:MM", or None."""
+    return next(iter(parse_clock_times(text)), None)
 
 
 def parse_guest_count(text: str) -> int | None:

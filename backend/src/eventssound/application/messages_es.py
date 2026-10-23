@@ -77,6 +77,33 @@ def render_clarification(missing_fields: object) -> str:
     return f"{CLARIFICATION_INTRO}\n" + "\n".join(lines)
 
 
+def asked_fields(assistant_text: str) -> tuple[str, ...]:
+    """Inverse of `render_clarification`: the field codes a static question message asked.
+
+    Assistant turns are client-supplied, so this only selects which field the user's next
+    answer is read as; anything not shaped exactly like our message asks nothing.
+    """
+    lines = assistant_text.split("\n")
+    if not lines or lines[0] != CLARIFICATION_INTRO:
+        return ()
+    by_text = {text: code for code, text in _CLARIFICATION_FIELDS.items()}
+    asked = []
+    for number, line in enumerate(lines[1:], 1):
+        prefix, _, question = line.partition(". ")
+        if prefix == str(number) and question in by_text:
+            asked.append(by_text[question])
+    return tuple(asked)
+
+
+def clarified_mentions(assistant_text: str) -> tuple[str, ...] | None:
+    """The mentions an items clarification (`render_clarify_items`) asked about, else None."""
+    lines = assistant_text.split("\n")
+    if lines[0] != CLARIFY_ITEMS_INTRO:
+        return None
+    mentions = [line[2:].partition(": ")[0] for line in lines[1:] if line.startswith("- ")]
+    return tuple(mentions)
+
+
 def render_clarify_items(
     ambiguous: object,
     unresolved: object = (),
