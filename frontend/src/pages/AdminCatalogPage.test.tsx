@@ -17,7 +17,53 @@ beforeEach(() => {
 const fill = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 const itemsTable = () => screen.findByRole("table", { name: t.itemsCaption });
+const goPackages = async () => {
+  await itemsTable();
+  fireEvent.click(screen.getByRole("tab", { name: t.packagesTitle }));
+  return screen.findByRole("table", { name: t.packagesCaption });
+};
+const fetchCalls = () => (globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
+
+describe("catalog admin: tabs and dialog", () => {
+  it("switches lists with the tabs, items first", async () => {
+    renderApp("/admin/catalogo");
+    await itemsTable();
+    expect(screen.getByRole("tab", { name: t.itemsTitle })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("table", { name: t.packagesCaption })).toBeNull();
+
+    await goPackages();
+    expect(screen.getByRole("tab", { name: t.packagesTitle })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("table", { name: t.itemsCaption })).toBeNull();
+    expect(screen.getByRole("button", { name: t.newPackage })).toBeInTheDocument();
+  });
+
+  it("opens the edit form prefilled in a dialog and cancel closes it without saving", async () => {
+    renderApp("/admin/catalogo");
+    await itemsTable();
+    const calls = fetchCalls();
+
+    fireEvent.click(screen.getByRole("button", { name: t.editLabel("Máquina de humo") }));
+    const dialog = screen.getByRole("dialog", { name: t.itemFormEdit });
+    expect(within(dialog).getByLabelText(t.name)).toHaveValue("Máquina de humo");
+    click(t.cancel);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText(t.saved)).toBeNull();
+    expect(fetchCalls()).toBe(calls);
+  });
+
+  it("closes on Escape and keeps the selected tab", async () => {
+    renderApp("/admin/catalogo");
+    await goPackages();
+
+    click(t.newPackage);
+    fireEvent.keyDown(screen.getByRole("dialog", { name: t.packageFormNew }), { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("tab", { name: t.packagesTitle })).toHaveAttribute("aria-selected", "true");
+  });
+});
 
 describe("catalog admin: items", () => {
   it("creates an item and lists it, telling the admin the assistant will use it", async () => {
@@ -34,7 +80,7 @@ describe("catalog admin: items", () => {
     expect(await screen.findByText(t.saved)).toBeInTheDocument();
     const table = await itemsTable();
     expect(within(table).getByText("Parlante nuevo de prueba")).toBeInTheDocument();
-    expect(screen.queryByRole("form")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("edits an item keeping its code fixed", async () => {
@@ -83,7 +129,7 @@ describe("catalog admin: items", () => {
 describe("catalog admin: packages", () => {
   it("creates a package from two items, then edits its discount", async () => {
     renderApp("/admin/catalogo");
-    await itemsTable();
+    await goPackages();
 
     click(t.newPackage);
     fill(t.code, "pkg_prueba");
@@ -111,7 +157,7 @@ describe("catalog admin: packages", () => {
 
   it("refuses a package with no item chosen", async () => {
     renderApp("/admin/catalogo");
-    await itemsTable();
+    await goPackages();
 
     click(t.newPackage);
     fill(t.code, "pkg_vacio");

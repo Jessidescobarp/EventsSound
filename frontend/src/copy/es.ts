@@ -280,6 +280,7 @@ export const es = {
     lead: "Crea y edita los equipos, servicios y paquetes que ofrece la empresa. El asistente de cotización usa estos cambios en su próxima consulta.",
     itemsTitle: "Equipos y servicios",
     packagesTitle: "Paquetes",
+    sectionsLabel: "Secciones del catálogo",
     newItem: "Nuevo equipo o servicio",
     newPackage: "Nuevo paquete",
     edit: "Editar",
