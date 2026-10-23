@@ -5,6 +5,9 @@ import { formatCop, formatPercentFromBps } from "../../lib/format";
 
 const t = es.quote;
 
+/** Mirrors MAX_CLARIFICATION_FIELDS in backend messages_es.py: the reply text already asks this many. */
+export const ASKED_FIELDS_LIMIT = 3;
+
 function conceptName(line: QuoteLine): string {
   return line.label ?? t.kinds[line.kind] ?? t.kindFallback;
 }
@@ -29,7 +32,8 @@ export function QuoteDetails({ response }: { response: ChatResponse }) {
   const names = new Map(
     quote?.lines.filter((l) => l.kind === "item" || l.kind === "package").map((l) => [l.code, conceptName(l)]),
   );
-  const missing = missing_fields.filter((code) => Object.hasOwn(t.missing, code));
+  // missing_fields arrives in the backend's priority order; the reply text asks the first ones.
+  const missing = missing_fields.filter((code) => Object.hasOwn(t.missing, code)).slice(ASKED_FIELDS_LIMIT);
   return (
     <div className="mt-3 space-y-4">
       {quote ? <QuoteTable quote={quote} /> : null}
@@ -38,7 +42,7 @@ export function QuoteDetails({ response }: { response: ChatResponse }) {
       ) : null}
       {missing.length > 0 ? (
         <div>
-          <p className="text-sm font-semibold">{t.missingTitle}</p>
+          <p className="text-sm font-semibold">{t.laterTitle}</p>
           <ul className="mt-1 list-disc pl-5 text-sm">
             {missing.map((code) => (
               <li key={code}>{t.missing[code]}</li>

@@ -239,7 +239,7 @@ export const es = {
     available: "Disponible",
     shortage: (requested: number, available: number) =>
       `No alcanza: pediste ${requested} y hay ${available}`,
-    missingTitle: "Para continuar necesito:",
+    laterTitle: "Después también necesitaré:",
     missing: {
       event_date: "La fecha del evento",
       start_time: "La hora de inicio",
