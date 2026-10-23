@@ -192,7 +192,7 @@ La CLI rechaza hosts no locales y `APP_ENV=production` a menos que la variable d
 SEED_ADMIN_PASSWORD=... SEED_CLIENT_PASSWORD=... uv run python -m eventssound.entrypoints.cli.seed_users --confirm
 ```
 
-Cuentas: `admin@eventsounddr.example` (admin) y `cliente@eventsounddr.example` (cliente). Contraseñas para los evaluadores: ver el documento de entrega (solo protegen cuentas sintéticas y no se guardan en el repositorio). La CLI tiene la misma protección que el seed del catálogo (ejecución de prueba sin `--confirm`; los destinos remotos o de producción necesitan `ALLOW_REMOTE_SEED=1`) y guarda solo hashes argon2id.
+Cuentas: `admin@eventsounddr.example` (admin) y `cliente@eventsounddr.example` (cliente). Contraseñas para los evaluadores: ver el documento de entrega, [documentacion/entrega.md](documentacion/entrega.md) (solo protegen cuentas sintéticas y no se guardan en el repositorio). La CLI tiene la misma protección que el seed del catálogo (ejecución de prueba sin `--confirm`; los destinos remotos o de producción necesitan `ALLOW_REMOTE_SEED=1`) y guarda solo hashes argon2id.
 
 ### Cotizaciones guardadas y listas de administración
 
