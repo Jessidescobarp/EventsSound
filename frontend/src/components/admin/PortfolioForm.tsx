@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { savePortfolioEvent, type PortfolioEvent } from "../../api/portfolio";
 import { es } from "../../copy/es";
 import { portfolioInput, type PortfolioDraft, type PortfolioErrors } from "../../lib/portfolioForm";
@@ -27,16 +27,20 @@ export function PortfolioForm({
   event,
   onSaved,
   onCancel,
+  onBusyChange,
 }: {
   event: PortfolioEvent | null;
   onSaved: () => void;
   onCancel: () => void;
+  /** Lets the hosting dialog block closing while a save is in flight. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const creating = event === null;
   const [draft, setDraft] = useState(() => draftOf(event));
   const [errors, setErrors] = useState<PortfolioErrors>({});
   const { busy, failure, run } = useSave(onSaved);
   const base = useId();
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
   const set = (key: "title" | "kind" | "description" | "equipment") => (e: { target: { value: string } }) =>
     setDraft((current) => ({ ...current, [key]: e.target.value }));
 
@@ -53,10 +57,7 @@ export function PortfolioForm({
 
   const err = (key: keyof PortfolioErrors) => (errors[key] ? t.errors[key] : undefined);
   return (
-    <form onSubmit={submit} noValidate aria-labelledby={`${base}-title`} className="space-y-4 rounded-card border border-line p-5">
-      <h2 id={`${base}-title`} className="text-xl font-semibold">
-        {creating ? t.formNew : t.formEdit}
-      </h2>
+    <form onSubmit={submit} noValidate aria-label={creating ? t.formNew : t.formEdit} className="space-y-4">
       {Object.keys(errors).length > 0 ? <Alert tone="warn" title={es.catalogAdmin.fixFields} role="alert" /> : null}
       {failure ? <Alert tone="danger" title={failures[failure] ?? failures.unexpected ?? ""} role="alert" /> : null}
       <div className="grid gap-4 sm:grid-cols-2">

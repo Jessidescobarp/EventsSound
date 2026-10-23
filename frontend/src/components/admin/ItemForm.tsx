@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { saveItem } from "../../api/adminCatalog";
 import type { CatalogItem } from "../../api/catalog";
 import { es } from "../../copy/es";
@@ -27,16 +27,20 @@ export function ItemForm({
   item,
   onSaved,
   onCancel,
+  onBusyChange,
 }: {
   item: CatalogItem | null;
   onSaved: () => void;
   onCancel: () => void;
+  /** Lets the hosting dialog block closing while a save is in flight. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const creating = item === null;
   const [draft, setDraft] = useState(() => draftOf(item));
   const [errors, setErrors] = useState<Partial<Record<keyof ItemDraft, true>>>({});
   const { busy, failure, run } = useSave(onSaved);
   const base = useId();
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
   const set = (key: keyof ItemDraft) => (event: { target: { value: string } }) =>
     setDraft((current) => ({ ...current, [key]: event.target.value }));
 
@@ -53,10 +57,7 @@ export function ItemForm({
 
   const err = (key: keyof ItemDraft) => (errors[key] ? t.errors[key] : undefined);
   return (
-    <form onSubmit={submit} noValidate aria-labelledby={`${base}-title`} className="space-y-4 rounded-card border border-line p-5">
-      <h2 id={`${base}-title`} className="text-xl font-semibold">
-        {creating ? t.itemFormNew : t.itemFormEdit}
-      </h2>
+    <form onSubmit={submit} noValidate aria-label={creating ? t.itemFormNew : t.itemFormEdit} className="space-y-4">
       {Object.keys(errors).length > 0 ? <Alert tone="warn" title={t.fixFields} role="alert" /> : null}
       {failure ? <Alert tone="danger" title={t.failures[failure] ?? t.failures.unexpected ?? ""} role="alert" /> : null}
       <div className="grid gap-4 sm:grid-cols-2">

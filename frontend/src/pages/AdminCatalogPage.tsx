@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { loadCatalog, type CatalogItem, type ServicePackage } from "../api/catalog";
+import { FormModal, useOpener } from "../components/admin/FormModal";
 import { ItemForm } from "../components/admin/ItemForm";
 import { PackageForm } from "../components/admin/PackageForm";
 import { Alert } from "../components/ui/Alert";
@@ -11,20 +12,30 @@ import { formatCop } from "../lib/format";
 
 const t = es.catalogAdmin;
 
+type TabKey = "items" | "packages";
 type Editing =
   | { kind: "item"; item: CatalogItem | null }
   | { kind: "package"; pkg: ServicePackage | null }
   | null;
 
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "items", label: t.itemsTitle },
+  { key: "packages", label: t.packagesTitle },
+];
+
 export function AdminCatalogPage() {
   const { state, reload } = useRequest(loadCatalog);
+  const [tab, setTab] = useState<TabKey>("items");
   const [editing, setEditing] = useState<Editing>(null);
   const [saved, setSaved] = useState(false);
+  const { opener, remember } = useOpener();
 
   const open = (next: Editing) => {
+    remember();
     setSaved(false);
     setEditing(next);
   };
+  const close = () => setEditing(null);
   const onSaved = () => {
     setEditing(null);
     setSaved(true);
@@ -32,25 +43,39 @@ export function AdminCatalogPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <p className="max-w-3xl text-ink-muted">{t.lead}</p>
       {saved ? (
         <Alert tone="info" title={t.saved} role="status">
           {t.savedBody}
         </Alert>
       ) : null}
-      {editing?.kind === "item" ? (
-        <ItemForm key={editing.item?.code ?? "new"} item={editing.item} onSaved={onSaved} onCancel={() => setEditing(null)} />
-      ) : null}
-      {editing?.kind === "package" && state.status === "success" ? (
-        <PackageForm
-          key={editing.pkg?.code ?? "new"}
-          pkg={editing.pkg}
-          items={state.data.items}
-          onSaved={onSaved}
-          onCancel={() => setEditing(null)}
-        />
-      ) : null}
+      <div role="tablist" aria-label={t.sectionsLabel} className="flex gap-2 border-b border-line">
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            id={`catalog-tab-${key}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            aria-controls={`catalog-panel-${key}`}
+            tabIndex={tab === key ? 0 : -1}
+            onClick={() => setTab(key)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+                const next = tab === "items" ? "packages" : "items";
+                setTab(next);
+                document.getElementById(`catalog-tab-${next}`)?.focus();
+              }
+            }}
+            className={`min-h-11 cursor-pointer border-b-2 px-4 font-medium ${
+              tab === key ? "border-brand-700 text-brand-700" : "border-transparent text-ink-muted"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {state.status === "loading" ? (
         <div role="status" className="flex items-center gap-3 text-ink-muted">
           <Spinner />
@@ -68,14 +93,38 @@ export function AdminCatalogPage() {
         </div>
       ) : null}
       {state.status === "success" ? (
-        <>
-          <ItemsSection items={state.data.items} onNew={() => open({ kind: "item", item: null })} onEdit={(item) => open({ kind: "item", item })} />
-          <PackagesSection
-            packages={state.data.packages}
-            onNew={() => open({ kind: "package", pkg: null })}
-            onEdit={(pkg) => open({ kind: "package", pkg })}
-          />
-        </>
+        <div role="tabpanel" id={`catalog-panel-${tab}`} aria-labelledby={`catalog-tab-${tab}`}>
+          {tab === "items" ? (
+            <ItemsSection items={state.data.items} onNew={() => open({ kind: "item", item: null })} onEdit={(item) => open({ kind: "item", item })} />
+          ) : (
+            <PackagesSection
+              packages={state.data.packages}
+              onNew={() => open({ kind: "package", pkg: null })}
+              onEdit={(pkg) => open({ kind: "package", pkg })}
+            />
+          )}
+        </div>
+      ) : null}
+      {editing?.kind === "item" ? (
+        <FormModal title={editing.item ? t.itemFormEdit : t.itemFormNew} returnFocus={opener} onClose={close}>
+          {(onBusyChange) => (
+            <ItemForm key={editing.item?.code ?? "new"} item={editing.item} onSaved={onSaved} onCancel={close} onBusyChange={onBusyChange} />
+          )}
+        </FormModal>
+      ) : null}
+      {editing?.kind === "package" && state.status === "success" ? (
+        <FormModal title={editing.pkg ? t.packageFormEdit : t.packageFormNew} returnFocus={opener} onClose={close}>
+          {(onBusyChange) => (
+            <PackageForm
+              key={editing.pkg?.code ?? "new"}
+              pkg={editing.pkg}
+              items={state.data.items}
+              onSaved={onSaved}
+              onCancel={close}
+              onBusyChange={onBusyChange}
+            />
+          )}
+        </FormModal>
       ) : null}
     </div>
   );
@@ -91,11 +140,8 @@ function ItemsSection({
   onEdit: (item: CatalogItem) => void;
 }) {
   return (
-    <section aria-labelledby="admin-items" className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="admin-items" className="text-xl font-semibold">
-          {t.itemsTitle}
-        </h2>
+    <section className="space-y-4">
+      <div className="flex justify-end">
         <Button onClick={onNew}>{t.newItem}</Button>
       </div>
       <div className="overflow-x-auto">
@@ -149,11 +195,8 @@ function PackagesSection({
   onEdit: (pkg: ServicePackage) => void;
 }) {
   return (
-    <section aria-labelledby="admin-packages" className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="admin-packages" className="text-xl font-semibold">
-          {t.packagesTitle}
-        </h2>
+    <section className="space-y-4">
+      <div className="flex justify-end">
         <Button onClick={onNew}>{t.newPackage}</Button>
       </div>
       <div className="overflow-x-auto">

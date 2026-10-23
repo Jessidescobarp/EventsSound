@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { savePackage } from "../../api/adminCatalog";
 import type { CatalogItem, ServicePackage } from "../../api/catalog";
 import { es } from "../../copy/es";
@@ -29,17 +29,21 @@ export function PackageForm({
   items,
   onSaved,
   onCancel,
+  onBusyChange,
 }: {
   pkg: ServicePackage | null;
   items: CatalogItem[];
   onSaved: () => void;
   onCancel: () => void;
+  /** Lets the hosting dialog block closing while a save is in flight. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const creating = pkg === null;
   const [draft, setDraft] = useState(() => draftOf(pkg));
   const [errors, setErrors] = useState<Errors>({});
   const { busy, failure, run } = useSave(onSaved);
   const base = useId();
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
   const names = new Map(items.map((item) => [item.code, item.name]));
   const set = (key: "code" | "name" | "discount") => (event: { target: { value: string } }) =>
     setDraft((current) => ({ ...current, [key]: event.target.value }));
@@ -62,10 +66,7 @@ export function PackageForm({
 
   const err = (key: keyof Errors) => (errors[key] ? t.errors[key] : undefined);
   return (
-    <form onSubmit={submit} noValidate aria-labelledby={`${base}-title`} className="space-y-4 rounded-card border border-line p-5">
-      <h2 id={`${base}-title`} className="text-xl font-semibold">
-        {creating ? t.packageFormNew : t.packageFormEdit}
-      </h2>
+    <form onSubmit={submit} noValidate aria-label={creating ? t.packageFormNew : t.packageFormEdit} className="space-y-4">
       {Object.keys(errors).length > 0 ? <Alert tone="warn" title={t.fixFields} role="alert" /> : null}
       {failure ? <Alert tone="danger" title={t.failures[failure] ?? t.failures.unexpected ?? ""} role="alert" /> : null}
       <div className="grid gap-4 sm:grid-cols-2">
