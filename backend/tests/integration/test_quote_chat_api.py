@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from agent_fixtures import make_catalog, neutral_rules
 from eventssound.adapters.usage.memory import InMemoryUsageBudget
 from eventssound.application.errors import RepositoryUnavailable
-from eventssound.application.llm import LlmAuthError, LlmUnavailable
+from eventssound.application.llm import LlmAuthError, LlmBadResponse, LlmUnavailable
 from eventssound.application.quote_chat import AgentOutcome, AgentStatus
 from eventssound.application.usage import RateDecision
 from eventssound.config import Settings
@@ -235,6 +235,14 @@ def test_llm_failure_logs_only_its_class(caplog) -> None:
     assert response.status_code == 503
     line = next(r.getMessage() for r in caplog.records if "chat llm error" in r.getMessage())
     assert "LlmAuthError" in line and response.headers["x-request-id"] in line
+
+
+def test_bad_response_logs_class_and_reason_only(caplog) -> None:
+    client, _ = make_client(FakeAgent(LlmBadResponse("not_json")))
+    with caplog.at_level("WARNING"):
+        client.post(URL, json=BODY)
+    line = next(r.getMessage() for r in caplog.records if "chat llm error" in r.getMessage())
+    assert "LlmBadResponse" in line and "reason=not_json" in line
 
 
 def padded(size: int) -> bytes:
