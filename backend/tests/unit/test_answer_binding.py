@@ -81,6 +81,10 @@ _GOOD = render_clarification(("start_time",))
 _OTHER = render_clarification(("guest_count",))
 
 
+def test_whitespace_only_differences_are_tolerated() -> None:
+    assert asked_fields(_GOOD.replace(" ", " \n ") + "\n") == ("start_time",)
+
+
 @pytest.mark.parametrize(
     "text",
     [
