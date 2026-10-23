@@ -20,7 +20,7 @@ from eventssound.adapters.agent.prompts import (
     build_draft_messages,
     build_understand_messages,
 )
-from eventssound.adapters.agent.schemas import Extraction, ItemMention
+from eventssound.adapters.agent.schemas import MAX_ITEMS, Extraction, ItemMention
 from eventssound.adapters.agent.state import AgentState
 from eventssound.adapters.agent.structured import (
     DeadlineExceeded,
@@ -193,7 +193,7 @@ def _with_bound_option(
         pick = ItemMention(mention=chosen, quantity=max((m.quantity for m in replaced), default=1))
     except ValueError:
         return extraction, False
-    items = [m for m in extraction.items if m not in replaced] + [pick]
+    items = ([m for m in extraction.items if m not in replaced] + [pick])[-MAX_ITEMS:]
     covered = fold(chosen) in packages or fold(" ".join(extraction.needs)) in asked
     update = {"items": items, "needs": [] if covered else extraction.needs}
     return extraction.model_copy(update=update), True

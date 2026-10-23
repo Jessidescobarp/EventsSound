@@ -13,8 +13,10 @@ from eventssound.application.spanish_dates import parse_spanish_date
 from eventssound.application.spanish_facts import fold, parse_clock_time
 
 MAX_ANSWER_CHARS = 40  # a reply to a single question is short; longer text is not bound
-_MAX_GUESTS = 100_000
-_MAX_KM = 5_000
+# Must equal the Extraction limits in adapters/agent/schemas.py (a unit test enforces it).
+MAX_GUESTS = 100_000
+MAX_KM = 5_000
+MIN_HOURS, MAX_HOURS = 0.5, 72
 _HOUR_WORDS = {
     word: number
     for number, word in enumerate(
@@ -45,7 +47,7 @@ def _duration(text: str) -> dict:
         return {}
     raw = match.group(1)
     hours = float(_HOUR_WORDS.get(raw) or raw.replace(",", "."))
-    return {"duration_hours": hours} if 0.5 <= hours <= 72 else {}  # noqa: PLR2004
+    return {"duration_hours": hours} if MIN_HOURS <= hours <= MAX_HOURS else {}
 
 
 def _end_or_duration(text: str) -> dict:
@@ -82,6 +84,6 @@ def parse_field_answer(field: str, text: str, today: date) -> dict:
     return {
         "start_time": _start,
         "end_time_or_duration": _end_or_duration,
-        "guest_count": lambda t: _bounded(_GUESTS, t, "guest_count", _MAX_GUESTS),
-        "distance_or_locality": lambda t: _bounded(_KM, t, "distance_km", _MAX_KM),
+        "guest_count": lambda t: _bounded(_GUESTS, t, "guest_count", MAX_GUESTS),
+        "distance_or_locality": lambda t: _bounded(_KM, t, "distance_km", MAX_KM),
     }.get(field, lambda _: {})(folded)

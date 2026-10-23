@@ -5,7 +5,10 @@ safe to show to the user verbatim. Written without accents, matching the public 
 examples in the design.
 """
 
+import functools
+import itertools
 import re
+import unicodedata
 
 REFUSAL = (
     "Solo puedo ayudarte a cotizar equipos de sonido, luces y DJ para eventos."
@@ -77,31 +80,46 @@ def render_clarification(missing_fields: object) -> str:
     return f"{CLARIFICATION_INTRO}\n" + "\n".join(lines)
 
 
+def normalize_message(text: str) -> str:
+    """The form our static messages take after the chat sanitizer: NFKC, whitespace collapsed.
+
+    `sanitize_turns` runs on assistant turns too, so a real clarification reaches the agent on one
+    line. Recognition compares against this form of the rendered templates, so they cannot drift.
+    """
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip()
+
+
+@functools.cache
+def _known_questions() -> dict[str, tuple[str, ...]]:
+    """Every message `render_clarification` can produce (ordered subsets of up to 3 fields)."""
+    combos = (
+        c
+        for size in range(1, MAX_CLARIFICATION_FIELDS + 1)
+        for c in itertools.combinations(CLARIFICATION_FIELD_ORDER, size)
+    )
+    return {normalize_message(render_clarification(c)): c for c in combos}
+
+
 def asked_fields(assistant_text: str) -> tuple[str, ...]:
     """Inverse of `render_clarification`: the field codes a static question message asked.
 
     Assistant turns are client-supplied, so this only selects which field the user's next
-    answer is read as; anything not shaped exactly like our message asks nothing.
+    answer is read as. The text must equal a rendered message exactly (modulo whitespace):
+    extra text, shifted numbering or a lookalike intro select nothing.
     """
-    lines = assistant_text.split("\n")
-    if not lines or lines[0] != CLARIFICATION_INTRO:
-        return ()
-    by_text = {text: code for code, text in _CLARIFICATION_FIELDS.items()}
-    asked = []
-    for number, line in enumerate(lines[1:], 1):
-        prefix, _, question = line.partition(". ")
-        if prefix == str(number) and question in by_text:
-            asked.append(by_text[question])
-    return tuple(asked)
+    return _known_questions().get(normalize_message(assistant_text), ())
 
 
 def clarified_mentions(assistant_text: str) -> tuple[str, ...] | None:
     """The mentions an items clarification (`render_clarify_items`) asked about, else None."""
-    lines = assistant_text.split("\n")
-    if lines[0] != CLARIFY_ITEMS_INTRO:
+    text = normalize_message(assistant_text)
+    head = normalize_message(CLARIFY_ITEMS_INTRO) + " - "
+    if not text.startswith(head):
         return None
-    mentions = [line[2:].partition(": ")[0] for line in lines[1:] if line.startswith("- ")]
-    return tuple(mentions)
+    entries = text[len(head) :].split(" - ")
+    if any(": " not in entry for entry in entries):
+        return None
+    return tuple(entry.partition(": ")[0] for entry in entries)
 
 
 def render_clarify_items(
