@@ -16,6 +16,7 @@ beforeEach(() => {
 
 const fill = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
+const fetchCalls = () => (globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
 const table = () => screen.findByRole("table", { name: t.caption });
 
 describe("portfolio admin", () => {
@@ -54,13 +55,30 @@ describe("portfolio admin", () => {
   it("flags bad fields without sending anything", async () => {
     renderApp("/admin/portafolio");
     await table();
-    const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+    const calls = fetchCalls();
 
     fireEvent.click(screen.getByRole("button", { name: t.newEvent }));
     fill(t.title, "   ");
     fireEvent.click(screen.getByRole("button", { name: es.catalogAdmin.save }));
 
     expect(screen.getByText(t.errors.title)).toBeInTheDocument();
-    expect((globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(calls);
+    expect(fetchCalls()).toBe(calls);
+  });
+
+  it("opens the form in a dialog; cancel and Escape close it without saving", async () => {
+    renderApp("/admin/portafolio");
+    await table();
+    const calls = fetchCalls();
+
+    fireEvent.click(screen.getByRole("button", { name: es.catalogAdmin.editLabel("Concierto en teatro") }));
+    const dialog = screen.getByRole("dialog", { name: t.formEdit });
+    expect(within(dialog).getByLabelText(t.title)).toHaveValue("Concierto en teatro");
+    fireEvent.click(within(dialog).getByRole("button", { name: es.catalogAdmin.cancel }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: t.newEvent }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: t.formNew }), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fetchCalls()).toBe(calls);
   });
 });

@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { loadAllPortfolio, type PortfolioEvent } from "../api/portfolio";
 import { useAuth } from "../auth/authContext";
+import { FormModal, useOpener } from "../components/admin/FormModal";
 import { PortfolioForm } from "../components/admin/PortfolioForm";
 import { Alert } from "../components/ui/Alert";
 import { Badge } from "../components/ui/Badge";
@@ -18,8 +19,10 @@ export function AdminPortfolioPage() {
   const { state, reload } = useRequest(load);
   const [editing, setEditing] = useState<{ event: PortfolioEvent | null } | null>(null);
   const [saved, setSaved] = useState(false);
+  const { opener, remember } = useOpener();
 
   const open = (event: PortfolioEvent | null) => {
+    remember();
     setSaved(false);
     setEditing({ event });
   };
@@ -29,16 +32,21 @@ export function AdminPortfolioPage() {
       <p className="max-w-3xl text-ink-muted">{t.lead}</p>
       {saved ? <Alert tone="info" title={es.catalogAdmin.saved} role="status" /> : null}
       {editing ? (
-        <PortfolioForm
-          key={editing.event?.id ?? "new"}
-          event={editing.event}
-          onSaved={() => {
-            setEditing(null);
-            setSaved(true);
-            reload();
-          }}
-          onCancel={() => setEditing(null)}
-        />
+        <FormModal title={editing.event ? t.formEdit : t.formNew} returnFocus={opener} onClose={() => setEditing(null)}>
+          {(onBusyChange) => (
+            <PortfolioForm
+              key={editing.event?.id ?? "new"}
+              event={editing.event}
+              onSaved={() => {
+                setEditing(null);
+                setSaved(true);
+                reload();
+              }}
+              onCancel={() => setEditing(null)}
+              onBusyChange={onBusyChange}
+            />
+          )}
+        </FormModal>
       ) : null}
       {state.status === "loading" ? (
         <div role="status" className="flex items-center gap-3 text-ink-muted">
