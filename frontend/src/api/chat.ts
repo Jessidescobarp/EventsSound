@@ -6,7 +6,7 @@ import { int, list, nullable, obj, str } from "./parse";
  * conversation: every request carries the bounded history. Limits mirror the backend
  * (schemas.py, guards.py); the server stays the authority, these only avoid useless calls.
  */
-export const MAX_MESSAGES = 8;
+export const MAX_MESSAGES = 16; // keep equal to MAX_MESSAGES in backend schemas.py (contract test)
 export const MAX_MESSAGE_CHARS = 1000;
 export const MAX_TOTAL_CHARS = 4000;
 export const MAX_BODY_BYTES = 16 * 1024;

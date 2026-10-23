@@ -106,8 +106,7 @@ RESPONSE_EXAMPLES: dict[str, dict[str, object]] = {
     "needs_more_info": {
         "request_id": "9a1b2c3d4e5f60718293a4b5c6d7e8f9",
         "status": "clarification",
-        "reply": "Para armar tu cotizacion necesito algunos datos mas:\n"
-        "1. Cuantos invitados habra?",
+        "reply": "Para armar tu cotizacion: Cuantos invitados habra? (por ejemplo: 60)",
         "quote": None,
         "event_request": None,
         "availability": None,
@@ -211,7 +210,7 @@ def validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     response_model=ChatResponseOut,
     summary="Describe tu evento y recibe una cotizacion",
     description=(
-        "Chat with the quote assistant. Send the conversation so far (up to 8 messages of 1,000 "
+        "Chat with the quote assistant. Send the conversation so far (up to 16 messages of 1,000 "
         "characters, the last one from the user) and receive either a quote, the questions still "
         "needed, or a polite refusal when the message is not about quoting an event. Prices come "
         "from the company's pricing rules, never from the AI. All data is synthetic. The server "

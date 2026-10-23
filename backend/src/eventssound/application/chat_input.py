@@ -7,7 +7,7 @@ runner is replaced, and they must stay importable without any adapter.
 import re
 import unicodedata
 
-_MAX_MESSAGES_DEFAULT = 8
+_MAX_MESSAGES_DEFAULT = 16  # keep equal to schemas.MAX_MESSAGES and frontend api/chat.ts
 _MAX_MESSAGE_CHARS_DEFAULT = 1000
 _MAX_TOTAL_CHARS_DEFAULT = 4000
 

@@ -203,7 +203,9 @@ class TestRefuseClarify:
         assert out["reply_source"] == "static"
         assert out["status"] == "refused"
 
-    def test_clarify_asks_up_to_three_in_priority_order(self) -> None:
+    def test_clarify_asks_only_the_first_field_in_priority_order(self) -> None:
+        from eventssound.application.messages_es import render_clarification
+
         out = clarify(make_deps(ScriptedProvider([])))(
             state(
                 missing_fields=("event_date", "start_time", "end_time_or_duration", "guest_count")
@@ -211,9 +213,8 @@ class TestRefuseClarify:
         )
         assert out["status"] == "clarification"
         assert out["reply_source"] == "static"
-        text = out["reply"]
-        assert text.count("\n") == 3  # intro + 3 questions
-        assert "1." in text and "3." in text and "4." not in text
+        assert out["reply"] == render_clarification(("event_date",))
+        assert "\n" not in out["reply"] and out["reply"].count("?") == 1
 
     def test_clarify_without_fields_uses_the_rephrase(self) -> None:
         from eventssound.application.messages_es import CLARIFICATION_REPHRASE

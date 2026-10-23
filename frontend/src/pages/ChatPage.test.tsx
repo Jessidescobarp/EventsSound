@@ -112,11 +112,17 @@ describe("chat page", () => {
     expect(bodies[1]?.messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
   });
 
-  it("lists what is missing on a clarification", async () => {
-    setup(() => json(answer({ status: "clarification", missing_fields: ["guest_count", "made_up_field"] })));
+  it.each([
+    ["1 missing: the text already asks it", ["event_date"], null],
+    ["2 missing", ["event_date", "start_time"], es.quote.laterCount(1)],
+    ["6 missing: all but the asked one", Object.keys(es.quote.missing), es.quote.laterCount(5)],
+    ["none missing", [], null],
+    ["unknown code is ignored", ["event_date", "guest_count", "made_up_field"], es.quote.laterCount(1)],
+  ])("remaining-questions line after a clarification: %s", async (_name, missing, line) => {
+    setup(() => json(answer({ status: "clarification", missing_fields: missing })));
     send("Hola");
-    expect(await screen.findByText(es.quote.missing.guest_count)).toBeInTheDocument();
-    expect(within(log()).getAllByRole("listitem").some((li) => li.textContent === "made_up_field")).toBe(false);
+    await screen.findByText(es.chat.source.static);
+    expect(within(log()).queryAllByText(/^Después te pediré/).map((e) => e.textContent)).toEqual(line ? [line] : []);
   });
 
   it("offers options under the latest answer only and sends the clicked one as a message", async () => {

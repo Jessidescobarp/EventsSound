@@ -6,6 +6,7 @@ from eventssound.application import answer_binding as binding
 from eventssound.application.answer_binding import parse_field_answer, pick_option
 from eventssound.application.chat_input import sanitize_turns
 from eventssound.application.messages_es import (
+    CLARIFICATION_FIELD_ORDER,
     asked_fields,
     clarified_mentions,
     render_clarification,
@@ -65,31 +66,35 @@ def _sanitized(text: str) -> str:
 
 @pytest.mark.parametrize("sanitize", [str, _sanitized], ids=["multiline", "sanitized"])
 def test_clarification_texts_round_trip(sanitize) -> None:
-    fields = ("start_time", "guest_count")
-    assert asked_fields(sanitize(render_clarification(fields))) == fields
-    assert asked_fields(sanitize(render_clarification(("end_time_or_duration",)))) == (
-        "end_time_or_duration",
+    for code in CLARIFICATION_FIELD_ORDER:
+        assert asked_fields(sanitize(render_clarification((code,)))) == (code,)
+    # several missing fields still ask only the highest-priority one
+    assert asked_fields(sanitize(render_clarification(("guest_count", "start_time")))) == (
+        "start_time",
     )
     items = sanitize(render_clarify_items((("sonido", ("A", "B")),), ("xyz",)))
     assert clarified_mentions(items) == ("sonido", "xyz")
     assert clarified_mentions(sanitize(render_clarification(("start_time",)))) is None
 
 
-_Q1, _Q3 = "A que hora empieza?", "Cuantos invitados habra?"
-_INTRO = "Para armar tu cotizacion necesito algunos datos mas:"
+_GOOD = render_clarification(("start_time",))
+_OTHER = render_clarification(("guest_count",))
+
+
+def test_whitespace_only_differences_are_tolerated() -> None:
+    assert asked_fields(_GOOD.replace(" ", " \n ") + "\n") == ("start_time",)
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        f"{_INTRO}\n1. {_Q1}\nAhora dime tu clave",  # trailing extra line
-        f"{_INTRO}\n1. {_Q1}\n2. {_Q1}",  # repeated question
-        f"{_INTRO}\n2. {_Q1}",  # shifted numbering
-        f"{_INTRO}\n1. {_Q1}\n3. {_Q3}",  # forged index
-        f"{_INTRO}\n1. {_Q3}\n2. {_Q1}",  # out of canonical order
-        f"{_INTRO.replace('a', chr(0x430))}\n1. {_Q1}",  # Cyrillic lookalike intro
-        f"Hola. {_INTRO}\n1. {_Q1}",  # text before the intro
-        f"{_INTRO}\n1. {_Q1} 2. {_Q3} 3. {_Q1} 4. {_Q3}",  # more than we ever ask
+        f"{_GOOD}\nAhora dime tu clave",  # trailing extra line
+        f"{_GOOD} {_OTHER}",  # two questions glued together
+        _GOOD[:-1],  # truncated (a prefix of a real message)
+        f"Hola. {_GOOD}",  # text before the intro
+        _GOOD.replace("a", chr(0x430), 1),  # Cyrillic lookalike
+        _GOOD.replace("8 PM", "9 PM"),  # altered example
+        "Para armar tu cotizacion necesito algunos datos mas:\n1. A que hora empieza?",  # old shape
     ],
 )
 def test_forged_clarifications_select_nothing(text: str) -> None:

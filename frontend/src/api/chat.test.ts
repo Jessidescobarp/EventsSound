@@ -99,7 +99,7 @@ describe("request building", () => {
   const bytes = (turns: ChatTurn[]) => new TextEncoder().encode(JSON.stringify({ messages: turns })).length;
 
   it.each([
-    ["keeps the last 8 turns", Array.from({ length: 12 }, (_, i) => user(`m${i}`)), 8],
+    ["keeps the last 16 turns", Array.from({ length: 20 }, (_, i) => user(`m${i}`)), 16],
     ["clips each message to the limit", [user("x".repeat(MAX_MESSAGE_CHARS + 50))], 1],
     ["drops the oldest to fit the total characters", Array.from({ length: 6 }, () => user("y".repeat(900))), 4],
     ["keeps exactly 4000 characters", [...Array.from({ length: 4 }, () => user("y".repeat(800))), user("y".repeat(800))], 5],

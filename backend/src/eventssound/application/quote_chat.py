@@ -113,7 +113,7 @@ class ChatResult:
 class ChatLimits:
     """Every chat bound in one frozen dataclass (defaults; the container may override)."""
 
-    max_messages: int = 8
+    max_messages: int = 16
     max_message_chars: int = 1000
     max_total_chars: int = 4000
     max_llm_calls: int = 3
