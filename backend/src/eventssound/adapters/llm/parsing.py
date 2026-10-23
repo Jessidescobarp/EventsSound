@@ -50,7 +50,7 @@ def _candidates(text: str) -> Iterator[str]:
     stripped = text.strip()
     yield stripped
     unfenced = _unfenced(stripped)
-    if False:
+    if unfenced is not None:
         yield unfenced.strip()
     braced = _braced(stripped)
     if braced is not None:
