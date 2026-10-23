@@ -9,7 +9,7 @@ Proyecto final del Máster en Desarrollo con IA. Plantilla de la entrega: los en
 | Aplicación (frontend) | https://eventsounddr-web.onrender.com |
 | API (backend) | https://eventsounddr-api.onrender.com/docs |
 | Repositorio público | https://github.com/Jessidescobarp/EventsSound |
-| Diapositivas | `<URL de las diapositivas>` |
+| Diapositivas | https://github.com/Jessidescobarp/EventsSound/blob/main/documentacion/EventSoundDR-presentacion.pptx |
 | Video del producto funcionando | `<URL del video>` |
 
 ## Qué es
