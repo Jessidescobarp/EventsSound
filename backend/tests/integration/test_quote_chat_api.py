@@ -9,9 +9,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agent_fixtures import make_catalog, neutral_rules
+from eventssound.adapters.llm.parsing import parse_json_object
 from eventssound.adapters.usage.memory import InMemoryUsageBudget
 from eventssound.application.errors import RepositoryUnavailable
-from eventssound.application.llm import LlmAuthError, LlmUnavailable
+from eventssound.application.llm import LlmAuthError, LlmBadResponse, LlmUnavailable
 from eventssound.application.quote_chat import AgentOutcome, AgentStatus
 from eventssound.application.usage import RateDecision
 from eventssound.config import Settings
@@ -235,6 +236,18 @@ def test_llm_failure_logs_only_its_class(caplog) -> None:
     assert response.status_code == 503
     line = next(r.getMessage() for r in caplog.records if "chat llm error" in r.getMessage())
     assert "LlmAuthError" in line and response.headers["x-request-id"] in line
+
+
+def test_bad_response_logs_class_and_reason_only(caplog) -> None:
+    payload = "SECRET-MODEL-TEXT sk-abc"
+    with pytest.raises(LlmBadResponse) as caught:
+        parse_json_object(payload)  # the real parser produces the failure
+    client, _ = make_client(FakeAgent(caught.value))
+    with caplog.at_level("WARNING"):
+        client.post(URL, json=BODY)
+    line = next(r.getMessage() for r in caplog.records if "chat llm error" in r.getMessage())
+    assert "LlmBadResponse" in line and "reason=not_json" in line
+    assert "SECRET-MODEL-TEXT" not in caplog.text and "sk-abc" not in caplog.text
 
 
 def padded(size: int) -> bytes:

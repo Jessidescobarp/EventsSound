@@ -48,7 +48,13 @@ class LlmUnavailable(LlmError):
 
 
 class LlmBadResponse(LlmError):
+    """Unusable provider output. `reason` is a short constant code, never provider text."""
+
     default_message = "LLM provider returned an unusable response"
+
+    def __init__(self, reason: str = "unspecified") -> None:
+        super().__init__()
+        self.reason = reason
 
 
 class LlmAuthError(LlmError):

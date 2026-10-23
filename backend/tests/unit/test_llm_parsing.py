@@ -86,3 +86,69 @@ def test_providers_map_hostile_json_text_to_bad_response() -> None:
         live = OpenRouterProvider(KEY, "vendor/model", transport=script.transport)
         with pytest.raises(LlmBadResponse):
             live.complete(request())
+
+
+FENCED = '```json\n{"a": 1}\n```'
+TOLERANT = [
+    ('{"a": 1}', {"a": 1}),
+    (FENCED, {"a": 1}),
+    ('```\n{"a": 1}\n```', {"a": 1}),
+    ('  ```JSON {"a": 1}```  ', {"a": 1}),
+    ('Sure! Here it is:\n{"a": {"b": "x}{"}}\nHope it helps.', {"a": {"b": "x}{"}}),
+    ('Here: ```json\n{"a": 1}\n``` done', {"a": 1}),
+    ('{"a": "}"}', {"a": "}"}),
+    ("", "empty_content"),
+    ("[1]", "not_json"),
+    ("42", "not_json"),
+    ('text [{"a": 1}] text', "not_json"),
+    ('{"a": 1} {"b": 2}', "not_json"),
+    ('{"a": {"b": 1}', "not_json"),
+    ("} {", "not_json"),
+    ('prose {"a": NaN} prose', "not_json"),
+    ('```json\n{"a": ' + "9" * 5000 + "}\n```", "not_json"),
+    ("```json\n" + nested(33) + "\n```", "unsafe_json"),
+    ('```json\n["a"]\n```', "not_json"),
+    ('["x", {"a": 1}]', "not_json"),
+    ('[1, {"a": 1}]', "not_json"),
+    ('prose [ok] {"a": 1}', "not_json"),
+    ('{"a": 1} trailing ]', "not_json"),
+    ("Here you go: " + nested(33) + " bye", "unsafe_json"),
+]
+
+
+@pytest.mark.parametrize(("text", "expected"), TOLERANT)
+def test_parse_json_object_tolerates_fences_and_prose_but_nothing_unsafe(text, expected) -> None:
+    if isinstance(expected, dict):
+        assert parse_json_object(text) == expected
+        return
+    with pytest.raises(LlmBadResponse) as caught:
+        parse_json_object(text)
+    assert caught.value.reason == expected
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (
+            [{"type": "text", "text": '{"a":'}, {"type": "image"}, {"type": "text", "text": " 1}"}],
+            {"a": 1},
+        ),
+        ([{"type": "text", "text": FENCED}], {"a": 1}),
+        ([], "empty_content"),
+        ([{"type": "text", "text": 5}, {"type": "refusal", "text": "x"}], "empty_content"),
+        ("   ", "empty_content"),
+        (None, "empty_content"),
+        ({"a": 1}, "empty_content"),
+        (FENCED, {"a": 1}),
+    ],
+)
+def test_live_provider_reads_string_or_text_parts_content(content, expected) -> None:
+    payload = chat_ok()
+    payload["choices"][0]["message"]["content"] = content  # type: ignore[index]
+    live = OpenRouterProvider(KEY, "vendor/model", transport=Script(reply(payload)).transport)
+    if isinstance(expected, dict):
+        assert live.complete(request()).parsed == expected
+        return
+    with pytest.raises(LlmBadResponse) as caught:
+        live.complete(request())
+    assert caught.value.reason == expected

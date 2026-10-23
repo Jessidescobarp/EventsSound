@@ -100,10 +100,26 @@ def _first_choice(data: dict[str, Any]) -> tuple[str, str | None]:
     choice = choices[0] if isinstance(choices, list) and choices else None
     message = choice.get("message") if isinstance(choice, dict) else None
     content = message.get("content") if isinstance(message, dict) else None
-    if not isinstance(content, str) or not content.strip():
-        raise LlmBadResponse()
+    text = _content_text(content)
+    if not text.strip():
+        raise LlmBadResponse("empty_content")
     finish = choice.get("finish_reason")
-    return content, finish if isinstance(finish, str) and 0 < len(finish) <= 64 else None
+    return text, finish if isinstance(finish, str) and 0 < len(finish) <= 64 else None
+
+
+def _content_text(content: object) -> str:
+    """Plain string content, or the `text` parts of a content-parts list joined in order."""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return "".join(
+        part["text"]
+        for part in content
+        if isinstance(part, dict)
+        and part.get("type") == "text"
+        and isinstance(part.get("text"), str)
+    )
 
 
 def _model_name(value: object, configured: str) -> str:
