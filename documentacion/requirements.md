@@ -16,7 +16,7 @@ Quote agent (heart of the product):
 - A visitor describes an event in natural language and receives a structured quote plus a proposal text.
 - Prices are computed by deterministic code (`calcular_precio`), never by the LLM.
 - Equipment is searched in a synthetic catalog; availability is checked against a small bookings table.
-- A quote may create a pending booking row. No payments, no calendar UI.
+- Every quote answer is saved (validated fields only, no personal data). Creating a booking from the UI was not built; the `bookings` table only feeds availability. No payments, no calendar UI.
 
 Public chat hardening (minimum):
 
@@ -30,12 +30,12 @@ Data:
 
 - All data is synthetic (catalog, bookings, users). No real personal data.
 
-Out of scope for the MVP: payments, CRUD admin UI, image generation, voice, e2e browser tests.
+Admin (built): saved quotes, bookings, catalog and portfolio edits, security events and agent configuration (tone, messages, model, caps) inside hard ceilings. Out of scope for the MVP: payments, users CRUD, image generation and uploads, voice, e2e browser tests.
 
 ## Non-functional requirements
 
 - Free-tier hosting (Render web service, Render static site, Neon Postgres).
-- Hard cost caps on LLM usage, configured through environment variables.
+- Hard cost caps on LLM usage: environment defaults plus admin-adjustable caps that never exceed ceilings set in code; every selectable model has a known price (fail closed).
 - Provider-agnostic LLM access through a port, with a replay adapter for deterministic tests.
 - Cold starts on the free tier are accepted; documented in the README.
 - No secrets in the repository.

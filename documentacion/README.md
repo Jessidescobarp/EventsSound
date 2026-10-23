@@ -6,11 +6,12 @@ Project documentation for EventSoundDR, the TFM of the Master in AI-assisted Dev
 - [architecture.md](architecture.md): hexagonal layers, deployment topology, planned stack.
 - [deploy.md](deploy.md): Render + Neon deploy guide, variables, cold start, rollback, manual steps.
 - [decisions.md](decisions.md): ADR-style decision log.
-- [roadmap.md](roadmap.md): phases P0-P5 and the MVP target.
+- [roadmap.md](roadmap.md): phases P0-P5, status and the MVP target.
 
 Related sources of truth:
 
 - Agent guidance: [../AGENTS.md](../AGENTS.md)
 - SDD config: [../openspec/config.yaml](../openspec/config.yaml)
 - Phase plan: [../openspec/changes/tfm-phased-mvp/exploration.md](../openspec/changes/tfm-phased-mvp/exploration.md)
-- Current change: [../openspec/changes/walking-skeleton-and-deploy/](../openspec/changes/walking-skeleton-and-deploy/proposal.md)
+- Latest change: [../openspec/changes/admin-agent-config/](../openspec/changes/admin-agent-config/proposal.md)
+- Walking skeleton: [../openspec/changes/walking-skeleton-and-deploy/](../openspec/changes/walking-skeleton-and-deploy/proposal.md)
