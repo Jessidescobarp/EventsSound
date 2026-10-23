@@ -20,13 +20,14 @@ from eventssound.adapters.agent.prompts import (
     build_draft_messages,
     build_understand_messages,
 )
-from eventssound.adapters.agent.schemas import Extraction
+from eventssound.adapters.agent.schemas import Extraction, ItemMention
 from eventssound.adapters.agent.state import AgentState
 from eventssound.adapters.agent.structured import (
     DeadlineExceeded,
     StructuredOutputInvalid,
     structured_call,
 )
+from eventssound.application.answer_binding import parse_field_answer, pick_option
 from eventssound.application.chat_input import looks_like_injection
 from eventssound.application.llm import LlmBadResponse, LlmError, LlmProvider, LlmRequest
 from eventssound.application.messages_es import (
@@ -34,6 +35,8 @@ from eventssound.application.messages_es import (
     CLARIFICATION_REPHRASE,
     REFUSAL,
     TEMPLATE_CLOSING,
+    asked_fields,
+    clarified_mentions,
     clarify_item_options,
     render_clarification,
     render_clarify_items,
@@ -51,6 +54,7 @@ from eventssound.application.spanish_dates import parse_spanish_date
 from eventssound.application.spanish_facts import (
     fold,
     parse_clock_time,
+    parse_clock_times,
     parse_duration_hours,
     parse_guest_count,
 )
@@ -161,6 +165,98 @@ def _with_carried_facts(extraction: Extraction, turns: tuple) -> Extraction:
     return extraction.model_copy(update=update) if update else extraction
 
 
+def _previous_assistant(turns: tuple) -> str | None:
+    """The assistant turn the latest user turn answers (client-supplied, so never trusted)."""
+    if len(turns) >= 2 and turns[-1].role == "user" and turns[-2].role == "assistant":  # noqa: PLR2004
+        return turns[-2].content
+    return None
+
+
+def _with_bound_option(
+    extraction: Extraction, turns: tuple, catalog: Catalog
+) -> tuple[Extraction, bool]:
+    """A reply that is exactly a catalog name IS that choice, whatever the model re-extracted.
+
+    The chosen name replaces the mention the previous clarification asked about (keeping its
+    quantity). A package also drops the vague `needs`, which it covers; an item drops only the
+    need that was the clarified mention, so unrelated needs still get asked about.
+    """
+    packages = {fold(p.name) for p in catalog.packages}
+    names = tuple(p.name for p in catalog.packages) + tuple(i.name for i in catalog.items)
+    last = turns[-1] if turns else None
+    chosen = pick_option(last.content, names) if last and last.role == "user" else None
+    if chosen is None:
+        return extraction, False
+    asked = {fold(m) for m in clarified_mentions(_previous_assistant(turns) or "") or ()}
+    replaced = [m for m in extraction.items if fold(m.mention) in asked | {fold(chosen)}]
+    try:
+        pick = ItemMention(mention=chosen, quantity=max((m.quantity for m in replaced), default=1))
+    except ValueError:
+        return extraction, False
+    items = [m for m in extraction.items if m not in replaced] + [pick]
+    covered = fold(chosen) in packages or fold(" ".join(extraction.needs)) in asked
+    update = {"items": items, "needs": [] if covered else extraction.needs}
+    return extraction.model_copy(update=update), True
+
+
+def _bound_answer(turns: tuple, today: date) -> dict:
+    """The latest user turn read as the answer to the FIRST field the last question asked."""
+    asked = asked_fields(_previous_assistant(turns) or "")
+    return parse_field_answer(asked[0], turns[-1].content, today) if asked else {}
+
+
+def _without_invented_end(extraction: Extraction, turns: tuple, answer: dict) -> Extraction:
+    """Drop a model end time that no user turn stated while a duration was stated.
+
+    Such an end (e.g. echoing the start) fails validation and made the duration question repeat
+    even though "por 4 horas" was in the first turn. The user's own words beat the model's guess.
+    """
+    texts = [t.content for t in turns if t.role == "user"]
+    clocks = [c for x in texts for c in parse_clock_times(x)]
+    start = extraction.start_time or next(iter(clocks), None)
+    stated = {c for c in clocks if c != start} | {answer.get("end_time")}  # an end is not the start
+    duration = answer.get("duration_hours") or next(
+        (h for x in texts if (h := parse_duration_hours(x))), None
+    )
+    if (
+        extraction.end_time is None
+        or extraction.end_time in stated
+        or extraction.duration_hours is not None
+        or not (duration or answer.get("end_time"))
+    ):
+        return extraction
+    return extraction.model_copy(update={"end_time": None, "end_date": None})
+
+
+_END_KEYS = ("end_time", "duration_hours")  # one field: a newer answer replaces an older one
+
+
+def _overlay(base: dict, new: dict) -> dict:
+    kept = (
+        {k: v for k, v in base.items() if k not in _END_KEYS}
+        if new.keys() & set(_END_KEYS)
+        else base
+    )
+    return kept | new
+
+
+def _with_bound_field(
+    extraction: Extraction, turns: tuple, answer: dict, today: date
+) -> Extraction:
+    """Fill answered fields from this reply and earlier replies to our questions.
+
+    The model forgets them on later turns ("10 KM" is not re-extracted after "Paquete Boda").
+    A model value always wins; later replies win over earlier ones.
+    """
+    merged: dict = {}
+    for end in range(2, len(turns)):
+        merged = _overlay(merged, _bound_answer(turns[:end], today))
+    update = {k: v for k, v in _overlay(merged, answer).items() if getattr(extraction, k) is None}
+    if extraction.end_time is not None or extraction.duration_hours is not None:
+        update = {k: v for k, v in update.items() if k not in _END_KEYS}
+    return extraction.model_copy(update=update) if update else extraction
+
+
 def gate(deps: AgentDeps) -> Callable[[AgentState], dict]:
     def node(state: AgentState) -> dict:
         if any(looks_like_injection(turn.content) for turn in state["turns"]):
@@ -195,10 +291,24 @@ def understand(deps: AgentDeps) -> Callable[[AgentState], dict]:
             )
         except StructuredOutputInvalid:
             return {"route": "clarify", "missing_fields": ()}
+        catalog = deps.load_catalog()
+        extraction, chose = _with_bound_option(extraction, state["turns"], catalog)
+        answer = _bound_answer(state["turns"], today)
+        extraction = _without_invented_end(extraction, state["turns"], answer)
+        extraction = _with_bound_field(extraction, state["turns"], answer, today)
+        previous = _previous_assistant(state["turns"]) or ""
+        ours = bool(asked_fields(previous)) or clarified_mentions(previous) is not None
         if extraction.intent != "quote":
-            return {"route": "refuse"}
+            # The gate already refused injections on every turn. A short reply that parsed as the
+            # answer to one of OUR questions is on-topic by construction, whatever the model said.
+            if not ((chose or answer) and ours):
+                return {"route": "refuse"}
+            extraction = extraction.model_copy(update={"intent": "quote"})
         extraction = _with_resolved_date(extraction, state["turns"], today)
-        extraction = _with_carried_facts(extraction, state["turns"])
+        # A reply already bound to its question ("11 PM" = end) must not also be mined as a start.
+        extraction = _with_carried_facts(
+            extraction, state["turns"][:-1] if answer else state["turns"]
+        )
         missing = missing_fields(extraction)
         if missing:
             return {"extraction": extraction, "missing_fields": missing, "route": "clarify"}
