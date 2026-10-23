@@ -6,7 +6,6 @@ examples in the design.
 """
 
 import functools
-import itertools
 import re
 import unicodedata
 
@@ -15,9 +14,9 @@ REFUSAL = (
     " Cuentame que evento tienes en mente: tipo, fecha, numero de invitados y lugar."
 )
 
-CLARIFICATION_INTRO = "Para armar tu cotizacion necesito algunos datos mas:"
+CLARIFICATION_INTRO = "Para armar tu cotizacion:"
 
-# Fixed priority: a clarification asks at most MAX_CLARIFICATION_FIELDS at a time.
+# Fixed priority: a clarification asks ONE question per turn, the first missing field here.
 CLARIFICATION_FIELD_ORDER = (
     "event_date",
     "start_time",
@@ -36,7 +35,14 @@ _CLARIFICATION_FIELDS = {
     "equipment": "Que equipos necesitas?",
 }
 
-MAX_CLARIFICATION_FIELDS = 3
+_EXAMPLES = {
+    "event_date": "15 de diciembre",
+    "start_time": "8 PM",
+    "end_time_or_duration": "4 horas, o hasta las 11 PM",
+    "guest_count": "60",
+    "distance_or_locality": "10 km",
+    "equipment": "sonido y luces para una boda",
+}
 
 # Sent when the model could not produce a usable extraction even after the one repair.
 CLARIFICATION_REPHRASE = (
@@ -64,7 +70,7 @@ WELCOME = (
 
 
 def render_clarification(missing_fields: object) -> str:
-    """Numbered Spanish questions for the missing fields, at most 3, in priority order."""
+    """One Spanish question (with an example) for the highest-priority missing field."""
     if not isinstance(missing_fields, tuple | list | set | frozenset):
         raise ValueError("missing_fields must be a collection of field codes")
     unknown = set(missing_fields) - set(_CLARIFICATION_FIELDS)
@@ -73,11 +79,8 @@ def render_clarification(missing_fields: object) -> str:
     ordered = [c for c in CLARIFICATION_FIELD_ORDER if c in set(missing_fields)]
     if not ordered:
         raise ValueError("missing_fields must not be empty")
-    lines = [
-        f"{i}. {_CLARIFICATION_FIELDS[code]}"
-        for i, code in enumerate(ordered[:MAX_CLARIFICATION_FIELDS], 1)
-    ]
-    return f"{CLARIFICATION_INTRO}\n" + "\n".join(lines)
+    code = ordered[0]
+    return f"{CLARIFICATION_INTRO} {_CLARIFICATION_FIELDS[code]} (por ejemplo: {_EXAMPLES[code]})"
 
 
 def normalize_message(text: str) -> str:
@@ -91,13 +94,8 @@ def normalize_message(text: str) -> str:
 
 @functools.cache
 def _known_questions() -> dict[str, tuple[str, ...]]:
-    """Every message `render_clarification` can produce (ordered subsets of up to 3 fields)."""
-    combos = (
-        c
-        for size in range(1, MAX_CLARIFICATION_FIELDS + 1)
-        for c in itertools.combinations(CLARIFICATION_FIELD_ORDER, size)
-    )
-    return {normalize_message(render_clarification(c)): c for c in combos}
+    """Every message `render_clarification` can produce: one per field."""
+    return {normalize_message(render_clarification((c,))): (c,) for c in CLARIFICATION_FIELD_ORDER}
 
 
 def asked_fields(assistant_text: str) -> tuple[str, ...]:

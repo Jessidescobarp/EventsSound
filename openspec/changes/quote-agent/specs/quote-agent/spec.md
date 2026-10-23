@@ -41,7 +41,7 @@ Change: quote-agent. A `QuoteAgent` port and a `quote_chat` use case in `applica
 - Then the date is 2026-10-17
 
 ### Requirement: Clarification within a bounded number of turns
-When required fields (`start`, `end`, `guest_count`, `distance_km` or `venue`, at least one item or package) are missing, the agent MUST return `status=clarification` with one Spanish question covering the missing fields (at most 3 fields per question). The conversation MUST be allowed at most 3 consecutive clarification turns (counted from assistant messages in the bounded history); after that the agent MUST return `refused` with a Spanish message asking the user to contact the company, instead of looping. No tool call and no price MUST occur on a clarification turn.
+When required fields (`start`, `end`, `guest_count`, `distance_km` or `venue`, at least one item or package) are missing, the agent MUST return `status=clarification` with one Spanish question for the highest-priority missing field (one field per turn, with a short example). The conversation MUST be allowed at most 3 consecutive clarification turns (counted from assistant messages in the bounded history); after that the agent MUST return `refused` with a Spanish message asking the user to contact the company, instead of looping. No tool call and no price MUST occur on a clarification turn.
 
 #### Scenario: Missing guests
 - Given a request lacking `guest_count`

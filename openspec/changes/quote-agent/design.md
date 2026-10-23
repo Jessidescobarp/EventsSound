@@ -213,7 +213,7 @@ All limits live in a frozen `ChatLimits` dataclass with defaults in `application
 5. The only data derived from raw user text that survives past `understand` are the validated `Extraction` fields. The `draft` prompt receives zero characters of user text (D13).
 
 ### D9 (clarification policy, deterministic)
-Required to price: `event_date`, `start_time`, one of `end_time` or `duration_hours`, `guest_count`, one of `distance_km` or a `locality` found in a small static map, and at least one of `items` or `needs`. Optional with defaults: event type, venue, end date. The clarification text is built from `missing_fields` (enum codes `event_date, start_time, end_time_or_duration, guest_count, distance_or_locality, equipment`) with Spanish templates in `messages_es.py`, asking for at most 3 fields at once in a fixed priority order. The model's own question text, if present, is ignored (it is untrusted output going to a user). No clarification loop exists inside a request: the loop is across requests and is bounded by the client's 8-message window; the next turn re-runs `understand` on the whole history, so the user's answer ("150 personas") merges with earlier turns. The locality map (`application/localities.py`, ~10 synthetic municipalities, accent-folded keys) is OPTIONAL (cut ladder item 5): without it the agent asks for the distance in km.
+Required to price: `event_date`, `start_time`, one of `end_time` or `duration_hours`, `guest_count`, one of `distance_km` or a `locality` found in a small static map, and at least one of `items` or `needs`. Optional with defaults: event type, venue, end date. The clarification text is built from `missing_fields` (enum codes `event_date, start_time, end_time_or_duration, guest_count, distance_or_locality, equipment`) with Spanish templates in `messages_es.py`, asking ONE field per turn (the first in a fixed priority order, with a short example). The model's own question text, if present, is ignored (it is untrusted output going to a user). No clarification loop exists inside a request: the loop is across requests and is bounded by the client's 8-message window; the next turn re-runs `understand` on the whole history, so the user's answer ("150 personas") merges with earlier turns. The locality map (`application/localities.py`, ~10 synthetic municipalities, accent-folded keys) is OPTIONAL (cut ladder item 5): without it the agent asks for the distance in km.
 Generic needs ("sonido para una boda") resolve to a PACKAGE via search over packages (event type + needs as query); explicit named equipment with quantities resolves to ITEMS. Ambiguity or no match becomes `clarify_items` ("Te refieres a: A, B o C?" with catalog names only, plus user-visible echo sanitized to the charset above).
 
 ### D10 (failure routes)
@@ -512,7 +512,7 @@ Response examples (codes are illustrative; align with `seed_data.py` at Q6b time
 
 // needs_more_info (200)
 {"request_id":"...","status":"clarification",
- "reply":"Para armar tu cotizacion necesito algunos datos mas:\n1. Cuantos invitados habra?\n2. A que hora empieza y termina?\n3. En que ciudad o a cuantos kilometros de Bogota es el evento?",
+ "reply":"Para armar tu cotizacion: Cuantos invitados habra? (por ejemplo: 60)",
  "quote":null,"event_request":null,"availability":null,
  "missing_fields":["guest_count","start_time","end_time_or_duration"],"reply_source":"static"}
 

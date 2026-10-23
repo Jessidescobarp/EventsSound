@@ -141,19 +141,17 @@ class TestRefusalAndClarification:
             " Cuentame que evento tienes en mente: tipo, fecha, numero de invitados y lugar."
         )
 
-    def test_clarification_asks_at_most_three_fields_in_priority_order(self) -> None:
+    def test_clarification_asks_one_question_with_an_example_in_priority_order(self) -> None:
         text = render_clarification(["equipment", "guest_count", "event_date", "start_time"])
 
         assert text == (
-            "Para armar tu cotizacion necesito algunos datos mas:\n"
-            "1. Que fecha va a ser el evento?\n"
-            "2. A que hora empieza?\n"
-            "3. Cuantos invitados habra?"
+            "Para armar tu cotizacion: Que fecha va a ser el evento? (por ejemplo: 15 de diciembre)"
         )
 
-    def test_every_field_has_a_spanish_template(self) -> None:
+    def test_every_field_has_a_single_question_with_an_example(self) -> None:
         for code in CLARIFICATION_FIELD_ORDER:
-            assert render_clarification([code]).count("1. ") == 1
+            text = render_clarification([code])
+            assert text.count("?") == 1 and "(por ejemplo: " in text and "\n" not in text
 
     def test_an_unknown_field_code_is_rejected(self) -> None:
         import pytest

@@ -106,8 +106,7 @@ RESPONSE_EXAMPLES: dict[str, dict[str, object]] = {
     "needs_more_info": {
         "request_id": "9a1b2c3d4e5f60718293a4b5c6d7e8f9",
         "status": "clarification",
-        "reply": "Para armar tu cotizacion necesito algunos datos mas:\n"
-        "1. Cuantos invitados habra?",
+        "reply": "Para armar tu cotizacion: Cuantos invitados habra? (por ejemplo: 60)",
         "quote": None,
         "event_request": None,
         "availability": None,

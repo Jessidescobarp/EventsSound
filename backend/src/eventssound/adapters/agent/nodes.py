@@ -114,7 +114,7 @@ def _active(deps: AgentDeps) -> AgentConfig | None:
 
 
 def missing_fields(extraction: Extraction) -> tuple[str, ...]:
-    """The D9 policy, in fixed priority order; the clarify node shows at most 3."""
+    """The D9 policy, in fixed priority order; the clarify node asks only the first."""
     missing: list[str] = []
     if extraction.event_date is None:
         missing.append("event_date")
