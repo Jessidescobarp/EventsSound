@@ -39,11 +39,16 @@ def _unfenced(text: str) -> str | None:
 
 
 def _braced(text: str) -> str | None:
-    """Substring from the first `{` to the last `}`; None when absent or inside an array."""
+    """Substring from the first `{` to the last `}`.
+
+    None when absent or when any `[` or `]` sits outside it (fail closed: the object could be
+    an element of an array the model returned).
+    """
     start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end < start or text[:start].rstrip().endswith("["):
+    if start < 0 or end < start:
         return None
-    return text[start : end + 1]
+    outside = text[:start] + text[end + 1 :]
+    return None if "[" in outside or "]" in outside else text[start : end + 1]
 
 
 def _candidates(text: str) -> Iterator[str]:

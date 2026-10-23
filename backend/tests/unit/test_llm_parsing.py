@@ -108,6 +108,11 @@ TOLERANT = [
     ('```json\n{"a": ' + "9" * 5000 + "}\n```", "not_json"),
     ("```json\n" + nested(33) + "\n```", "unsafe_json"),
     ('```json\n["a"]\n```', "not_json"),
+    ('["x", {"a": 1}]', "not_json"),
+    ('[1, {"a": 1}]', "not_json"),
+    ('prose [ok] {"a": 1}', "not_json"),
+    ('{"a": 1} trailing ]', "not_json"),
+    ("Here you go: " + nested(33) + " bye", "unsafe_json"),
 ]
 
 
