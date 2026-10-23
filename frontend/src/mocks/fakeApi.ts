@@ -155,7 +155,7 @@ const CHAT_CLARIFICATION: ChatResponse = {
   ...base,
   request_id: "demo-chat-fixture-question",
   status: "clarification",
-  reply: "Para armar tu cotización necesito algunos datos más (demostración):\n1. ¿Cuántos invitados habrá?\n2. ¿Qué fecha va a ser el evento?",
+  reply: "Para armar tu cotización (demostración): ¿Cuántos invitados habrá? (por ejemplo: 60)",
   missing_fields: ["guest_count", "event_date"],
   options: ["Paquete Fiesta", "Paquete DJ", "Ver todo el catalogo"],
 };

@@ -112,21 +112,17 @@ describe("chat page", () => {
     expect(bodies[1]?.messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
   });
 
-  const asked = ["event_date", "start_time", "end_time_or_duration"];
-  const later = ["guest_count", "distance_or_locality", "equipment"];
   it.each([
-    ["3 missing: the text already asks them all", asked, []],
-    ["6 missing: only those past the asked limit", [...asked, ...later], later],
-    ["none missing", [], []],
-    ["unknown code is ignored", [...asked, "guest_count", "made_up_field"], ["guest_count"]],
-  ])("checklist after a clarification: %s", async (_name, missing, shown) => {
+    ["1 missing: the text already asks it", ["event_date"], null],
+    ["2 missing", ["event_date", "start_time"], es.quote.laterCount(1)],
+    ["6 missing: all but the asked one", Object.keys(es.quote.missing), es.quote.laterCount(5)],
+    ["none missing", [], null],
+    ["unknown code is ignored", ["event_date", "guest_count", "made_up_field"], es.quote.laterCount(1)],
+  ])("remaining-questions line after a clarification: %s", async (_name, missing, line) => {
     setup(() => json(answer({ status: "clarification", missing_fields: missing })));
     send("Hola");
     await screen.findByText(es.chat.source.static);
-    const list = within(log()).queryByText(es.quote.laterTitle)?.nextElementSibling;
-    const items = list ? within(list as HTMLElement).getAllByRole("listitem").map((li) => li.textContent) : [];
-    expect(items).toEqual(shown.map((c) => es.quote.missing[c]));
-    expect(within(log()).queryAllByText(es.quote.laterTitle)).toHaveLength(shown.length > 0 ? 1 : 0);
+    expect(within(log()).queryAllByText(/^Después te pediré/).map((e) => e.textContent)).toEqual(line ? [line] : []);
   });
 
   it("offers options under the latest answer only and sends the clicked one as a message", async () => {

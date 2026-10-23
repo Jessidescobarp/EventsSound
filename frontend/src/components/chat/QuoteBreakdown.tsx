@@ -5,8 +5,8 @@ import { formatCop, formatPercentFromBps } from "../../lib/format";
 
 const t = es.quote;
 
-/** Mirrors MAX_CLARIFICATION_FIELDS in backend messages_es.py: the reply text already asks this many. */
-export const ASKED_FIELDS_LIMIT = 3;
+/** The backend asks ONE question per turn (messages_es.render_clarification); the reply text already asks the first missing field. */
+export const ASKED_FIELDS_LIMIT = 1;
 
 function conceptName(line: QuoteLine): string {
   return line.label ?? t.kinds[line.kind] ?? t.kindFallback;
@@ -32,7 +32,7 @@ export function QuoteDetails({ response }: { response: ChatResponse }) {
   const names = new Map(
     quote?.lines.filter((l) => l.kind === "item" || l.kind === "package").map((l) => [l.code, conceptName(l)]),
   );
-  // missing_fields arrives in the backend's priority order; the reply text asks the first ones.
+  // missing_fields arrives in the backend's priority order; the reply text asks the first one.
   const missing = missing_fields.filter((code) => Object.hasOwn(t.missing, code)).slice(ASKED_FIELDS_LIMIT);
   return (
     <div className="mt-3 space-y-4">
@@ -41,14 +41,7 @@ export function QuoteDetails({ response }: { response: ChatResponse }) {
         <Availability availability={availability} quote={quote} names={names} />
       ) : null}
       {missing.length > 0 ? (
-        <div>
-          <p className="text-sm font-semibold">{t.laterTitle}</p>
-          <ul className="mt-1 list-disc pl-5 text-sm">
-            {missing.map((code) => (
-              <li key={code}>{t.missing[code]}</li>
-            ))}
-          </ul>
-        </div>
+        <p className="text-sm text-ink-muted">{t.laterCount(missing.length)}</p>
       ) : null}
     </div>
   );
