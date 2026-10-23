@@ -83,7 +83,7 @@ class TestSanitizeTurns:
 
     def test_too_many_messages_is_rejected(self) -> None:
         with pytest.raises(ValueError):
-            sanitize_turns(turns(*["hola"] * 8, "otra"))  # 9 messages
+            sanitize_turns(turns(*["hola"] * 16, "otra"))  # 17 messages
 
     def test_message_longer_than_the_cap_is_rejected(self) -> None:
         with pytest.raises(ValueError):

@@ -500,7 +500,9 @@ class TestAnswerBindingReplay:
             ("12 de diciembre", "8 PM", "4 horas", "40", "10 km"), known, strict=True
         ):
             facts |= fact
-            outcome = self._run(dict(base, **facts), chat[-8:])  # the client keeps 8 messages
+            outcome = self._run(
+                dict(base, **facts), chat
+            )  # the whole history fits the 16-message window
             assert outcome.status is AgentStatus.CLARIFICATION
             assert outcome.reply == render_clarification(outcome.missing_fields[:1])
             asked.append(outcome.missing_fields[0])
@@ -512,9 +514,13 @@ class TestAnswerBindingReplay:
             "guest_count",
             "distance_or_locality",
         ]
-        outcome = self._run(dict(base, **facts), chat[-8:])
+        outcome = self._run(dict(base, **facts), chat)
         assert outcome.status is AgentStatus.QUOTE
         assert outcome.event_request.guest_count == 40
+        assert outcome.event_request.start.date().isoformat() == "2026-12-12"
+        # 6 answers = 11 messages: nothing is trimmed, the first turn is still the first
+        kept = sanitize_turns(chat)
+        assert len(chat) == len(kept) == 11 and kept[0] == ("user", "Cotizame un cumpleaños")
 
     def test_hostile_reply_after_a_one_question_turn_is_refused(self) -> None:
         extraction = dict(self.SHORT, intent="quote", items=self.BASIC, needs=[])

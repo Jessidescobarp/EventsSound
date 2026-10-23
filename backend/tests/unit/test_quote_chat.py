@@ -120,7 +120,7 @@ class TestChatTurn:
 class TestChatLimits:
     def test_defaults(self) -> None:
         limits = ChatLimits()
-        assert limits.max_messages == 8
+        assert limits.max_messages == 16
         assert limits.max_message_chars == 1000
         assert limits.max_total_chars == 4000
         assert limits.max_llm_calls == 3
@@ -131,7 +131,7 @@ class TestChatLimits:
         from dataclasses import FrozenInstanceError
 
         with pytest.raises(FrozenInstanceError):
-            ChatLimits().max_messages = 9  # type: ignore[misc]
+            ChatLimits().max_messages = 17  # type: ignore[misc]
 
 
 class TestUsageMeter:
@@ -229,7 +229,7 @@ class TestQuoteChat:
 
     def test_invalid_turns_map_to_invalid_chat_without_reserving(self) -> None:
         budget, agent = FakeBudget(), FakeAgent()
-        turns = [ChatTurn("user" if i % 2 == 0 else "assistant", "hola") for i in range(9)]
+        turns = [ChatTurn("user" if i % 2 == 0 else "assistant", "hola") for i in range(17)]
         with pytest.raises(InvalidChat):
             quote_chat(
                 turns,
@@ -343,3 +343,16 @@ class TestUnreportedUsageIsStillSettled:
         else:
             run_use_case(agent=agent, budget=budget, content="hola")
         assert budget.settles[0][1] == settled
+
+
+def test_history_window_is_one_value_across_backend_and_frontend() -> None:
+    import re
+    from pathlib import Path
+
+    from eventssound.application.chat_input import _MAX_MESSAGES_DEFAULT
+    from eventssound.entrypoints.api.schemas import MAX_MESSAGES
+
+    ts = Path(__file__).parents[3] / "frontend" / "src" / "api" / "chat.ts"
+    match = re.search(r"export const MAX_MESSAGES = (\d+);", ts.read_text(encoding="utf-8"))
+    assert match, "frontend MAX_MESSAGES not found"
+    assert int(match[1]) == MAX_MESSAGES == _MAX_MESSAGES_DEFAULT == ChatLimits().max_messages == 16

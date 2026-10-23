@@ -166,7 +166,7 @@ class ErrorOut(BaseModel):
 
 # --- POST /quote/chat -------------------------------------------------------------------------
 
-MAX_MESSAGES = 8
+MAX_MESSAGES = 16  # keep equal to chat_input and frontend api/chat.ts (contract test)
 MAX_MESSAGE_CHARS = 1000
 MAX_TOTAL_CHARS = 4000
 

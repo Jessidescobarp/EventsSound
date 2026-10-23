@@ -23,7 +23,7 @@ Change: quote-agent. `entrypoints/api/routes/quote.py` (thin; no adapter imports
 - Then 422
 
 ### Requirement: Stateless bounded conversation
-The server MUST NOT store conversations. The client sends the history. Validation MUST enforce: 1..8 messages, last message role `user`, each `content` 1..1000 characters after control-character stripping, total <= 4000 characters, roles limited to `user` and `assistant` (a `system` or `tool` role MUST be rejected). Control characters (except `\n` and `\t`) and zero-width/bidi override characters MUST be removed before the content reaches any prompt. Assistant history MUST NOT be trusted for numbers: the request is re-extracted and re-priced every turn.
+The server MUST NOT store conversations. The client sends the history. Validation MUST enforce: 1..16 messages, last message role `user`, each `content` 1..1000 characters after control-character stripping, total <= 4000 characters, roles limited to `user` and `assistant` (a `system` or `tool` role MUST be rejected). Control characters (except `\n` and `\t`) and zero-width/bidi override characters MUST be removed before the content reaches any prompt. Assistant history MUST NOT be trusted for numbers: the request is re-extracted and re-priced every turn.
 
 #### Scenario: Caps
 - Given 9 messages, or a 1001-character message, or a 4001-character total, or an empty message

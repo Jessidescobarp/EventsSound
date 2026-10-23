@@ -210,7 +210,7 @@ def validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     response_model=ChatResponseOut,
     summary="Describe tu evento y recibe una cotizacion",
     description=(
-        "Chat with the quote assistant. Send the conversation so far (up to 8 messages of 1,000 "
+        "Chat with the quote assistant. Send the conversation so far (up to 16 messages of 1,000 "
         "characters, the last one from the user) and receive either a quote, the questions still "
         "needed, or a polite refusal when the message is not about quoting an event. Prices come "
         "from the company's pricing rules, never from the AI. All data is synthetic. The server "
