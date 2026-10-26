@@ -460,6 +460,43 @@ class TestAnswerBindingReplay:
         assert [line.code for line in request.packages] == ["pkg_basic"]
         assert (request.end - request.start).total_seconds() == hours * 3600
 
+    def test_a_stated_duration_beats_a_model_end_that_precedes_the_start(self) -> None:
+        # Production: the model computed 8 PM + 4 h as "00:00 on the event day" next to the
+        # duration, so the end preceded the start and the duration question repeated.
+        chat = (
+            ("user", "quiero cotizar un cumpleaños"),
+            ("assistant", render_clarification(("event_date",))),
+            ("user", "12 de diciembre"),
+            ("assistant", render_clarification(("start_time",))),
+            ("user", "8 PM"),
+            ("assistant", self.A_END),
+            ("user", "4 horas"),
+            ("assistant", render_clarification(("guest_count",))),
+            ("user", "60"),
+            ("assistant", self.A_KM),
+            ("user", "10 km"),
+            ("assistant", render_clarification(("equipment",))),
+            ("user", "sonido y luces para un cumpleaños"),
+        )
+        extraction = dict(
+            self.SHORT,
+            intent="quote",
+            event_type="birthday",
+            event_date="2026-12-12",
+            start_time="20:00",
+            end_time="00:00",
+            end_date="2026-12-12",
+            duration_hours=4,
+            guest_count=60,
+            distance_km=10,
+            items=self.BASIC,
+            needs=[],
+        )
+        outcome = self._run(extraction, chat)
+        assert outcome.status is AgentStatus.QUOTE
+        request = outcome.event_request
+        assert (request.end - request.start).total_seconds() == 4 * 3600
+
     def test_choosing_an_item_replaces_the_clarified_need(self) -> None:
         a_items = render_clarify_items(
             (("sonido y luces para cumpleaños", ("Parlante activo de 15 pulgadas",)),)
