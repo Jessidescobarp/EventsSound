@@ -221,7 +221,6 @@ def _without_invented_end(extraction: Extraction, turns: tuple, answer: dict) ->
     if (
         extraction.end_time is None
         or extraction.end_time in stated
-        or extraction.duration_hours is not None
         or not (duration or answer.get("end_time"))
     ):
         return extraction
